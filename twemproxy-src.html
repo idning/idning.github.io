@@ -1,0 +1,2375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>twemproxy代码分析</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/twemproxy-src.html">2013-12-15 15:12:02</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#id1" id="id45">调研</a><ul>
+<li><a class="reference internal" href="#id2" id="id46">文章调研</a><ul>
+<li><a class="reference internal" href="#redis-twemproxy-a-redis-proxy-from-twitter" id="id47">Redis 作者:Twemproxy, a Redis proxy from Twitter</a></li>
+<li><a class="reference internal" href="#id3" id="id48">存储分片和Twemproxy核心解读</a></li>
+<li><a class="reference internal" href="#redis-twemproxy-benchmark" id="id49">redis-twemproxy-benchmark</a></li>
+<li><a class="reference internal" href="#id4" id="id50">这个文章总结不错</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hash" id="id51">hash函数</a></li>
+<li><a class="reference internal" href="#id5" id="id52">配置</a></li>
+<li><a class="reference internal" href="#user" id="id53">user</a></li>
+<li><a class="reference internal" href="#id6" id="id54">不支持</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id7" id="id55">代码分析</a><ul>
+<li><a class="reference internal" href="#id8" id="id56">模块划分</a><ul>
+<li><a class="reference internal" href="#event" id="id57">event</a></li>
+<li><a class="reference internal" href="#id9" id="id58">请求处理</a></li>
+<li><a class="reference internal" href="#main" id="id59">main</a></li>
+<li><a class="reference internal" href="#os-utils" id="id60">os utils</a></li>
+<li><a class="reference internal" href="#ds-utils" id="id61">ds utils</a></li>
+<li><a class="reference internal" href="#id10" id="id62">协议</a></li>
+<li><a class="reference internal" href="#id11" id="id63">hash</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id12" id="id64">event 机制</a><ul>
+<li><a class="reference internal" href="#epool" id="id65">epool 实现</a></li>
+<li><a class="reference internal" href="#event-create" id="id66">上层对event_create 的使用</a></li>
+<li><a class="reference internal" href="#event-wait" id="id67">上层对event_wait的使用</a></li>
+<li><a class="reference internal" href="#libevent" id="id68">和libevent 对比</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id13" id="id69">重要结构</a><ul>
+<li><a class="reference internal" href="#server-poolserver" id="id70">server_pool和server.</a></li>
+<li><a class="reference internal" href="#conn-msg-mbuf" id="id71">conn, msg, mbuf</a><ul>
+<li><a class="reference internal" href="#conn" id="id72">conn</a></li>
+<li><a class="reference internal" href="#msg" id="id73">msg</a></li>
+<li><a class="reference internal" href="#mbuf" id="id74">mbuf</a></li>
+<li><a class="reference internal" href="#id14" id="id75">小结</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id15" id="id76">请求处理</a><ul>
+<li><a class="reference internal" href="#core-core" id="id77">读写总控函数 core_core</a></li>
+<li><a class="reference internal" href="#accept" id="id78">accept连接</a></li>
+<li><a class="reference internal" href="#nc-connection-c" id="id79">nc_connection.c</a></li>
+<li><a class="reference internal" href="#messsage-c" id="id80">messsage.c</a></li>
+<li><a class="reference internal" href="#id16" id="id81">一个请求被处理的流程</a></li>
+<li><a class="reference internal" href="#id17" id="id82">初始状态</a><ul>
+<li><a class="reference internal" href="#id18" id="id83">1.读取请求</a></li>
+<li><a class="reference internal" href="#id19" id="id84">2.转发到后端</a></li>
+<li><a class="reference internal" href="#id20" id="id85">3.接收后端响应</a></li>
+<li><a class="reference internal" href="#client" id="id86">4.把响应回给client</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#buf" id="id87">buf处理上的特点</a></li>
+<li><a class="reference internal" href="#id21" id="id88">后端如何处理</a></li>
+<li><a class="reference internal" href="#id22" id="id89">协议</a></li>
+<li><a class="reference internal" href="#id23" id="id90">hash</a><ul>
+<li><a class="reference internal" href="#id24" id="id91">具体hash函数</a><ul>
+<li><a class="reference internal" href="#crc32" id="id92">crc32</a></li>
+<li><a class="reference internal" href="#hsieh" id="id93">hsieh</a></li>
+<li><a class="reference internal" href="#jenkins-lookup3" id="id94">Jenkins lookup3</a></li>
+<li><a class="reference internal" href="#jenkins-one-at-a-time" id="id95">Jenkins one_at_a_time</a></li>
+<li><a class="reference internal" href="#fnv-xxx" id="id96">FNV-XXX</a></li>
+<li><a class="reference internal" href="#murmur" id="id97">murmur</a></li>
+<li><a class="reference internal" href="#id25" id="id98">小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#dispatch" id="id99">dispatch方法</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rbtree" id="id100">rbtree</a></li>
+<li><a class="reference internal" href="#mget" id="id101">如何处理mget</a></li>
+<li><a class="reference internal" href="#nginx" id="id102">代码严重受nginx影响</a></li>
+<li><a class="reference internal" href="#id26" id="id103">(代码)小结</a><ul>
+<li><a class="reference internal" href="#id27" id="id104">注意</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id28" id="id105">使用</a><ul>
+<li><a class="reference internal" href="#id29" id="id106">配置参数</a><ul>
+<li><a class="reference internal" href="#hashdistribution" id="id107">hash和distribution见前面分析</a></li>
+<li><a class="reference internal" href="#auto-eject-hosts" id="id108">auto_eject_hosts相关</a></li>
+<li><a class="reference internal" href="#timeout" id="id109">timeout</a></li>
+<li><a class="reference internal" href="#log" id="id110">log</a></li>
+<li><a class="reference internal" href="#mbuf-size" id="id111">mbuf size</a></li>
+<li><a class="reference internal" href="#max-key-lenght" id="id112">max key lenght</a></li>
+<li><a class="reference internal" href="#server-connections-1" id="id113">server_connections: &gt; 1</a></li>
+<li><a class="reference internal" href="#id30" id="id114">监控</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#redis-mgr" id="id115">使用redis-mgr部署</a></li>
+<li><a class="reference internal" href="#id31" id="id116">日志级别</a><ul>
+<li><a class="reference internal" href="#id32" id="id117">修改日志级别:</a></li>
+<li><a class="reference internal" href="#id33" id="id118">2.动态调整日志级别:</a></li>
+<li><a class="reference internal" href="#id34" id="id119">3.切日志</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id35" id="id120">自己实现一个自动的主从切换?</a></li>
+<li><a class="reference internal" href="#sentinel" id="id121">sentinel验证</a></li>
+<li><a class="reference internal" href="#id36" id="id122">配置和优化</a><ul>
+<li><a class="reference internal" href="#m-512" id="id123">-m 512</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id37" id="id124">问题</a><ul>
+<li><a class="reference internal" href="#preconnect-true-redis-core" id="id125">preconnect: true 的时候, 如果后端redis挂掉, 会core</a></li>
+<li><a class="reference internal" href="#pipeline-replay" id="id126">pipeline/replay时消耗大量内存:</a></li>
+<li><a class="reference internal" href="#mgetcase" id="id127">mget慢这个case</a></li>
+<li><a class="reference internal" href="#id38" id="id128">应该允许释放mbuf</a></li>
+<li><a class="reference internal" href="#id39" id="id129">#一轮完了再集中加事件, 不要多次加, 重复加</a></li>
+<li><a class="reference internal" href="#id40" id="id130">#可能的优化:mget</a></li>
+<li><a class="reference internal" href="#id41" id="id131">改造</a></li>
+<li><a class="reference internal" href="#key" id="id132">key过长回错误</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id42" id="id133">社区情况</a></li>
+<li><a class="reference internal" href="#id43" id="id134">小结</a><ul>
+<li><a class="reference internal" href="#id44" id="id135">期望</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id45">调研</a></h2>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id46">文章调研</a></h3>
+<div class="section" id="redis-twemproxy-a-redis-proxy-from-twitter">
+<h4><a class="toc-backref" href="#id47">Redis 作者:Twemproxy, a Redis proxy from Twitter</a></h4>
+<p><a class="reference external" href="http://antirez.com/news/44">http://antirez.com/news/44</a></p>
+<ul class="simple">
+<li>计划中的redis-cluster: Multiple instances is a share-nothing architecture.</li>
+<li>2.6 中实现了Redis Sentinel, 即将实现 partial resynchronization</li>
+<li>Twemproxy 是 single-threaded proxy</li>
+<li>What's awesome about Twemproxy is that it can be configured both to disable nodes on failure, and retry after some time</li>
+<li>失败时, 可以disable 或者 retry
+- 作为data store : retry
+- 作为cache: disable(node-ejection)</li>
+</ul>
+<p>同样的一组后端, 可以配成两种:</p>
+<pre class="literal-block">
+redis1:
+  listen: 0.0.0.0:9999
+  redis: true
+  hash: fnv1a_64
+  distribution: ketama
+  auto_eject_hosts: true
+  timeout: 400
+  server_retry_timeout: 2000
+  server_failure_limit: 1
+  servers:
+   - 127.0.0.1:6379:1
+   - 127.0.0.1:6380:1
+   - 127.0.0.1:6381:1
+   - 127.0.0.1:6382:1
+
+redis2:
+  listen: 0.0.0.0:10000
+  redis: true
+  hash: fnv1a_64
+  distribution: ketama
+  auto_eject_hosts: false
+  timeout: 400
+  servers:
+   - 127.0.0.1:6379:1
+   - 127.0.0.1:6380:1
+   - 127.0.0.1:6381:1
+   - 127.0.0.1:6382:1
+</pre>
+<p>限制:</p>
+<ol class="arabic">
+<li><p class="first">不支持 mset, transaction:</p>
+<pre class="literal-block">
+I think that twemproxy do it right, not supporting multiple keys commands nor transactions. Currently is AFAIK even more strict than Redis Cluster that instead allows MULTI/EXEC blocks if all the commands are about the same key.
+</pre>
+</li>
+<li><p class="first">对mget, mdel 支持, 性能待测试:</p>
+<pre class="literal-block">
+However there is some support for commands with multiple keys. MGET and DEL are handled correctly. Interestingly MGET will split the request among different servers and will return the reply as a single entity. This is pretty cool even if I don't get the right performance numbers with this feature (see later).
+
+So I expected to see almost the same numbers with an MGET as I see when I run the MGET against a single instance
+but I get only 50% of the operations per second. Maybe it's the time to reconstruct the reply, I'm not sure.
+
+mget 只有50%
+</pre>
+</li>
+<li><p class="first">不支持EVAL,</p>
+</li>
+<li><dl class="first docutils">
+<dt>错误处理: (antirez 测试还挺认真)</dt>
+<dd><ul class="first last simple">
+<li>non supported command: closes the connection.</li>
+<li>sending just a &quot;GET&quot;: hang</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<p>希望: 支持HA</p>
+<ul class="simple">
+<li>能直接做主从切换.</li>
+<li>配置热加载也可以啊~ (checking the Sentinel configuration regularly to upgrade the servers table if a failover happened.)</li>
+</ul>
+<p>性能: 好!!!</p>
+<ul class="simple">
+<li>This Thing Is Fast. Really fast, it is almost as fast as talking directly with Redis. I would say you lose 20% of performances at worst.</li>
+<li>MGET可以优化 (目前性能降低50%)</li>
+</ul>
+<p>结论:
+- I strongly suggest Redis users to give it a try.</p>
+<p>人们的讨论:</p>
+<ul class="simple">
+<li>对于MGET: The response time will then be <em>at least</em> as slow as the slowest node</li>
+</ul>
+</div>
+<div class="section" id="id3">
+<h4><a class="toc-backref" href="#id48">存储分片和Twemproxy核心解读</a></h4>
+<p><a class="reference external" href="http://www.wzxue.com/%E5%AD%98%E5%82%A8%E5%88%86%E7%89%87%E5%92%8Ctwemproxy%E6%A0%B8%E5%BF%83%E8%A7%A3%E8%AF%BB/">http://www.wzxue.com/%E5%AD%98%E5%82%A8%E5%88%86%E7%89%87%E5%92%8Ctwemproxy%E6%A0%B8%E5%BF%83%E8%A7%A3%E8%AF%BB/</a></p>
+<p>antirez(Redis作者)写过一篇对twemproxy的介绍http://antirez.com/news/44, 他认为twemproxy是目前Redis 分片管理的最好方案，虽然antirez的Redis cluster正在实现并且对其给予厚望</p>
+<ul>
+<li><dl class="first docutils">
+<dt>涉及到三个重要的结构:server, connection, message。</dt>
+<dd><ul class="first last simple">
+<li>每个server其实就是一个后端的缓存服务程序</li>
+<li>connection在Twemproxy中非常重要，它分为三种类型的connection:proxy，client和server</li>
+<li>struct msg是连接建立后的消息内容发送载体，这个复杂的msg结构很大程度是因为需要实现pipeline的效果，多个msg属于同一个conn，conn通过接收到内容解析来发现几个不同的msg。</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">Twemproxy的架构比较清晰，对Twemproxy源码印象较深的是对logging的合理布局和错误处理的清晰，这是第一次看大公司开源出来的代码，非常重视logging和错误处理。</p>
+</li>
+<li><p class="first">我的fork: 由于Twitter开源的Twemproxy直接使用epoll驱动，导致其他不支持epoll的系统无法使用，因此我fork了一个版本，加入了kqueue支持，让FreeBSD和Mac os x能够成功编译运行</p>
+</li>
+</ul>
+<p>这位同学2013.10 还是一个大四学生.
+github 上人气挺高: <a class="reference external" href="https://github.com/yuyuyu101">https://github.com/yuyuyu101</a></p>
+</div>
+<div class="section" id="redis-twemproxy-benchmark">
+<h4><a class="toc-backref" href="#id49">redis-twemproxy-benchmark</a></h4>
+<p><a class="reference external" href="http://blog.jpush.cn/redis-twemproxy-benchmark/">http://blog.jpush.cn/redis-twemproxy-benchmark/</a></p>
+<ul class="simple">
+<li>twemproxy 可以开http监控端口: <a class="reference external" href="http://ip:22222">http://ip:22222</a> json格式</li>
+<li>性能基本和单台一样.</li>
+<li>多个twemproxy 实例, 性能可以更好.</li>
+<li>不支持除mget，del之外的redis批处理命令，如取多个集合交集等等</li>
+<li>不支持脚本eval</li>
+</ul>
+</div>
+<div class="section" id="id4">
+<h4><a class="toc-backref" href="#id50">这个文章总结不错</a></h4>
+<p><a class="reference external" href="http://cloudaice.com/twemproxy-explore/">http://cloudaice.com/twemproxy-explore/</a></p>
+<ul>
+<li><dl class="first docutils">
+<dt>redis-proxy</dt>
+<dd><ul class="first last simple">
+<li>使用node写的redis代理层。</li>
+<li>支持主从节点的失败处理（可以仔细研究）</li>
+<li>测试后发现性能为原生的1/3</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>twemproxy</dt>
+<dd><ul class="first last">
+<li><p class="first">支持失败节点自动删除</p>
+<blockquote>
+<ul class="simple">
+<li>可以设置重新连接该节点的时间</li>
+<li>可以设置连接多少次之后删除该节点</li>
+<li>该方式适合作为cache存储</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">支持设置HashTag</p>
+<blockquote>
+<ul class="simple">
+<li>通过HashTag可以自己设定将两个KEYhash到同一个实例上去。</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">减少与redis的直接连接数</p>
+<blockquote>
+<ul class="simple">
+<li>保持与redis的长连接</li>
+<li>可设置代理与后台每个redis连接的数目</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">自动分片到后端多个redis实例上</p>
+<blockquote>
+<ul class="simple">
+<li>多种hash算法（部分还没有研究明白)</li>
+<li>可以设置后端实例的权重</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">避免单点问题</p>
+<blockquote>
+<ul class="simple">
+<li>可以平行部署多个代理层.client自动选择可用的一个</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">支持redis pipelining request</p>
+</li>
+<li><p class="first">支持状态监控</p>
+<blockquote>
+<ul class="simple">
+<li>可设置状态监控ip和端口，访问ip和端口可以得到一个json格式的状态信息串</li>
+<li>可设置监控信息刷新间隔时间</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">高吞吐量</p>
+<blockquote>
+<ul class="simple">
+<li>连接复用，内存复用。</li>
+<li>将多个连接请求，组成reids pipelining统一向redis请求。</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>配置部署建议: 编译时候打开logging模块。</p>
+</div>
+</div>
+<div class="section" id="hash">
+<h3><a class="toc-backref" href="#id51">hash函数</a></h3>
+<p>hash:</p>
+<ul class="simple">
+<li>one_at_a_time</li>
+<li>md5</li>
+<li>crc16</li>
+<li>crc32 (crc32 implementation compatible with libmemcached)</li>
+<li>crc32a (correct crc32 implementation as per the spec)</li>
+<li>fnv1_64</li>
+<li>fnv1a_64</li>
+<li>fnv1_32</li>
+<li>fnv1a_32</li>
+<li>hsieh</li>
+<li>murmur</li>
+<li>jenkins</li>
+</ul>
+</div>
+<div class="section" id="id5">
+<h3><a class="toc-backref" href="#id52">配置</a></h3>
+<pre class="literal-block">
+delta:
+  listen: 127.0.0.1:22124
+  hash: fnv1a_64
+  distribution: ketama
+  timeout: 100
+  auto_eject_hosts: true
+  server_retry_timeout: 2000
+  server_failure_limit: 1
+  servers:
+   - 127.0.0.1:11214:1
+   - 127.0.0.1:11215:1
+   - 127.0.0.1:11216:1
+   - 127.0.0.1:11217:1
+   - 127.0.0.1:11218:1
+   - 127.0.0.1:11219:1
+</pre>
+</div>
+<div class="section" id="user">
+<h3><a class="toc-backref" href="#id53">user</a></h3>
+<ul class="simple">
+<li>Twitter</li>
+<li>Pinterest</li>
+<li>Tumblr</li>
+</ul>
+</div>
+<div class="section" id="id6">
+<h3><a class="toc-backref" href="#id54">不支持</a></h3>
+<ul class="simple">
+<li>auth</li>
+<li>mset</li>
+<li>eval</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id7">
+<h2><a class="toc-backref" href="#id55">代码分析</a></h2>
+<div class="section" id="id8">
+<h3><a class="toc-backref" href="#id56">模块划分</a></h3>
+<p>核心是 <tt class="docutils literal">event</tt> , <tt class="docutils literal">请求处理</tt> 这两块</p>
+<div class="section" id="event">
+<h4><a class="toc-backref" href="#id57">event</a></h4>
+<pre class="literal-block">
+./event
+./event/Makefile.am
+./event/nc_epoll.c
+./event/nc_event.h
+./event/nc_evport.c
+./event/nc_kqueue.c
+</pre>
+</div>
+<div class="section" id="id9">
+<h4><a class="toc-backref" href="#id58">请求处理</a></h4>
+<pre class="literal-block">
+./nc_proxy.c
+./nc_proxy.h
+
+./nc_connection.c
+./nc_connection.h
+./nc_client.c
+./nc_client.h
+./nc_server.c
+./nc_server.h
+
+./nc_message.c
+./nc_message.h
+./nc_request.c
+./nc_response.c
+
+./nc_mbuf.c
+./nc_mbuf.h
+</pre>
+</div>
+<div class="section" id="main">
+<h4><a class="toc-backref" href="#id59">main</a></h4>
+<p>./nc.c, 处理daemon, pidfile, args, config, 最后:</p>
+<pre class="literal-block">
+nc_run(struct instance *nci)
+{
+    ctx = core_start(nci);
+    for (;;) {
+        status = core_loop(ctx);
+        if (status != NC_OK) {
+            break;
+        }
+    }
+    core_stop(ctx);
+}
+</pre>
+</div>
+<div class="section" id="os-utils">
+<h4><a class="toc-backref" href="#id60">os utils</a></h4>
+<pre class="literal-block">
+./nc_conf.c
+./nc_conf.h
+./nc_core.c
+./nc_core.h
+./nc_log.c
+./nc_log.h
+./nc_signal.c
+./nc_signal.h
+./nc_stats.c
+./nc_stats.h
+</pre>
+</div>
+<div class="section" id="ds-utils">
+<h4><a class="toc-backref" href="#id61">ds utils</a></h4>
+<pre class="literal-block">
+./nc_array.c
+./nc_array.h
+./nc_util.c
+./nc_util.h
+./nc_queue.h
+./nc_rbtree.c
+./nc_rbtree.h
+./nc_string.c
+./nc_string.h
+</pre>
+</div>
+<div class="section" id="id10">
+<h4><a class="toc-backref" href="#id62">协议</a></h4>
+<pre class="literal-block">
+./proto/nc_proto.h
+./proto/nc_memcache.c
+./proto/nc_redis.c
+</pre>
+</div>
+<div class="section" id="id11">
+<h4><a class="toc-backref" href="#id63">hash</a></h4>
+<pre class="literal-block">
+./hashkit/nc_crc16.c
+./hashkit/nc_crc32.c
+./hashkit/nc_fnv.c
+./hashkit/nc_hashkit.h
+./hashkit/nc_hsieh.c
+./hashkit/nc_jenkins.c
+./hashkit/nc_ketama.c
+./hashkit/nc_md5.c
+./hashkit/nc_modula.c
+./hashkit/nc_murmur.c
+./hashkit/nc_one_at_a_time.c
+./hashkit/nc_random.c
+</pre>
+</div>
+</div>
+<div class="section" id="id12">
+<h3><a class="toc-backref" href="#id64">event 机制</a></h3>
+<pre class="literal-block">
+struct event_base {
+    int                ep;      /* epoll descriptor */
+    struct epoll_event *event;  /* event[] - events that were triggered */
+    int                nevent;  /* # event */
+    event_cb_t         cb;      /* event callback */
+};
+
+
+struct event_base *event_base_create(int size, event_cb_t cb);
+void event_base_destroy(struct event_base *evb);
+
+int event_add_in(struct event_base *evb, struct conn *c);
+int event_del_in(struct event_base *evb, struct conn *c);
+int event_add_out(struct event_base *evb, struct conn *c);
+int event_del_out(struct event_base *evb, struct conn *c);
+int event_add_conn(struct event_base *evb, struct conn *c);
+int event_del_conn(struct event_base *evb, struct conn *c);
+int event_wait(struct event_base *evb, int timeout);
+void event_loop_stats(event_stats_cb_t cb, void *arg);
+</pre>
+<div class="section" id="epool">
+<h4><a class="toc-backref" href="#id65">epool 实现</a></h4>
+<p>event_base_create:</p>
+<pre class="literal-block">
+struct event_base *
+event_base_create(int nevent, event_cb_t cb)
+{
+    struct event_base *evb = nc_alloc(sizeof(*evb));
+    int ep = epoll_create(nevent);
+    struct epoll_event *event = nc_calloc(nevent, sizeof(*event));
+
+    evb-&gt;ep = ep;
+    evb-&gt;event = event;
+    evb-&gt;nevent = nevent;
+    evb-&gt;cb = cb;
+
+    return evb;
+}
+
+int
+event_add_in(struct event_base *evb, struct conn *c)
+{
+    struct epoll_event event;
+    event.events = (uint32_t)(EPOLLIN | EPOLLET);
+    event.data.ptr = c;
+
+    status = epoll_ctl(evb-&gt;ep, EPOLL_CTL_MOD, c-&gt;sd, &amp;event);
+}
+
+int
+event_wait(struct event_base *evb, int timeout)
+{
+    int ep = evb-&gt;ep;
+    struct epoll_event *event = evb-&gt;event;
+    int nevent = evb-&gt;nevent;
+
+    for (;;) {
+        int i, nsd;
+
+        nsd = epoll_wait(ep, event, nevent, timeout);
+        if (nsd &gt; 0) {
+            for (i = 0; i &lt; nsd; i++) {
+                struct epoll_event *ev = &amp;evb-&gt;event[i];
+                uint32_t events = 0;
+
+                log_debug(LOG_VVERB, &quot;epoll %04&quot;PRIX32&quot; triggered on conn %p&quot;,
+                          ev-&gt;events, ev-&gt;data.ptr);
+
+                if (ev-&gt;events &amp; EPOLLERR) {
+                    events |= EVENT_ERR;
+                }
+
+                if (ev-&gt;events &amp; (EPOLLIN | EPOLLHUP)) {
+                    events |= EVENT_READ;
+                }
+
+                if (ev-&gt;events &amp; EPOLLOUT) {
+                    events |= EVENT_WRITE;
+                }
+
+                if (evb-&gt;cb != NULL) {
+                    evb-&gt;cb(ev-&gt;data.ptr, events);
+                }
+            }
+            return nsd;
+        }
+    }
+}
+</pre>
+<p>每次调用event_wait, 如果没有事件则一直等, 如果有事件, 调用回调，并返回.</p>
+<p>注意: 这里用的都是边缘触发 EPOLLET (redis本身用的是水平触发)</p>
+</div>
+<div class="section" id="event-create">
+<h4><a class="toc-backref" href="#id66">上层对event_create 的使用</a></h4>
+<pre class="literal-block">
+core_ctx_create(){
+    /* initialize server pool from configuration */  pool 是一种隔离单位
+    status = server_pool_init(&amp;ctx-&gt;pool, &amp;ctx-&gt;cf-&gt;pool, ctx);
+
+    ctx-&gt;evb = event_base_create(EVENT_SIZE, &amp;core_core); //这里有个EVENT_SIZE 是1024, core_core 是一个基础回调, 处理读写.
+    status = server_pool_preconnect(ctx);
+    status = proxy_init(ctx);
+}
+</pre>
+<pre class="literal-block">
+ctx-&gt;evb = event_base_create(EVENT_SIZE, &amp;core_core); //这里有个EVENT_SIZE 是1024, 在epool里面没用, 设置的回调 core_core 是一个基础回调, 处理读写.
+</pre>
+<p>event_add_in里面, <tt class="docutils literal">data.ptr</tt> 是一个conn数据结构,</p>
+<p>所以，有事件的时候, 调用  <tt class="docutils literal">core_core(conn, events)</tt>, 这里events 说明是读还是写事件.</p>
+<p>接下来的 <tt class="docutils literal">proxy_init</tt>:</p>
+<pre class="literal-block">
+rstatus_t
+proxy_each_init(void *elem, void *data) {
+    struct server_pool *pool = elem;
+    struct conn *p;
+
+    p = conn_get_proxy(pool); //获得一个proxy类型的 conn, 它的回调设置: conn-&gt;recv = proxy_recv;
+    status = proxy_listen(pool-&gt;ctx, p); //做bind/listen/set noblocking/加到epool
+}
+</pre>
+<p>这里设置的回调 proxy_recv, 就是做accept, 建立与客户端的连接:</p>
+<pre class="literal-block">
+rstatus_t
+proxy_recv(struct context *ctx, struct conn *conn)
+{
+    conn-&gt;recv_ready = 1;
+    do {
+        status = proxy_accept(ctx, conn);
+        if (status != NC_OK) {
+            return status;
+        }
+    } while (conn-&gt;recv_ready);
+    return NC_OK;
+}
+</pre>
+<p>用proxy_accept 与客户端建立连接, 获得client 类型的conn, 并且加入到事件队列:</p>
+<pre class="literal-block">
+static rstatus_t
+proxy_accept(struct context *ctx, struct conn *p) {
+    rstatus_t status;
+    struct conn *c;
+    int sd;
+
+    for (;;) {//死循环去做. 不带sleep!!
+        sd = accept(p-&gt;sd, NULL, NULL);
+        if (sd &lt; 0) {
+            ...
+            return NC_ERROR;
+        }
+        break;
+    }
+
+    c = conn_get(p-&gt;owner, true, p-&gt;redis); //获得一个client类型的连接
+    c-&gt;sd = sd;
+
+    status = nc_set_nonblocking(c-&gt;sd);
+    status = event_add_conn(ctx-&gt;evb, c);
+
+    return NC_OK;
+}
+</pre>
+</div>
+<div class="section" id="event-wait">
+<h4><a class="toc-backref" href="#id67">上层对event_wait的使用</a></h4>
+<pre class="literal-block">
+rstatus_t
+core_loop(struct context *ctx)
+{
+    nsd = event_wait(ctx-&gt;evb, ctx-&gt;timeout);
+    ...
+}
+</pre>
+<p>超清晰的主循环:</p>
+<pre class="literal-block">
+static void
+nc_run(struct instance *nci)
+{
+    rstatus_t status;
+    struct context *ctx;
+
+    ctx = core_start(nci);
+    if (ctx == NULL) {
+        return;
+    }
+
+    /* run rabbit run */
+    for (;;) {
+        status = core_loop(ctx);
+        if (status != NC_OK) {
+            break;
+        }
+    }
+
+    core_stop(ctx);
+}
+</pre>
+</div>
+<div class="section" id="libevent">
+<h4><a class="toc-backref" href="#id68">和libevent 对比</a></h4>
+<p>从数据结构, 函数命令来看, 受到libevnet和nginx的强烈影响.</p>
+<p>(redis是自己的事件框架, memcached 就是用libevent作为事件框架)</p>
+<p>libevent 的结构大概是这样的(不准确)</p>
+<p>event, 类似连接的概念:</p>
+<pre class="literal-block">
+struct event {
+    TAILQ_ENTRY (event) ev_next;
+    TAILQ_ENTRY (event) ev_active_next;
+    TAILQ_ENTRY (event) ev_signal_next;
+    unsigned int min_heap_idx;  /* for managing timeouts */
+
+    struct event_base *ev_base;
+
+    int ev_fd;
+    short ev_events;
+</pre>
+<p>event_base是暴露给外面的统一接口:</p>
+<pre class="literal-block">
+struct event_base {
+    const struct eventop *evsel;
+    void *evbase;
+    int event_count;        /* counts number of total events */
+    int event_count_active; /* counts number of active events */
+    ...
+}
+</pre>
+<p>用法:</p>
+<pre class="literal-block">
+//获得listen_fd
+listen_fd = network_server_socket(cfg-&gt;listen_host, cfg-&gt;listen_port);
+
+struct event *ev_accept;
+ev_accept = event_new(g_server.event_base, listen_fd, EV_READ | EV_PERSIST, on_accept, NULL);
+event_add(ev_accept, NULL);
+</pre>
+</div>
+</div>
+<div class="section" id="id13">
+<h3><a class="toc-backref" href="#id69">重要结构</a></h3>
+<div class="section" id="server-poolserver">
+<h4><a class="toc-backref" href="#id70">server_pool和server.</a></h4>
+<p>在 <tt class="docutils literal">server_pool.h</tt> 中注释写的非常清楚, 还有示意图:</p>
+<pre class="literal-block">
+*  +-------------+
+*  |             |&lt;---------------------+
+*  |             |&lt;------------+        |
+*  |             |     +-------+--+-----+----+--------------+
+*  |   pool 0    |+---&gt;|          |          |              |
+*  |             |     | server 0 | server 1 | ...     ...  |
+*  |             |     |          |          |              |--+
+*  |             |     +----------+----------+--------------+  |
+*  +-------------+                                             //
+*  |             |
+*  |             |
+*  |             |
+*  |   pool 1    |
+*  |             |
+*  |             |
+*  |             |
+*  +-------------+
+*  |             |
+*  |             |
+*  .             .
+*  .    ...      .
+*  .             .
+*  |             |
+*  |             |
+*  +-------------+
+*            |
+*            |
+*            //
+</pre>
+<p>看看twemproxy的配置:</p>
+<pre class="literal-block">
+s1:
+  listen: 127.0.0.1:22124
+  servers:
+   - 127.0.0.1:11214:1
+   - 127.0.0.1:11215:1
+   - 127.0.0.1:11216:1
+   - 127.0.0.1:11217:1
+s2:
+  listen: 127.0.0.1:22125
+   - 127.0.0.1:11218:1
+   - 127.0.0.1:11219:1
+</pre>
+<p>这样的配置就对应着类似这样的结构:</p>
+<img alt="" src="/imgs/twemproxy-server_pool.png" />
+</div>
+<div class="section" id="conn-msg-mbuf">
+<h4><a class="toc-backref" href="#id71">conn, msg, mbuf</a></h4>
+<div class="section" id="conn">
+<h5><a class="toc-backref" href="#id72">conn</a></h5>
+<p>前面event机制提供的事件注册接口, 注册的事件都是在conn上的:</p>
+<pre class="literal-block">
+int event_add_in(struct event_base *evb, struct conn *c);
+</pre>
+<pre class="literal-block">
+struct conn {
+    TAILQ_ENTRY(conn)  conn_tqe;      /* link in server_pool / server / free q */
+    void               *owner;        /* connection owner - server_pool / server */
+                                     //对于client和proxy, conn-&gt;owner 是server_pool 对象
+                                     //对于server, conn-&gt;owner 是一个server 对象
+    ..
+    struct msg_tqh     imsg_q;        /* incoming request Q */
+    struct msg_tqh     omsg_q;        /* outstanding request Q */
+
+    conn_recv_t        recv;          /* recv (read) handler */
+    conn_recv_next_t   recv_next;     /* recv next message handler */
+    conn_recv_done_t   recv_done;     /* read done handler */
+    conn_send_t        send;          /* send (write) handler */
+    conn_send_next_t   send_next;     /* write next message handler */
+    conn_send_done_t   send_done;     /* write done handler */
+    conn_close_t       close;         /* close handler */
+    conn_active_t      active;        /* active? handler */
+    ...
+};
+</pre>
+<p>conn有三种:</p>
+<ul class="simple">
+<li>proxy : 代表proxy监听的端口</li>
+<li>client: 代表一个client连接.</li>
+<li>server: 代表一个后端连接</li>
+</ul>
+<p>三种conn的获取方式和事件处理钩子不一样:</p>
+<ul>
+<li><p class="first"><strong>listen</strong>: 通过 <tt class="docutils literal">conn_get_proxy(void *owner)</tt> 获取, 只指定了这几个函数:</p>
+<pre class="literal-block">
+conn-&gt;recv = proxy_recv;
+conn-&gt;close = proxy_close;
+conn-&gt;ref = proxy_ref;
+conn-&gt;unref = proxy_unref;
+</pre>
+</li>
+<li><p class="first"><strong>client</strong>: 通过 <tt class="docutils literal">conn_get(void *owner, bool client=true, bool redis)</tt> 获取:</p>
+<pre class="literal-block">
+conn-&gt;recv = msg_recv;
+conn-&gt;recv_next = req_recv_next;    //分配下一个读缓冲区.
+conn-&gt;recv_done = req_recv_done;
+
+conn-&gt;send = msg_send;
+conn-&gt;send_next = rsp_send_next;
+conn-&gt;send_done = rsp_send_done;
+</pre>
+</li>
+<li><p class="first"><strong>server</strong>: , 通过 <tt class="docutils literal">conn_get(void *owner, bool client=false, bool redis)</tt> 获取:</p>
+<pre class="literal-block">
+conn-&gt;recv = msg_recv;
+conn-&gt;recv_next = rsp_recv_next;
+conn-&gt;recv_done = rsp_recv_done;
+
+conn-&gt;send = msg_send;
+conn-&gt;send_next = req_send_next;
+conn-&gt;send_done = req_send_done;
+</pre>
+</li>
+</ul>
+</div>
+<div class="section" id="msg">
+<h5><a class="toc-backref" href="#id73">msg</a></h5>
+<p>msg代表一个请求体, 或者一个response, 对于mget之类, 它还会代表原request解析后的一个子request:</p>
+<pre class="literal-block">
+struct msg {
+    TAILQ_ENTRY(msg)     c_tqe;           /* link in client q */
+    TAILQ_ENTRY(msg)     s_tqe;           /* link in server q */
+    TAILQ_ENTRY(msg)     m_tqe;           /* link in send q / free q */
+
+    uint64_t             id;              /* message id */
+    struct msg           *peer;           /* message peer */
+    struct conn          *owner;          /* message owner - client | server */
+
+    struct rbnode        tmo_rbe;         /* entry in rbtree */
+
+    struct mhdr          mhdr;            /* message mbuf header */
+    uint32_t             mlen;            /* message length */
+    ...
+};
+</pre>
+</div>
+<div class="section" id="mbuf">
+<h5><a class="toc-backref" href="#id74">mbuf</a></h5>
+<p>msg中用来保存请求/响应 内容的链表, 每个mbuf大小默认是16K, 可以配置, 范围在 <tt class="docutils literal">512B - 64K</tt> 之间</p>
+</div>
+<div class="section" id="id14">
+<h5><a class="toc-backref" href="#id75">小结</a></h5>
+<ul class="simple">
+<li>server_pool里面保存该pool上面所有client_conn的链表,</li>
+<li>server里面保存该server上所有server_conn的链表.</li>
+<li>conn里面的msg会分为in_q, 和out_q 两个msg链表</li>
+<li>每个msg会同时存在与一个client_conn的out_q 和server_conn的in_q里面</li>
+<li>msg中消息保存在mbuf链表中</li>
+</ul>
+<p>conn和msg的结构:</p>
+<img alt="" src="/imgs/twemproxy-conn-msg-struct.png" />
+<p>他们的关系:</p>
+<img alt="" src="/imgs/twemproxy-conn-msg.png" />
+</div>
+</div>
+</div>
+<div class="section" id="id15">
+<h3><a class="toc-backref" href="#id76">请求处理</a></h3>
+<pre class="literal-block">
+./nc_connection.h
+./nc_connection.c       //三种连接类型, 对象池处理(conn_get, conn_put), 底层读写(conn_recv, conn_sendv)
+
+./nc_proxy.h
+./nc_proxy.c            //建立listen socket(proxy_init), 对新连接做accetp (proxy_recv)
+
+./nc_client.h
+./nc_client.c           //判断是否有东西要写给client
+
+./nc_server.h
+./nc_server.c           //server, server_pool, 连接后端(server_connect), 后端的连接管理(server_pool_conn)
+
+./nc_message.h
+./nc_message.c          //msg 结构.
+
+./nc_request.c
+./nc_response.c         //对应的forward, filter 函数
+
+./nc_mbuf.h
+./nc_mbuf.c             //msg使用的buf.
+</pre>
+<div class="section" id="core-core">
+<h4><a class="toc-backref" href="#id77">读写总控函数 core_core</a></h4>
+<pre class="literal-block">
+rstatus_t
+core_core(void *arg, uint32_t events)
+{
+    conn-&gt;events = events;
+    if (events &amp; EVENT_ERR) {
+        core_error(ctx, conn);
+        return NC_ERROR;
+    }
+
+    /* read takes precedence over write */
+    if (events &amp; EVENT_READ) {
+        status = core_recv(ctx, conn); // //简单直接调用 conn-&gt;recv
+    }
+    if (events &amp; EVENT_WRITE) {
+        status = core_send(ctx, conn); // //简单直接调用 conn-&gt;send
+    }
+
+    return NC_OK;
+}
+</pre>
+<p>核心就是 <tt class="docutils literal"><span class="pre">conn-&gt;recv</span></tt> , <tt class="docutils literal"><span class="pre">conn-&gt;send</span></tt>, 以及它们的变化.</p>
+</div>
+<div class="section" id="accept">
+<h4><a class="toc-backref" href="#id78">accept连接</a></h4>
+<p>前面讲到proxy_init通过:</p>
+<pre class="literal-block">
+p = conn_get_proxy(pool); 获得一个proxy类型的 conn, 它的回调设置: conn-&gt;recv = proxy_recv;
+</pre>
+<p>在 proxy_accept 中 accetp到一个连接后, 又通过:</p>
+<pre class="literal-block">
+c = conn_get(p-&gt;owner, true, p-&gt;redis);
+</pre>
+<p>获得一个client类型的conn, 这里会把conn-&gt;recv设置为 <tt class="docutils literal"><span class="pre">conn-&gt;recv</span> = msg_recv</tt>, 有数据发来时，就会调用 msg_recv</p>
+</div>
+<div class="section" id="nc-connection-c">
+<h4><a class="toc-backref" href="#id79">nc_connection.c</a></h4>
+<p>很赞的注释:</p>
+<pre class="literal-block">
+*                   nc_connection.[ch]
+*                Connection (struct conn)
+*                 +         +          +
+*                 |         |          |
+*                 |       Proxy        |
+*                 |     nc_proxy.[ch]  |
+*                 /                    \
+*              Client                Server
+*           nc_client.[ch]         nc_server.[ch]
+</pre>
+</div>
+<div class="section" id="messsage-c">
+<h4><a class="toc-backref" href="#id80">messsage.c</a></h4>
+<pre class="literal-block">
+*            nc_message.[ch]
+*        _message (struct msg)
+*            +        +            .
+*            |        |            .
+*            /        \            .
+*         Request    Response      .../ nc_mbuf.[ch]  (mesage buffers)
+*      nc_request.c  nc_response.c .../ nc_memcache.c; nc_redis.c (_message parser)
+
+* Messages in nutcracker are manipulated by a chain of processing handlers,
+* where each handler is responsible for taking the input and producing an
+* output for the next handler in the chain. This mechanism of processing
+* loosely conforms to the standard chain-of-responsibility design pattern
+
+*             Client+             Proxy           Server+
+*                              (nutcracker)
+*                                   .
+*       msg_recv {read event}       .       msg_recv {read event}
+*         +                         .                         +
+*         |                         .                         |
+*         \                         .                         /
+*         req_recv_next             .             rsp_recv_next
+*           +                       .                       +
+*           |                       .                       |       Rsp
+*           req_recv_done           .           rsp_recv_done      &lt;===
+*             +                     .                     +
+*             |                     .                     |
+*    Req      \                     .                     /
+*    ===&gt;     req_filter*           .           *rsp_filter
+*               +                   .                   +
+*               |                   .                   |
+*               \                   .                   /
+*               req_forward-//  (1) . (3)  \\-rsp_forward
+*                                   .
+*                                   .
+*       msg_send {write event}      .      msg_send {write event}
+*         +                         .                         +
+*         |                         .                         |
+*    Rsp' \                         .                         /     Req'
+*   &lt;===  rsp_send_next             .             req_send_next     ===&gt;
+*           +                       .                       +
+*           |                       .                       |
+*           \                       .                       /
+*           rsp_send_done-//    (4) . (2)    //-req_send_done
+*
+*
+* (1) -&gt; (2) -&gt; (3) -&gt; (4) is the normal flow of transaction consisting
+* of a single request response, where (1) and (2) handle request from
+* client, while (3) and (4) handle the corresponding response from the
+* server.
+</pre>
+<p>好有爱的注释!!</p>
+<p>对应这段注释的代码:</p>
+<pre class="literal-block">
+struct conn *
+conn_get(void *owner, bool client, bool redis)
+{
+    struct conn *conn;
+
+    conn = _conn_get();
+
+    conn-&gt;client = client ? 1 : 0;
+
+    if (conn-&gt;client) {
+        /*
+         * client receives a request, possibly parsing it, and sends a
+         * response downstream.
+         */
+        conn-&gt;recv = msg_recv;
+        conn-&gt;recv_next = req_recv_next;
+        conn-&gt;recv_done = req_recv_done;
+
+        conn-&gt;send = msg_send;
+        conn-&gt;send_next = rsp_send_next;
+        conn-&gt;send_done = rsp_send_done;
+
+        conn-&gt;close = client_close;
+        conn-&gt;active = client_active;
+
+        conn-&gt;ref = client_ref;
+        conn-&gt;unref = client_unref;
+
+        conn-&gt;enqueue_inq = NULL;
+        conn-&gt;dequeue_inq = NULL;
+        conn-&gt;enqueue_outq = req_client_enqueue_omsgq;
+        conn-&gt;dequeue_outq = req_client_dequeue_omsgq;
+    } else {
+        /*
+         * server receives a response, possibly parsing it, and sends a
+         * request upstream.
+         */
+        conn-&gt;recv = msg_recv;
+        conn-&gt;recv_next = rsp_recv_next;
+        conn-&gt;recv_done = rsp_recv_done;
+
+        conn-&gt;send = msg_send;
+        conn-&gt;send_next = req_send_next;
+        conn-&gt;send_done = req_send_done;
+
+        conn-&gt;close = server_close;
+        conn-&gt;active = server_active;
+
+        conn-&gt;ref = server_ref;
+        conn-&gt;unref = server_unref;
+
+        conn-&gt;enqueue_inq = req_server_enqueue_imsgq;
+        conn-&gt;dequeue_inq = req_server_dequeue_imsgq;
+        conn-&gt;enqueue_outq = req_server_enqueue_omsgq;
+        conn-&gt;dequeue_outq = req_server_dequeue_omsgq;
+    }
+
+    conn-&gt;ref(conn, owner);
+
+    return conn;
+}
+</pre>
+</div>
+<div class="section" id="id16">
+<h4><a class="toc-backref" href="#id81">一个请求被处理的流程</a></h4>
+<p>我们按照 messsage.c 里面的4个步骤</p>
+<p>后面的图都采用这样的表示方法:</p>
+<img alt="" src="/imgs/twemproxy-step-desc.png" />
+</div>
+<div class="section" id="id17">
+<h4><a class="toc-backref" href="#id82">初始状态</a></h4>
+<p>考察只有一个后端的情况, 假设有2个client要发送3个请求过来</p>
+<img alt="" src="/imgs/twemproxy-state-0.png" />
+<div class="section" id="id18">
+<h5><a class="toc-backref" href="#id83">1.读取请求</a></h5>
+<p>此时回调函数:</p>
+<pre class="literal-block">
+conn-&gt;recv = msg_recv;
+conn-&gt;recv_next = req_recv_next;
+conn-&gt;recv_done = req_recv_done;
+</pre>
+<p>函数调用栈:</p>
+<img alt="" src="/imgs/twemproxy-step-1.png" />
+<p>每次发生 <tt class="docutils literal">req_recv_done(req_forward)</tt>, 就会调用 <tt class="docutils literal">req_forward()</tt></p>
+<pre class="literal-block">
+req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
+{
+    if (!msg-&gt;noreply) {
+        c_conn-&gt;enqueue_outq(ctx, c_conn, msg);
+    }
+
+    //获得到后端的连接. (可能是新建, 或者从pool里面获取)
+    s_conn = server_pool_conn(ctx, c_conn-&gt;owner, key, keylen);
+
+    s_conn-&gt;enqueue_inq(ctx, s_conn, msg);
+    event_add_out(ctx-&gt;evb, s_conn);
+}
+</pre>
+<p>就有一个msg就出现在client_conn-&gt;out_q, 同时出现在server_conn-&gt;in_q</p>
+<img alt="" src="/imgs/twemproxy-state-1.png" />
+<p>req_forward用server_pool_conn获得一个server_conn.</p>
+</div>
+<div class="section" id="id19">
+<h5><a class="toc-backref" href="#id84">2.转发到后端</a></h5>
+<p>对于server_conn来说, 因为挂了epoll_out事件, 很快就会调用 conn-&gt;send，也就是msg_send.</p>
+<p>此时:</p>
+<pre class="literal-block">
+conn-&gt;send = msg_send;
+conn-&gt;send_next = req_send_next;
+conn-&gt;send_done = req_send_done;
+</pre>
+<p>调用栈:</p>
+<img alt="" src="/imgs/twemproxy-step-2.png" />
+<p>#这时, 每次发生 req_send_done, 这个msg就被放到server_conn-&gt;out_q</p>
+<p>注意,  此时两个msg依然在client_conn-&gt;in_q里面</p>
+<img alt="" src="/imgs/twemproxy-state-2.png" />
+</div>
+<div class="section" id="id20">
+<h5><a class="toc-backref" href="#id85">3.接收后端响应</a></h5>
+<p>因为server_conn的 epoll_in是一直开着的, 响应很快回来后, 就到了server_conn的 msg_recv
+这个过程和调用栈1类似,不过两个函数钩子不一样(图中灰色框)</p>
+<pre class="literal-block">
+conn-&gt;recv = msg_recv;(和&lt;1&gt;一样)
+conn-&gt;recv_next = rsp_recv_next;
+conn-&gt;recv_done = rsp_recv_done;
+</pre>
+<img alt="" src="/imgs/twemproxy-step-3.png" />
+<p>这里 <tt class="docutils literal">rsp_recv_next</tt> 的作用是, 拿到下一个要接收的msg</p>
+<p><tt class="docutils literal">rsp_forward</tt> 会把 msg从 <tt class="docutils literal"><span class="pre">server_conn-&gt;outq</span></tt> 里面摘掉, 同时设置req和resp之间的一一对应关系</p>
+<pre class="literal-block">
+//establish msg &lt;-&gt; pmsg (response &lt;-&gt; request) link
+pmsg-&gt;peer = msg;
+msg-&gt;peer = pmsg;
+</pre>
+<p><strong>上面这个代码是整个过程的精华所在</strong></p>
+<p>这时候, client的q_out上排队的req, 就有了对应的response</p>
+<p>这时也会设置:</p>
+<pre class="literal-block">
+event_add_out(ctx-&gt;evb, c_conn);
+</pre>
+<p>每收到一个rsp, 就从server_conn的out_q摘掉, 并设置一一对应关系, 如下:</p>
+<img alt="" src="/imgs/twemproxy-state-3.png" />
+</div>
+<div class="section" id="client">
+<h5><a class="toc-backref" href="#id86">4.把响应回给client</a></h5>
+<p>现在每个请求的msg都有了一个对应的response msg, client_conn的out事件也挂上了, 下面这个调用栈:</p>
+<img alt="" src="/imgs/twemproxy-step-4.png" />
+<p>最终, 一切归于沉寂, 后端连接依然在:</p>
+<img alt="" src="/imgs/twemproxy-state-4.png" />
+</div>
+</div>
+</div>
+<div class="section" id="buf">
+<h3><a class="toc-backref" href="#id87">buf处理上的特点</a></h3>
+<ol class="arabic">
+<li><p class="first">输入是通过mbuf <strong>链表</strong> 来保存, 不会做realloc()</p>
+</li>
+<li><p class="first">mbuf大小默认是16K, 可以配置, 范围在 <tt class="docutils literal">512B - 64K</tt> 之间</p>
+</li>
+<li><p class="first">mbuf, msg, conn等都有对象池, 减少对象分配:</p>
+<pre class="literal-block">
+struct context *
+core_start(struct instance *nci)
+{
+    mbuf_init(nci);     //mbuf内存池
+    msg_init();         //msg池
+    conn_init();        //连接对象池
+}
+</pre>
+</li>
+<li><p class="first">请求是会被pipeline到后端的
+就是说, 不必等proxy接收完整的请求, 再传给后端, 解析出一个msg, 就传給后端(如果msg比较大, 比如set 一个10M的对象, 效率就会比较低)
+得到一个request_msg, 就转给后端, 在后端响应之前, 请求的msg 是不会销毁的.
+得到后端response_msg后, request_msg 和response_msg 一起回到内存池.</p>
+</li>
+</ol>
+</div>
+<div class="section" id="id21">
+<h3><a class="toc-backref" href="#id88">后端如何处理</a></h3>
+<p>后端连接池的处理:</p>
+<pre class="literal-block">
+struct conn *
+server_conn(struct server *server)
+{
+    struct server_pool *pool;
+    struct conn *conn;
+
+    pool = server-&gt;owner;
+
+    if (server-&gt;ns_conn_q &lt; pool-&gt;server_connections) {
+        return conn_get(server, false, pool-&gt;redis);
+    }
+    ASSERT(server-&gt;ns_conn_q == pool-&gt;server_connections);
+
+    /*
+     * 这里只是简单的转了一下, 如果一个conn正在使用, 那么它也会返回, 也就是说一个server conn会同时被 两个client conn使用.
+     */
+    conn = TAILQ_FIRST(&amp;server-&gt;s_conn_q);
+    ASSERT(!conn-&gt;client &amp;&amp; !conn-&gt;proxy);
+
+    TAILQ_REMOVE(&amp;server-&gt;s_conn_q, conn, conn_tqe);
+    TAILQ_INSERT_TAIL(&amp;server-&gt;s_conn_q, conn, conn_tqe);
+
+    return conn;
+}
+</pre>
+<p>这个连接池会受到每个server多少个后端连接这样一个限制, 如果没达到限制, 那么一定是创建连接.
+如果达到限制了, 一定是返回其中一个连接.</p>
+<p>所以</p>
+<ul class="simple">
+<li>proxy 刚起来的时候, 性能会比较差. 可以用server_each_preconnect解决.</li>
+<li>这个 <tt class="docutils literal"><span class="pre">pool-&gt;server_connections</span></tt> 一般都没有配置(默认值是1. 虽然一个连接可能可以应付绝大多数场景, 个人感觉这必须配置啊!!!)
+也就是说 不管前端多少个client, 到后端redis, 就只有1个连接. -- 这是这种proxy的特色</li>
+</ul>
+</div>
+<div class="section" id="id22">
+<h3><a class="toc-backref" href="#id89">协议</a></h3>
+<p>因为需要从mbuf链表里面解析, 解析器是手工打造的..
+这里暂时不去分析它.</p>
+</div>
+<div class="section" id="id23">
+<h3><a class="toc-backref" href="#id90">hash</a></h3>
+<p>twemproxy支持的hash方法:</p>
+<ul class="simple">
+<li>one_at_a_time</li>
+<li>md5</li>
+<li>crc16</li>
+<li>crc32 (crc32 implementation compatible with libmemcached)</li>
+<li>crc32a (correct crc32 implementation as per the spec)</li>
+<li>fnv1_64</li>
+<li>fnv1a_64</li>
+<li>fnv1_32</li>
+<li>fnv1a_32</li>
+<li>hsieh</li>
+<li>murmur</li>
+<li>jenkins</li>
+</ul>
+<p>我们看hashkit/nc_hashkit.h 中的这个定义:</p>
+<pre class="literal-block">
+#define HASH_CODEC(ACTION)                      \
+    ACTION( HASH_ONE_AT_A_TIME, one_at_a_time ) \
+    ACTION( HASH_MD5,           md5           ) \
+    ACTION( HASH_CRC16,         crc16         ) \
+    ACTION( HASH_CRC32,         crc32         ) \
+    ACTION( HASH_CRC32A,        crc32a        ) \
+    ACTION( HASH_FNV1_64,       fnv1_64       ) \
+    ACTION( HASH_FNV1A_64,      fnv1a_64      ) \
+    ACTION( HASH_FNV1_32,       fnv1_32       ) \
+    ACTION( HASH_FNV1A_32,      fnv1a_32      ) \
+    ACTION( HASH_HSIEH,         hsieh         ) \
+    ACTION( HASH_MURMUR,        murmur        ) \
+    ACTION( HASH_JENKINS,       jenkins       ) \
+
+#define DEFINE_ACTION(_hash, _name) _hash,
+typedef enum hash_type {
+    HASH_CODEC( DEFINE_ACTION )
+    HASH_SENTINEL
+} hash_type_t;
+#undef DEFINE_ACTION
+</pre>
+<p>这个宏显得有些复杂, 我们用 <tt class="docutils literal">gcc <span class="pre">-E</span></tt> 展开来看看:</p>
+<pre class="literal-block">
+$ gcc -E hashkit/nc_hashkit.h
+...
+typedef enum hash_type {
+    HASH_ONE_AT_A_TIME, HASH_MD5, HASH_CRC16, HASH_CRC32, HASH_CRC32A, HASH_FNV1_64, HASH_FNV1A_64, HASH_FNV1_32, HASH_FNV1A_32, HASH_HSIEH, HASH_MURMUR, HASH_JENKINS,
+    HASH_SENTINEL
+} hash_type_t;
+</pre>
+<p>在这个 enum定义之后, 是这些函数定义:</p>
+<pre class="literal-block">
+uint32_t hash_one_at_a_time(const char *key, size_t key_length);
+void md5_signature(const unsigned char *key, unsigned int length, unsigned char *result);
+uint32_t hash_md5(const char *key, size_t key_length);
+uint32_t hash_crc16(const char *key, size_t key_length);
+uint32_t hash_crc32(const char *key, size_t key_length);
+uint32_t hash_crc32a(const char *key, size_t key_length);
+uint32_t hash_fnv1_64(const char *key, size_t key_length);
+uint32_t hash_fnv1a_64(const char *key, size_t key_length);
+uint32_t hash_fnv1_32(const char *key, size_t key_length);
+uint32_t hash_fnv1a_32(const char *key, size_t key_length);
+uint32_t hash_hsieh(const char *key, size_t key_length);
+uint32_t hash_jenkins(const char *key, size_t length);
+uint32_t hash_murmur(const char *key, size_t length);
+</pre>
+<p>在配置文件解析的时候, 用户指定一个hash函数名字, 需要解析为conf_pool.hash:</p>
+<pre class="literal-block">
+struct conf_pool {
+    struct string      name;                  /* pool name (root node) */
+    struct conf_listen listen;                /* listen: */
+    hash_type_t        hash;                  /* hash: */
+}
+
+char *
+conf_set_hash(struct conf *cf, struct command *cmd, void *conf)
+{
+    struct string *value, *hash;
+    for (hash = hash_strings; hash-&gt;len != 0; hash++) {
+        if (string_compare(value, hash) != 0) {
+            continue;
+        }
+
+        *hp = hash - hash_strings;
+        return CONF_OK;
+    }
+    return &quot;is not a valid hash&quot;;
+}
+</pre>
+<p>这里的hash_strings是在 nc_conf.c里定义的:</p>
+<pre class="literal-block">
+#define string(_str)   { sizeof(_str) - 1, (uint8_t *)(_str) }
+#define DEFINE_ACTION(_hash, _name) string(#_name),
+static struct string hash_strings[] = {
+    HASH_CODEC( DEFINE_ACTION )
+    null_string
+};
+#undef DEFINE_ACTION
+</pre>
+<p>展开得到的是:</p>
+<pre class="literal-block">
+gcc -E nc_conf.c  -I ./ | vim -
+static struct string hash_strings[] = {
+    { sizeof(&quot;one_at_a_time&quot;) - 1, (uint8_t *)(&quot;one_at_a_time&quot;) }, { sizeof(&quot;md5&quot;) - 1, (uint8_t *)(&quot;md5&quot;) }, { sizeof(&quot;crc16&quot;) - 1, (uint8_t *)(&quot;crc16&quot;) }, { sizeof(&quot;crc32&quot;) - 1, (uint8_t *)(&quot;crc32&quot;) }, { sizeof(&quot;crc32a&quot;) - 1, (uint8_t *)(&quot;crc32a&quot;) }, { sizeof(&quot;fnv1_64&quot;) - 1, (uint8_t *)(&quot;fnv1_64&quot;) }, { sizeof(&quot;fnv1a_64&quot;) - 1, (uint8_t *)(&quot;fnv1a_64&quot;) }, { sizeof(&quot;fnv1_32&quot;) - 1, (uint8_t *)(&quot;fnv1_32&quot;) }, { sizeof(&quot;fnv1a_32&quot;) - 1, (uint8_t *)(&quot;fnv1a_32&quot;) }, { sizeof(&quot;hsieh&quot;) - 1, (uint8_t *)(&quot;hsieh&quot;) }, { sizeof(&quot;murmur&quot;) - 1, (uint8_t *)(&quot;murmur&quot;) }, { sizeof(&quot;jenkins&quot;) - 1, (uint8_t *)(&quot;jenkins&quot;) },
+    { 0, ((void *)0) }
+};
+</pre>
+<p>配置文件解析后, 被加载到server_pool里面:</p>
+<pre class="literal-block">
+typedef uint32_t (*hash_t)(const char *, size_t);
+struct server_pool {
+    int                dist_type;            /* distribution type (dist_type_t) */
+    int                key_hash_type;        /* key hash type (hash_type_t) */
+    hash_t             key_hash;             /* key hasher */
+}
+
+#这个宏定义一个函数列表
+#define DEFINE_ACTION(_hash, _name) hash_##_name,
+static hash_t hash_algos[] = {
+    HASH_CODEC( DEFINE_ACTION )
+    NULL
+};
+#undef DEFINE_ACTION
+</pre>
+<p>展开后:</p>
+<pre class="literal-block">
+static hash_t hash_algos[] = {
+    hash_one_at_a_time, hash_md5, hash_crc16, hash_crc32, hash_crc32a, hash_fnv1_64, hash_fnv1a_64, hash_fnv1_32, hash_fnv1a_32, hash_hsieh, hash_murmur, hash_jenkins,
+    ((void *)0)
+};
+</pre>
+<p>最后, 利用conf中解析出来的 <tt class="docutils literal"><span class="pre">cp-&gt;hash</span></tt> 为下标, 直接去这个数组的函数指针即可:</p>
+<pre class="literal-block">
+sp-&gt;key_hash = hash_algos[cp-&gt;hash];
+</pre>
+<div class="section" id="id24">
+<h4><a class="toc-backref" href="#id91">具体hash函数</a></h4>
+<div class="section" id="crc32">
+<h5><a class="toc-backref" href="#id92">crc32</a></h5>
+<p>crc32是设计来计算校验码的, 并不适合算hash.</p>
+<p>twemproxy 0.2.4 里面包含的crc32算法 crc32使用的是 memcache 用的crc32.
+最新的版本里面包含了一个 crc32a, 才是原来含义上的crc32:</p>
+<p>用 <tt class="docutils literal">crc32a</tt> , 我们才能用这段代码计算key被分布到哪里去了:</p>
+<pre class="literal-block">
+import binascii
+word = 'hello'
+crc32 =  binascii.crc32(word) &amp; 0xffffffff
+print '%08x' % crc32, crc32%4
+</pre>
+</div>
+<div class="section" id="hsieh">
+<h5><a class="toc-backref" href="#id93">hsieh</a></h5>
+</div>
+<div class="section" id="jenkins-lookup3">
+<h5><a class="toc-backref" href="#id94">Jenkins lookup3</a></h5>
+</div>
+<div class="section" id="jenkins-one-at-a-time">
+<h5><a class="toc-backref" href="#id95">Jenkins one_at_a_time</a></h5>
+<p>The Jenkins hash functions are a collection of (non-cryptographic) hash functions for multi-byte keys designed by Bob Jenkins. They can be used also as checksums</p>
+<pre class="literal-block">
+uint32_t jenkins_one_at_a_time_hash(char *key, size_t len)
+{
+    uint32_t hash, i;
+    for(hash = i = 0; i &lt; len; ++i)
+    {
+        hash += key[i];
+        hash += (hash &lt;&lt; 10);
+        hash ^= (hash &gt;&gt; 6);
+    }
+    hash += (hash &lt;&lt; 3);
+    hash ^= (hash &gt;&gt; 11);
+    hash += (hash &lt;&lt; 15);
+    return hash;
+}
+</pre>
+</div>
+<div class="section" id="fnv-xxx">
+<h5><a class="toc-backref" href="#id96">FNV-XXX</a></h5>
+<p>Fowler–Noll–Vo is a non-cryptographic hash function created by Glenn Fowler, Landon Curt Noll, and Phong Vo.</p>
+<p>FNV-1实现简单:</p>
+<pre class="literal-block">
+hash = FNV_offset_basis
+for each octet_of_data to be hashed
+     hash = hash × FNV_prime
+     hash = hash XOR octet_of_data
+return hash
+</pre>
+<p>FNV-1a, reverses the multiply and XOR steps.</p>
+<p>designed primarily for hashtable and checksum use(不适合作为加密用的hash函数)</p>
+<p>特点:</p>
+<ol class="arabic simple">
+<li>速度快</li>
+<li>对0敏感, 只要x和xor, 步骤里面 出现一个0, 后面就都是0(可以加个固定常数, 但是这样会破坏随机性)
+(好在字符串没有这个问题)</li>
+</ol>
+</div>
+<div class="section" id="murmur">
+<h5><a class="toc-backref" href="#id97">murmur</a></h5>
+<p>MurmurHash performed well in a random distribution of regular keys.[7]</p>
+<p>这些都用了:</p>
+<pre class="literal-block">
+libstdc++ (ver 4.6), Perl,[24] nginx (ver 1.0.1),[25] Rubinius,[26] libmemcached (the C driver for Memcached),[27] maatkit,[28] Hadoop,[1] Kyoto Cabinet,[29], RaptorDB[30], and Cassandra.[31]
+</pre>
+</div>
+<div class="section" id="id25">
+<h5><a class="toc-backref" href="#id98">小结</a></h5>
+<p>hash函数的几个要求:
+1. 均匀性(排除crc32)
+2. 速度
+3. 如果能用python/php计算 hash更好.</p>
+<p>时间消耗上, 大致是:</p>
+<pre class="literal-block">
+Murmur/Jenkins(2s) &lt; FNV(4s) &lt; CRC32(5s)
+</pre>
+<p>应该选择Murmur或者FNV-1</p>
+<p>参考:</p>
+<ul class="simple">
+<li><a class="reference external" href="http://www.azillionmonkeys.com/qed/hash.html">http://www.azillionmonkeys.com/qed/hash.html</a></li>
+<li><a class="reference external" href="http://programmers.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed">http://programmers.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed</a>  (这个文章对随机性和速度做了详细考察)</li>
+</ul>
+<p>twemproxy 的github上一般都是用 <tt class="docutils literal">fnv1a_64</tt>:</p>
+<p>我们可以用下面这段python实现:</p>
+<pre class="literal-block">
+#/home/ning/idning/langtest/python/fnv
+def hash_fnv1a_64(s):
+    UINT32_MAX=2**32
+    FNV_64_INIT = 0xcbf29ce484222325 % UINT32_MAX
+    FNV_64_PRIME = 0x100000001b3 % UINT32_MAX
+
+    hval = FNV_64_INIT
+    for c in s:
+        hval = hval ^ ord(c)
+        hval = (hval * FNV_64_PRIME) % UINT32_MAX
+    return hval
+</pre>
+<p>相比起来, 对应的murmur要复杂些, 所以我们选择  <tt class="docutils literal">fnv1a_64</tt></p>
+</div>
+</div>
+<div class="section" id="dispatch">
+<h4><a class="toc-backref" href="#id99">dispatch方法</a></h4>
+<ul class="simple">
+<li>ketama</li>
+<li>modula</li>
+<li>random</li>
+</ul>
+</div>
+</div>
+<div class="section" id="rbtree">
+<h3><a class="toc-backref" href="#id100">rbtree</a></h3>
+<p>一个proxy为什么需要rbtree?? 用来做某种超时:</p>
+<pre class="literal-block">
+static struct rbtree tmo_rbt;    /* timeout rbtree */
+
+void
+msg_tmo_insert(struct msg *msg, struct conn *conn)
+{
+    struct rbnode *node;
+    int timeout;
+
+    timeout = server_timeout(conn);
+    if (timeout &lt;= 0) {
+        return;
+    }
+
+    node = &amp;msg-&gt;tmo_rbe;
+    node-&gt;key = nc_msec_now() + timeout;
+    node-&gt;data = conn;
+
+    rbtree_insert(&amp;tmo_rbt, node);
+}
+</pre>
+</div>
+<div class="section" id="mget">
+<h3><a class="toc-backref" href="#id101">如何处理mget</a></h3>
+</div>
+<div class="section" id="nginx">
+<h3><a class="toc-backref" href="#id102">代码严重受nginx影响</a></h3>
+<p>active 和ready变量</p>
+<pre class="literal-block">
+ngx_int_t
+ngx_handle_read_event(ngx_event_t *rev, ngx_uint_t flags)
+{
+    if (ngx_event_flags &amp; NGX_USE_CLEAR_EVENT) {
+
+        /* kqueue, epoll */
+
+        if (!rev-&gt;active &amp;&amp; !rev-&gt;ready) {
+            if (ngx_add_event(rev, NGX_READ_EVENT, NGX_CLEAR_EVENT)
+                == NGX_ERROR)
+            {
+                return NGX_ERROR;
+            }
+        }
+
+        return NGX_OK;
+</pre>
+</div>
+<div class="section" id="id26">
+<h3><a class="toc-backref" href="#id103">(代码)小结</a></h3>
+<ul>
+<li><p class="first">代码质量非常好, 举例</p>
+<blockquote>
+<p>函数开始写ASSERT:</p>
+<pre class="literal-block">
+int
+event_wait(struct event_base *evb, int timeout)
+{
+    int ep = evb-&gt;ep;
+    struct epoll_event *event = evb-&gt;event;
+    int nevent = evb-&gt;nevent;
+
+    ASSERT(ep &gt; 0);
+    ASSERT(event != NULL);
+    ASSERT(nevent &gt; 0);
+</pre>
+</blockquote>
+</li>
+<li><p class="first">类名, 函数名, 注释都很赞.</p>
+</li>
+<li><p class="first">状态变迁: 因为逻辑相对简单, 不需要保存状态, 所以只是有一个conn.client 标志表示状态,  <strong>不需要一个状态机, 机制不同</strong></p>
+</li>
+<li><p class="first">从这个配置看, 完全的nginx风格:</p>
+<pre class="literal-block">
+static struct command conf_commands[] = {
+    { string(&quot;listen&quot;),
+      conf_set_listen,
+      offsetof(struct conf_pool, listen) },
+
+    { string(&quot;hash&quot;),
+      conf_set_hash,
+      offsetof(struct conf_pool, hash) },
+
+    { string(&quot;hash_tag&quot;),
+      conf_set_hashtag,
+      offsetof(struct conf_pool, hash_tag) },
+
+    { string(&quot;server_connections&quot;),
+      conf_set_num,
+      offsetof(struct conf_pool, server_connections) },
+
+    null_command
+};
+</pre>
+</li>
+</ul>
+<div class="section" id="id27">
+<h4><a class="toc-backref" href="#id104">注意</a></h4>
+<ul>
+<li><p class="first">这个 <tt class="docutils literal"><span class="pre">pool-&gt;server_connections</span></tt> 一般都没有配置(默认值是1. 虽然一个连接可能可以应付绝大多数场景, 个人感觉这必须配置啊!!!)</p>
+<p>也就是说 不管前端多少个client, 到后端redis, 就只有1个连接. -- 这是这种proxy的特色</p>
+</li>
+<li><p class="first">通过msg-&gt;peer 和msg-&gt;owner 耦合client_conn与server_conn</p>
+<ul>
+<li><p class="first">非常巧妙的设计, 多个前端, 可以同时复用后端的 <strong>一个连接</strong></p>
+<pre class="literal-block">
+//下面这里建立的link是保证客户端收到的请求和响应一一对应的关键.
+//client_conn-&gt;out_q 里面还保存着按照发送顺序的请求msg. 这里收到了response 的msg之后.
+//一一对应起来, 向客户端返回response的时候, 按照 client_conn-&gt;out_q的顺序, 看相应的
+//msg 的peer是否被设置了, 如果设置了, 就可以返回.  //
+</pre>
+</li>
+<li><p class="first">这也是与一般的proxy不一样的地方,
+一般的proxy, 收到client_conn_1消息, 处理后找个后端连接发过去, 此时这个后端连接是不会被其它客户端连接复用的, 而这时收到的response也就必然是client_conn_1对应的response, 直接放到client_conn1的输出队列即可.:</p>
+<pre class="literal-block">
+//
+/* establish msg &lt;-&gt; pmsg (response &lt;-&gt; request) link */
+pmsg-&gt;peer = msg;
+msg-&gt;peer = pmsg;
+</pre>
+</li>
+</ul>
+<p>这里proxy必须保存req msg的body和resp msg的body, 如果后端网络/响应慢, 则req msg撑爆内存, 如果前端不读取, 则rsp msg撑爆内存.</p>
+</li>
+<li><dl class="first docutils">
+<dt>能用这种后端只开一个连接的proxy, 要求:</dt>
+<dd><ol class="first last arabic simple">
+<li>后端交互包不会被打散, 即一个连接上, 包一定是连续的发出, 或者连续的收到.</li>
+<li>单连接上, 后端返回顺序和请求顺序一致.
+如果服务器在一个连接上起多个线程来服务, 哪个线程先处理完，就 <strong>从这个连接</strong> 返回, 那proxy层就乱套了(不过这时候如果有个req/resp id, 也是可以的)</li>
+<li>小包(req/resp都很小, 这样才容易满足1)</li>
+<li>后端处理很快(否则都堆在proxy了)</li>
+</ol>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="section" id="id28">
+<h2><a class="toc-backref" href="#id105">使用</a></h2>
+<ol class="arabic">
+<li><p class="first">一般运行的时候需要指定一个pid文件, 如果这个命令连续运行两次, 则pid文件被清除:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 16K
+928376 -rw-r--r-- 1 ning ning 12K 2013-12-20 15:36 nutcracker-22000.log
+928377 -rw-r--r-- 1 ning ning   5 2013-12-20 15:36 nutcracker-22000.pid
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ bin/nutcracker -d -c /tmp/r/nutcracker-22000/conf/nutcracker-22000.conf -o /tmp/r/nutcracker-22000/log/nutcracker-22000.log -p /tmp/r/nutcracker-22000/log/nutcracker-22000.pid -s 23000
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 12K
+928376 -rw-r--r-- 1 ning ning 12K 2013-12-20 15:36 nutcracker-22000.log
+</pre>
+<p>因为第二个进程会启动后 先写pid文件, 发现listen失败, 就退出, 同时清空pid文件.
+应该修改一下, 如果pid文件已经存在, 拒绝启动</p>
+<p>同时, 我们的部署脚本, 也需要一个kill任务. 强制kill</p>
+<p>redis 本身就是先listen, 后写pid文件.</p>
+</li>
+<li><p class="first">listen:</p>
+<pre class="literal-block">
+cluster0:
+    listen: 127.0.0.5:22000
+</pre>
+<p>这是进程只会监听127.0.0.5 上的端口:</p>
+<pre class="literal-block">
+tcp        0      0 127.0.0.5:22000         0.0.0.0:*               LISTEN      8581/nutcracker
+</pre>
+<p>需要改成:</p>
+<pre class="literal-block">
+cluster0:
+    listen: 0.0.0.0:22000
+
+    tcp        0      0 0.0.0.0:22000           0.0.0.0:*               LISTEN      19902/nutcracker
+</pre>
+</li>
+</ol>
+<div class="section" id="id29">
+<h3><a class="toc-backref" href="#id106">配置参数</a></h3>
+<pre class="literal-block">
+alpha:
+  listen: 127.0.0.1:22121
+  hash: fnv1a_64
+  distribution: ketama
+  auto_eject_hosts: true
+  redis: true
+  server_retry_timeout: 2000
+  server_failure_limit: 1
+  servers:
+   - 127.0.0.1:6379:1
+</pre>
+<div class="section" id="hashdistribution">
+<h4><a class="toc-backref" href="#id107">hash和distribution见前面分析</a></h4>
+</div>
+<div class="section" id="auto-eject-hosts">
+<h4><a class="toc-backref" href="#id108">auto_eject_hosts相关</a></h4>
+<p>下面选项只在auto_eject_hosts时有用</p>
+<ul>
+<li><dl class="first docutils">
+<dt>server_failure_limit(多少次开始弹出)</dt>
+<dd><ul class="first last simple">
+<li>The number of conseutive failures on a server that would leads to it being temporarily ejected when auto_eject_host is set to true</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>server_retry_timeout(每次弹出多长时间)</dt>
+<dd><ul class="first last simple">
+<li>是说在这段时间内, 这个host是被eject的(不在hash环中)</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">这一块的代码 <tt class="docutils literal">modula_update</tt> 还没仔细看</p>
+</li>
+</ul>
+</div>
+<div class="section" id="timeout">
+<h4><a class="toc-backref" href="#id109">timeout</a></h4>
+<p>默认情况下, twemproxy一直等着把请求传给后端, 但是如果等了timeout时间, proxy 就不会把这个请求传给后端, 而是向客户端回复一个</p>
+<p>SERVER_ERROR Connection timed outrn is sent back to the client.</p>
+</div>
+<div class="section" id="log">
+<h4><a class="toc-backref" href="#id110">log</a></h4>
+<p>编译时加上log选项, 设为 LOG_INFO</p>
+</div>
+<div class="section" id="mbuf-size">
+<h4><a class="toc-backref" href="#id111">mbuf size</a></h4>
+<ul class="simple">
+<li>default mbuf-size of 16K</li>
+</ul>
+<p>可以在启动时指定:</p>
+<pre class="literal-block">
+$ ./bin/nutcracker -h
+This is nutcracker-0.2.4
+
+Usage: nutcracker [-?hVdDt] [-v verbosity level] [-o output file]
+                  [-c conf file] [-s stats port] [-a stats addr]
+                  [-i stats interval] [-p pid file] [-m mbuf size]
+
+Options:
+  -h, --help             : this help
+  -V, --version          : show version and exit
+  -t, --test-conf        : test configuration for syntax errors and exit
+  -d, --daemonize        : run as a daemon
+  -D, --describe-stats   : print stats description and exit
+  -v, --verbosity=N      : set logging level (default: 5, min: 0, max: 11)
+  -o, --output=S         : set logging file (default: stderr)
+  -c, --conf-file=S      : set configuration file (default: conf/nutcracker.yml)
+  -s, --stats-port=N     : set stats monitoring port (default: 22222)
+  -a, --stats-addr=S     : set stats monitoring ip (default: 0.0.0.0)
+  -i, --stats-interval=N : set stats aggregation interval in msec (default: 30000 msec)
+  -p, --pid-file=S       : set pid file (default: off)
+  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+</pre>
+</div>
+<div class="section" id="max-key-lenght">
+<h4><a class="toc-backref" href="#id112">max key lenght</a></h4>
+<ul>
+<li><p class="first">对memcache: ascii protocol key最多 250 characters. The key should not include whitespace, or 'r' or 'n' character.</p>
+</li>
+<li><p class="first">redis 没有这个限制</p>
+</li>
+<li><dl class="first docutils">
+<dt>nutcracker requires the key to be stored in a contiguous memory region.</dt>
+<dd><ul class="first last simple">
+<li>也就是说key必须小于mbuf size</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="server-connections-1">
+<h4><a class="toc-backref" href="#id113">server_connections: &gt; 1</a></h4>
+<p>如果client想要在一个pipeline里面读到最新的写, 就要设置server_connections:1,
+如果我们设置 <tt class="docutils literal">server_connections:2</tt></p>
+<p>那么:</p>
+<pre class="literal-block">
+set foo bar
+get foo
+</pre>
+<p>后面这个get可能在另一个连接里面发过去, 所以不一定能读到 <tt class="docutils literal">set foo bar</tt> 的结果</p>
+</div>
+<div class="section" id="id30">
+<h4><a class="toc-backref" href="#id114">监控</a></h4>
+<ul class="simple">
+<li>server_err</li>
+<li>server_timedout</li>
+<li>server_eof</li>
+</ul>
+</div>
+</div>
+<div class="section" id="redis-mgr">
+<h3><a class="toc-backref" href="#id115">使用redis-mgr部署</a></h3>
+<pre class="literal-block">
+cluster0 = {
+    'cluster_name': 'cluster0',
+    'user': 'ning',
+    'sentinel':[
+        ('127.0.0.5:21001', '/tmp/r/sentinel-21001'),
+        ('127.0.0.5:21002', '/tmp/r/sentinel-21002'),
+        ('127.0.0.5:21003', '/tmp/r/sentinel-21003'),
+    ],
+    'redis': [
+        # master(host:port, install path)       ,  slave(host:port, install path)
+        ('127.0.0.5:20000', '/tmp/r/redis-20000'), ('127.0.0.5:30000', '/tmp/r/redis-30000'),
+        ('127.0.0.5:20001', '/tmp/r/redis-20001'), ('127.0.0.5:30001', '/tmp/r/redis-30001'),
+        ('127.0.0.5:20002', '/tmp/r/redis-20002'), ('127.0.0.5:30002', '/tmp/r/redis-30002'),
+        ('127.0.0.5:20003', '/tmp/r/redis-20003'), ('127.0.0.5:30003', '/tmp/r/redis-30003'),
+    ],
+    'nutcracker': [
+        ('127.0.0.5:22000', '/tmp/r/nutcracker-22000'),
+        ('127.0.0.5:22001', '/tmp/r/nutcracker-22001'),
+        ('127.0.0.5:22002', '/tmp/r/nutcracker-22002'),
+    ],
+}
+</pre>
+<p>对redis的benchmark(在我自己机器上):</p>
+<pre class="literal-block">
+$ redis-benchmark -h 127.0.0.5 -p 20000 -t get,set -n 1000000
+====== SET ======
+  1000000 requests completed in 18.65 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+86.50% &lt;= 1 milliseconds
+99.66% &lt;= 2 milliseconds
+53613.55 requests per second
+
+====== GET ======
+  1000000 requests completed in 16.25 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+99.25% &lt;= 1 milliseconds
+99.89% &lt;= 2 milliseconds
+61557.40 requests per second
+</pre>
+<p>对proxy 的benchmark:</p>
+<pre class="literal-block">
+$ redis-benchmark -h 127.0.0.5 -p 22000 -t get,set -n 1000000
+====== SET ======
+  1000000 requests completed in 21.45 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+86.42% &lt;= 1 milliseconds
+99.76% &lt;= 2 milliseconds
+46628.74 requests per second
+
+====== GET ======
+  1000000 requests completed in 48.91 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+30.70% &lt;= 1 milliseconds
+44.95% &lt;= 2 milliseconds
+20445.30 requests per second
+</pre>
+<p>高并发先, 直连redis性能差, cpu都起不来.</p>
+</div>
+<div class="section" id="id31">
+<h3><a class="toc-backref" href="#id116">日志级别</a></h3>
+<p>我们如果编译debug版本:</p>
+<pre class="literal-block">
+cd nutcracker-0.2.4/ &amp;&amp; ./configure CFLAGS=&quot;-O1&quot; --enable-debug=full --prefix=`pwd`/../output &amp;&amp; make -j 8 &amp;&amp; make install
+</pre>
+<p>默认的日志级别是5, 就会有很多连接日志:</p>
+<pre class="literal-block">
+[Mon Jan 20 09:44:01 2014] nc_core.c:207 close c 12 '127.0.0.5:52020' on event 0001 eof 1 done 1 rb 26714 sb 13301
+[Mon Jan 20 09:44:01 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52021'
+[Mon Jan 20 09:44:02 2014] nc_core.c:207 close c 12 '127.0.0.5:52021' on event 0001 eof 1 done 1 rb 26741 sb 13315
+[Mon Jan 20 09:44:02 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52022'
+[Mon Jan 20 09:44:04 2014] nc_core.c:207 close c 12 '127.0.0.5:52022' on event 0001 eof 1 done 1 rb 26768 sb 13329
+[Mon Jan 20 09:44:04 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52024'
+[Mon Jan 20 09:44:05 2014] nc_core.c:207 close c 12 '127.0.0.5:52024' on event 0001 eof 1 done 1 rb 26795 sb 13343
+[Mon Jan 20 09:44:05 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52025'
+[Mon Jan 20 09:44:06 2014] nc_core.c:207 close c 12 '127.0.0.5:52025' on event 0001 eof 1 done 1 rb 26822 sb 13357
+[Mon Jan 20 09:44:06 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52026'
+[Mon Jan 20 09:44:07 2014] nc_core.c:207 close c 12 '127.0.0.5:52026' on event 0001 eof 1 done 1 rb 26849 sb 13371
+[Mon Jan 20 09:44:07 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52027'
+[Mon Jan 20 09:44:08 2014] nc_core.c:207 close c 12 '127.0.0.5:52027' on event 0001 eof 1 done 1 rb 26876 sb 13385
+[Mon Jan 20 09:44:08 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52028'
+</pre>
+<p>处理方法:</p>
+<div class="section" id="id32">
+<h4><a class="toc-backref" href="#id117">修改日志级别:</a></h4>
+<pre class="literal-block">
+$ ./bin/nutcracker -h
+This is nutcracker-0.2.4
+
+Usage: nutcracker [-?hVdDt] [-v verbosity level] [-o output file]
+                  [-c conf file] [-s stats port] [-a stats addr]
+                  [-i stats interval] [-p pid file] [-m mbuf size]
+
+Options:
+  -h, --help             : this help
+  -V, --version          : show version and exit
+  -t, --test-conf        : test configuration for syntax errors and exit
+  -d, --daemonize        : run as a daemon
+  -D, --describe-stats   : print stats description and exit
+  -v, --verbosity=N      : set logging level (default: 5, min: 0, max: 11)
+  -o, --output=S         : set logging file (default: stderr)
+  -c, --conf-file=S      : set configuration file (default: conf/nutcracker.yml)
+  -s, --stats-port=N     : set stats monitoring port (default: 22222)
+  -a, --stats-addr=S     : set stats monitoring ip (default: 0.0.0.0)
+  -i, --stats-interval=N : set stats aggregation interval in msec (default: 30000 msec)
+  -p, --pid-file=S       : set pid file (default: off)
+  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+</pre>
+<p>使用 <tt class="docutils literal">nutcracker <span class="pre">-v</span> 0</tt> 即可</p>
+</div>
+<div class="section" id="id33">
+<h4><a class="toc-backref" href="#id118">2.动态调整日志级别:</a></h4>
+<pre class="literal-block">
+case SIGTTIN:
+    actionstr = &quot;, up logging level&quot;;
+    action = log_level_up;
+    break;
+
+case SIGTTOU:
+    actionstr = &quot;, down logging level&quot;;
+    action = log_level_down;
+    break;
+
+case SIGHUP:
+    actionstr = &quot;, reopening log file&quot;;
+    action = log_reopen;
+    break;
+</pre>
+<p>所以:</p>
+<pre class="literal-block">
+kill -s TTOU  23787
+</pre>
+<p>日志显示:</p>
+<pre class="literal-block">
+[Mon Jan 20 09:44:09 2014] nc_signal.c:122 signal 22 (SIGTTOU) received, down logging level
+[Mon Jan 20 09:44:09 2014] nc_log.c:95 down log level to 4
+</pre>
+<p>此时就没有连接日志了.</p>
+<p>如果想要多看日志:</p>
+<pre class="literal-block">
+kill -s TTIN 15797
+</pre>
+</div>
+<div class="section" id="id34">
+<h4><a class="toc-backref" href="#id119">3.切日志</a></h4>
+<p>如果我们需要用日志统计流量, 客户端信息, 可以切日志, 方法:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ mv log/nutcracker.log log/nutcracker.log.20140120
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 124K
+813654 -rw-r--r-- 1 ning ning 114K 2014-01-20 09:44 nutcracker.log.20140120
+813655 -rw-r--r-- 1 ning ning    5 2014-01-20 09:33 nutcracker.pid
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ cat log/nutcracker.pid
+23787
+
+#doit
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ cat log/nutcracker.pid | xargs kill -s HUP
+ning&#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 124K
+813688 -rw-r--r-- 1 ning ning    0 2014-01-20 09:49 nutcracker.log
+813654 -rw-r--r-- 1 ning ning 114K 2014-01-20 09:49 nutcracker.log.20140120
+813655 -rw-r--r-- 1 ning ning    5 2014-01-20 09:33 nutcracker.pid
+</pre>
+</div>
+</div>
+</div>
+<div class="section" id="id35">
+<h2><a class="toc-backref" href="#id120">自己实现一个自动的主从切换?</a></h2>
+<p>0配置, 利用sentinel用的方式, 获知sentinel的位置.</p>
+</div>
+<div class="section" id="sentinel">
+<h2><a class="toc-backref" href="#id121">sentinel验证</a></h2>
+<p>如果一主一丛, 主彻底挂了, 从应该是提升为主, 而給老主发的</p>
+</div>
+<div class="section" id="id36">
+<h2><a class="toc-backref" href="#id122">配置和优化</a></h2>
+<div class="section" id="m-512">
+<h3><a class="toc-backref" href="#id123">-m 512</a></h3>
+<p>速度提高, 内存消耗减少(一般消息都小于512字节)</p>
+<p>注意: 不能滥用, twemproxy实现里面, 一个key必须放在一个mbuf里面(解析器, 为了防止拷贝数据做的限制), 所以, 如果key长度大于mbuf大小, 会打印错误:</p>
+<pre class="literal-block">
+if (r-&gt;rlen &gt;= mbuf_data_size()) {
+    log_error(&quot;parsed bad req %&quot;PRIu64&quot; of type %d with key &quot;
+              &quot;length %d that greater than or equal to maximum&quot;
+              &quot; redis key length of %d&quot;, r-&gt;id, r-&gt;type,
+              r-&gt;rlen, mbuf_data_size());
+    goto error;
+}
+</pre>
+<pre class="literal-block">
+Mbuf enables zero copy for requests and responses flowing through the proxy. By default an mbuf is 16K
+
+nutcracker requires the key to be stored in a contiguous memory region. Since all requests and responses in nutcracker are stored in mbuf, the maximum length of the redis key is limited by the size of the maximum available space for data in mbuf (mbuf_data_size()).
+</pre>
+</div>
+</div>
+<div class="section" id="id37">
+<h2><a class="toc-backref" href="#id124">问题</a></h2>
+<div class="section" id="preconnect-true-redis-core">
+<h3><a class="toc-backref" href="#id125">preconnect: true 的时候, 如果后端redis挂掉, 会core</a></h3>
+<pre class="literal-block">
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [0] /lib64/tls/libpthread.so.0 [0x302b80c420]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [1] bin/nutcracker(server_unref+0x5a) [0x405f7a]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [2] bin/nutcracker(server_close+0x1ae) [0x40681e]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [3] bin/nutcracker(core_loop+0x89) [0x4054d9]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [4] bin/nutcracker(main+0x4b5) [0x40f1c5]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [5] /lib64/tls/libc.so.6(__libc_start_main+0xdb) [0x302af1c4bb]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [6] bin/nutcracker [0x40507a]
+[Tue Dec 24 21:10:20 2013] nc_signal.c:122 signal 11 (SIGSEGV) received, core dumping
+
+
+似乎是这个问题: https://github.com/twitter/twemproxy/issues/146
+</pre>
+</div>
+<div class="section" id="pipeline-replay">
+<h3><a class="toc-backref" href="#id126">pipeline/replay时消耗大量内存:</a></h3>
+<p><a class="reference external" href="https://github.com/twitter/twemproxy/issues/203">https://github.com/twitter/twemproxy/issues/203</a></p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis-mgr$ cat tests/a.py
+import socket
+import time
+
+HOST = '127.0.0.5'
+PORT = 24000
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect((HOST, PORT))
+
+data = '*3\r\n$3\r\nSET\r\n$13\r\nkkk-100001480\r\n$13\r\nvvv-100001480\r\n'
+for i in range(100*1000):
+    s.sendall(data)
+
+ning&#64;ning-laptop:~/idning-github/redis-mgr$ time python tests/a.py
+
+real        0m0.797s
+user        0m0.280s
+sys 0m0.120s
+</pre>
+<p>I found that twemproxy consume 1.6G of  memeory, and the memory will not free after the client shutdown:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:/tmp/r/nutcracker-24000$ ps aux | grep nut
+ning      2017  0.5 14.8 1652068 1186692 ?     Sl   09:43   0:00 bin/nutcracker -d -c /tmp/r/nutcracker-24000/conf/nutcracker.conf -o /tmp/r/nutcracker-24000/log/nutcracker.log -p /tmp/r/nutcracker-24000/log/nutcracker.pid -s 25000 -v 4
+
+100*1000*52(msg length) = 5MB
+</pre>
+<p>send 5MB to twemproxy, it will consume 1.6G memory...</p>
+<p>if we deploy twemporxy and redis on the same machine. they will killed by OOMKiller.</p>
+<p>原因:</p>
+<pre class="literal-block">
+$ ./bin/nutcracker -h
+...
+-m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+</pre>
+<p>default mbuf size is 16K, and twemproxy will alloc at least one mbuf for one msg, so 100*1000 msgs will use 1.6G memory.</p>
+<ol class="arabic simple">
+<li>twemproxy will not free the request mbuf until client read the response</li>
+<li>twemproxy not reduce memory on mbuf pool.
+it only call <tt class="docutils literal">mbuf_free</tt> on <tt class="docutils literal">mbuf_deinit</tt>, which is called on server down</li>
+</ol>
+<p>that is a big pipeline, got huge memory consumption</p>
+<p>this:</p>
+<pre class="literal-block">
+data = '*3\r\n$3\r\nSET\r\n$13\r\nkkk-100001480\r\n$13\r\nvvv-100001480\r\n'
+for i in range(1*1000):
+    s.sendall(data)
+
+#print s.recv(10*1000)
+</pre>
+<p>endswith:</p>
+<pre class="literal-block">
+==9226== 311,064 bytes in 997 blocks are possibly lost in loss record 38 of 38
+==9226==    at 0x4C274A8: malloc (vg_replace_malloc.c:236)
+==9226==    by 0x411C75: _nc_alloc (nc_util.c:224)
+==9226==    by 0x409B6B: _msg_get (nc_message.c:200)
+==9226==    by 0x409CC5: msg_get (nc_message.c:268)
+==9226==    by 0x40A1DC: msg_recv (nc_message.c:439)
+==9226==    by 0x406178: core_core (nc_core.c:158)
+==9226==    by 0x41BBB7: event_wait (nc_epoll.c:269)
+==9226==    by 0x405F88: core_loop (nc_core.c:316)
+==9226==
+==9226== LEAK SUMMARY:
+==9226==    definitely lost: 0 bytes in 0 blocks
+==9226==    indirectly lost: 0 bytes in 0 blocks
+==9226==      possibly lost: 352,937 bytes in 1,129 blocks
+==9226==    still reachable: 27,735 bytes in 50 blocks
+==9226==         suppressed: 0 bytes in 0 blocks
+==9226== Reachable blocks (those to which a pointer was found) are not shown.
+==9226== To see them, rerun with: --leak-check=full --show-reachable=yes
+</pre>
+<p>this script:</p>
+<pre class="literal-block">
+data = '*3\r\n$3\r\nSET\r\n$13\r\nkkk-100001480\r\n$13\r\nvvv-100001480\r\n'
+for i in range(1*1000):
+    s.sendall(data)
+
+#print s.recv(10*1000)
+</pre>
+<p>ends with:</p>
+<pre class="literal-block">
+==9255== 4,292,608 bytes in 262 blocks are possibly lost in loss record 40 of 40
+==9255==    at 0x4C274A8: malloc (vg_replace_malloc.c:236)
+==9255==    by 0x411C75: _nc_alloc (nc_util.c:224)
+==9255==    by 0x40BCF5: mbuf_get (nc_mbuf.c:46)
+==9255==    by 0x40BD4A: mbuf_split (nc_mbuf.c:241)
+==9255==    by 0x40A1AA: msg_recv (nc_message.c:434)
+==9255==    by 0x406178: core_core (nc_core.c:158)
+==9255==    by 0x41BBB7: event_wait (nc_epoll.c:269)
+==9255==    by 0x405F88: core_loop (nc_core.c:316)
+==9255==
+==9255== LEAK SUMMARY:
+==9255==    definitely lost: 0 bytes in 0 blocks
+==9255==    indirectly lost: 0 bytes in 0 blocks
+==9255==      possibly lost: 4,376,723 bytes in 535 blocks
+</pre>
+<p>原因是太快的向proxy发送大量数据, proxy 不管三七二十一, 都把数据全部接收下来, 再慢慢处理, 这就造成大量msg对象堆在proxy的内存中,</p>
+<p>nutcracker always try to receive at the client side:</p>
+<pre class="literal-block">
+rstatus_t
+core_core(void *arg, uint32_t events)
+{
+    /* read takes precedence over write */
+    if (events &amp; EVENT_READ) {
+        status = core_recv(ctx, conn);      //call conn-&gt;recv (msg_recv)
+        if (status != NC_OK || conn-&gt;done || conn-&gt;err) {
+            core_close(ctx, conn);
+            return NC_ERROR;
+        }
+    }
+    ...
+}
+</pre>
+<p>if the client write to the socket, it will always success, (something like <tt class="docutils literal"><span class="pre">redis-cli</span> <span class="pre">--pipe</span></tt> ) then message queued at nutcracker, and got timeouted,</p>
+<p>the problem is client do not know when to stop sending request,</p>
+<p>I think we can add a config like <tt class="docutils literal"><span class="pre">max-queue</span></tt>, if nutcracker got too much request queued, it stop read at the client side.</p>
+<p>so the client will block on sending</p>
+</div>
+<div class="section" id="mgetcase">
+<h3><a class="toc-backref" href="#id127">mget慢这个case</a></h3>
+<p>We are looking to use TwemProxy with Redis for sharding. We have use cases where we may need to fetch about 10k keys in one go from across multiple shards. However, when I try this with TwemProxy on a test setup (described below), it takes about 1.7 seconds to return. If I fired the same request on a single Redis instance directly, it returns in about 16ms.</p>
+<p>-m 512, I got the best results. With this, multi-key get on 10k keys returned in about 750ms</p>
+<p>For example, if my input buffer from read syscall contains 10 messages = [1, 2, 3, 4, 5, 6, ... 10], we leave existing message &quot;1&quot; in its current mbuf and copy messages from [2,3,4,5, ...10] to a new mbuf. Once message &quot;1&quot; is processed, we then we copy messages from [3,4,5,6,...10] to a new mbuf and so on and on. So, to split messages [1,2,3...10] across 10 mbufs we are doing quadratic instead of linear copies. This is really unfortunate,</p>
+</div>
+<div class="section" id="id38">
+<h3><a class="toc-backref" href="#id128">应该允许释放mbuf</a></h3>
+<p>否则一旦分配，就不释放</p>
+<p>大量并发mget, 就需要用小的mbuf size</p>
+<p>This is the reason why for 'large number' of connections or for wide multi-get like requests, you want to choose a small value for mbuf-size like 512</p>
+</div>
+<div class="section" id="id39">
+<h3><a class="toc-backref" href="#id129">#一轮完了再集中加事件, 不要多次加, 重复加</a></h3>
+<p>实际上, 已经做了这个优化, 只有第一次加事件的时候才真正加:</p>
+<pre class="literal-block">
+static void
+req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
+
+    ...
+
+    /* enqueue the message (request) into server inq */
+    if (TAILQ_EMPTY(&amp;s_conn-&gt;imsg_q)) {
+        status = event_add_out(ctx-&gt;evb, s_conn);
+        if (status != NC_OK) {
+            req_forward_error(ctx, c_conn, msg);
+            s_conn-&gt;err = errno;
+            return;
+        }
+    }
+    s_conn-&gt;enqueue_inq(ctx, s_conn, msg);
+}
+</pre>
+</div>
+<div class="section" id="id40">
+<h3><a class="toc-backref" href="#id130">#可能的优化:mget</a></h3>
+</div>
+<div class="section" id="id41">
+<h3><a class="toc-backref" href="#id131">改造</a></h3>
+<p>single 模式, 支持所有命令, 简单proxy.</p>
+</div>
+<div class="section" id="key">
+<h3><a class="toc-backref" href="#id132">key过长回错误</a></h3>
+</div>
+</div>
+<div class="section" id="id42">
+<h2><a class="toc-backref" href="#id133">社区情况</a></h2>
+<p>pull-request:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>支持select db:</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/pull/217">https://github.com/twitter/twemproxy/pull/217</a></li>
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/pull/102">https://github.com/twitter/twemproxy/pull/102</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>支持ping:</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/pull/119/files">https://github.com/twitter/twemproxy/pull/119/files</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>支持auth:</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/pull/81">https://github.com/twitter/twemproxy/pull/81</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>issues 大家的呼声:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>配置热加载 <tt class="docutils literal">TODO</tt></dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/issues/215">https://github.com/twitter/twemproxy/issues/215</a></li>
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/issues/6">https://github.com/twitter/twemproxy/issues/6</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>pubsub <tt class="docutils literal">TODO</tt></dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/issues/130">https://github.com/twitter/twemproxy/issues/130</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>select/auth/ping 的支持</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/issues/103">https://github.com/twitter/twemproxy/issues/103</a></li>
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/pull/102">https://github.com/twitter/twemproxy/pull/102</a></li>
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/pull/81">https://github.com/twitter/twemproxy/pull/81</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>pipeline 下内存消耗:</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/issues/158">https://github.com/twitter/twemproxy/issues/158</a></li>
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/issues/203">https://github.com/twitter/twemproxy/issues/203</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">支持sentinel 自动主从切换.</p>
+</li>
+</ul>
+<p>其它人的一些改动:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>openbaas/aduong等同学支持了auth/ping/quit. 已经在twitter/twemproxy 里面的 auth_and_select 分支. 但是select 的支持没做.</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/aduong/twemproxy/compare/0.2.4%2Bquit">https://github.com/aduong/twemproxy/compare/0.2.4%2Bquit</a></li>
+<li><a class="reference external" href="https://github.com/aduong/twemproxy/commit/871537d912f3036daeea883d7ed1ef6f642fa15e">https://github.com/aduong/twemproxy/commit/871537d912f3036daeea883d7ed1ef6f642fa15e</a></li>
+<li><a class="reference external" href="https://github.com/twitter/twemproxy/pull/81">https://github.com/twitter/twemproxy/pull/81</a></li>
+<li>另一个同学的后续改动: <a class="reference external" href="https://github.com/jdi-tagged/twemproxy/commit/5ba615865fff547f997998bcc9634ab680d83645">https://github.com/jdi-tagged/twemproxy/commit/5ba615865fff547f997998bcc9634ab680d83645</a></li>
+<li>auth 没什么用, 但是ping和quit, 因为php-redis 里面关连接之前都会quit, 所以有用.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">yuyuyu101/twemproxy 很久以前做了kqueue 的port, 不过没有merge 到主干</p>
+</li>
+<li><p class="first">jbfavre/twemproxy 主要做一些打包工作, 比如debian包.</p>
+</li>
+<li><p class="first">shaofengniu/twemproxy 做了很多工作. 代码改动超过5000行.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id43">
+<h2><a class="toc-backref" href="#id134">小结</a></h2>
+<ul class="simple">
+<li>twemproxy 对pipeline型的读写, 性能不好.</li>
+</ul>
+<div class="section" id="id44">
+<h3><a class="toc-backref" href="#id135">期望</a></h3>
+<ul class="simple">
+<li>ping/auth/quit 的几个支持希望能尽快merge到主干</li>
+</ul>
+</div>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

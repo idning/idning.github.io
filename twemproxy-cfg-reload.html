@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>twemproxy-cfg-reload</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/twemproxy-cfg-reload.html">2014-04-28 16:46:45</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#nginx" id="id9">1&nbsp;&nbsp;&nbsp;nginx 怎么做的</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id1" id="id10">1.1&nbsp;&nbsp;&nbsp;配置修改</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id2" id="id11">1.1.1&nbsp;&nbsp;&nbsp;过程</a></li>
+<li><a class="reference internal" href="#id3" id="id12">1.1.2&nbsp;&nbsp;&nbsp;细节</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id4" id="id13">1.2&nbsp;&nbsp;&nbsp;热升级二进制</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id5" id="id14">1.2.1&nbsp;&nbsp;&nbsp;过程</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id6" id="id15">2&nbsp;&nbsp;&nbsp;关键点</a></li>
+<li><a class="reference internal" href="#id7" id="id16">3&nbsp;&nbsp;&nbsp;应该做到怎样</a></li>
+<li><a class="reference internal" href="#id8" id="id17">4&nbsp;&nbsp;&nbsp;结论</a></li>
+</ul>
+</div>
+<p>配置热加载:</p>
+<pre class="literal-block">
+case SIGUSR2:
+</pre>
+<div class="section" id="nginx">
+<h2><a class="toc-backref" href="#id9">1&nbsp;&nbsp;&nbsp;nginx 怎么做的</a></h2>
+<p>nginx 有两种情况:</p>
+<ol class="arabic simple">
+<li>配置修改</li>
+<li>热升级二进制</li>
+</ol>
+<div class="section" id="id1">
+<h3><a class="toc-backref" href="#id10">1.1&nbsp;&nbsp;&nbsp;配置修改</a></h3>
+<p>难点在于:</p>
+<p>因为不能由各个子进程分别做监听, 只能父进程监听后, 确定监听sokcet列表, 然后fork出子进程, 由子进程继承监听socket.</p>
+<div class="section" id="id2">
+<h4><a class="toc-backref" href="#id11">1.1.1&nbsp;&nbsp;&nbsp;过程</a></h4>
+<p>启动后:</p>
+<pre class="literal-block">
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |
++---+   +---+
+|   |   |   |
+| 1 |   | 2 |
+|   |   |   |
++---+   +---+
+</pre>
+<p>向父进程0发信号, 派生出新的子进程:</p>
+<pre class="literal-block">
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |         a|       |
++---+   +---+      +---+   +---+
+|   |   |   |      |   |   |   |
+| 1 |   | 2 |      | 3 |   | 4 |
+|   |   |   |      |   |   |   |
++---+   +---+      +---+   +---+
+</pre>
+<p>父进程收到信号后, 解析新的配置, 得到新的需要监听的列表, 以及每个监听socket对应的配置, 并派生新worker,
+新worker启动后, 向老worker 发送优雅关闭的信号即可, 最后达到这样:</p>
+<pre class="literal-block">
++-------------------------------+
+|               0               |
++-------------------------------+
+                    a|       |
+                   +---+   +---+
+                   |   |   |   |
+                   | 3 |   | 4 |
+                   |   |   |   |
+                   +---+   +---+
+</pre>
+</div>
+<div class="section" id="id3">
+<h4><a class="toc-backref" href="#id12">1.1.2&nbsp;&nbsp;&nbsp;细节</a></h4>
+<p>考虑父进程收到信号后, 派生新worker的过程. 假设</p>
+<ul class="simple">
+<li>旧配置监听8000, 8001, 8002几个port,</li>
+<li>新配置监听8000, 8001, 8003.</li>
+</ul>
+<p>那么父进程解析完新的配置文件后, 会对比监听列表, 决定关闭8002, 新开8003, 保留8000, 8001, 然后把这三个fd开着, fork出新worker.</p>
+<p>新worker 直接使用新的配置结构即可.</p>
+<p>这里父进程可以直接修改自己的老配置为新配置(不会影响到 老的worker自己的那一份老配置)</p>
+<p>对于twemporxy这样单进程模型, 就不能这样做, 如果在运行时修改自己的配置, 一个请求很可能跨两种不同的配置. 这就容易出问题.</p>
+</div>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id13">1.2&nbsp;&nbsp;&nbsp;热升级二进制</a></h3>
+<div class="section" id="id5">
+<h4><a class="toc-backref" href="#id14">1.2.1&nbsp;&nbsp;&nbsp;过程</a></h4>
+<pre class="literal-block">
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |
++---+   +---+
+|   |   |   |
+| 1 |   | 2 |
+|   |   |   |
++---+   +---+
+</pre>
+<p>发信号:</p>
+<pre class="literal-block">
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |                 |
++---+   +---+    +----------------------+
+|   |   |   |    |          3           |
+| 1 |   | 2 |    +----------------------+
+|   |   |   |          |       |
++---+   +---+        +---+   +---+
+                     |   |   |   |
+                     | 4 |   | 5 |
+                     |   |   |   |
+                     +---+   +---+
+</pre>
+<p>发信号后0派生出一个新的master 3, 这个过程会把所有老的fd传给3, 由3来决定把哪些fd关掉. 新开哪些fd, 之后3会派生自己的worker.</p>
+<p>0和3之间传递fd是通过环境变量来做的, 0会向环境变量里面写:</p>
+<pre class="literal-block">
+fds=3:8:72
+</pre>
+<p>这样的, 表示这三个listen fd, 子进程拿到这三个fd, 解析自己的配置, 看需要监听哪些端口, 和这些fd对比(这些fd可以通过getsockaddr获取所监听的端口)</p>
+</div>
+</div>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id15">2&nbsp;&nbsp;&nbsp;关键点</a></h2>
+<p>传递fd:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>像nginx,</dt>
+<dd><ul class="first last simple">
+<li>子进程派生时, 保留父进程fd, 根据情况 关闭 开启新的listen fd.</li>
+<li>但是nginx是master和多worker的进程模型.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>用sendmsg 把fd发送过去.</dt>
+<dd><ul class="first last simple">
+<li>库: <a class="reference external" href="http://www.normalesup.org/~george/comp/libancillary/">http://www.normalesup.org/~george/comp/libancillary/</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id7">
+<h2><a class="toc-backref" href="#id16">3&nbsp;&nbsp;&nbsp;应该做到怎样</a></h2>
+<p>配置:</p>
+<ol class="arabic simple">
+<li>增加pool</li>
+<li>pool属性变化.</li>
+<li>减少pool.</li>
+</ol>
+<ul class="simple">
+<li>思路1: 改造tw为master-worker模式.</li>
+<li>思路2: 派生新进程, 通过环境变量来传递fd.</li>
+</ul>
+</div>
+<div class="section" id="id8">
+<h2><a class="toc-backref" href="#id17">4&nbsp;&nbsp;&nbsp;结论</a></h2>
+<p>按照思路2, 实现: <a class="reference external" href="https://github.com/twitter/twemproxy/pull/257">https://github.com/twitter/twemproxy/pull/257</a></p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

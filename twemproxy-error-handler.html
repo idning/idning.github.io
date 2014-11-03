@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>twemproxy错误处理</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/twemproxy-error-handler.html">2014-07-23 09:37:30</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id4">1&nbsp;&nbsp;&nbsp;如何处理错误</a><ul class="auto-toc">
+<li><a class="reference internal" href="#client-close" id="id5">1.1&nbsp;&nbsp;&nbsp;client_close</a></li>
+<li><a class="reference internal" href="#server-close" id="id6">1.2&nbsp;&nbsp;&nbsp;server_close</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id2" id="id7">2&nbsp;&nbsp;&nbsp;各个回调中应该怎么返回错误和错误检查</a><ul class="auto-toc">
+<li><a class="reference internal" href="#a-client-proxy" id="id8">2.1&nbsp;&nbsp;&nbsp;(a)client-&gt;proxy 路径</a></li>
+<li><a class="reference internal" href="#b-proxy-backend" id="id9">2.2&nbsp;&nbsp;&nbsp;(b)proxy-&gt;backend</a></li>
+<li><a class="reference internal" href="#c-backend-proxy" id="id10">2.3&nbsp;&nbsp;&nbsp;(c)backend-&gt;proxy</a></li>
+<li><a class="reference internal" href="#d-proxy-client" id="id11">2.4&nbsp;&nbsp;&nbsp;(d)proxy-&gt;client</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id3" id="id12">3&nbsp;&nbsp;&nbsp;小结</a><ul class="auto-toc">
+<li><a class="reference internal" href="#conn-err" id="id13">3.1&nbsp;&nbsp;&nbsp;可能设置conn-&gt;err的地方</a></li>
+<li><a class="reference internal" href="#return" id="id14">3.2&nbsp;&nbsp;&nbsp;可能通过return 方式返回错误</a></li>
+<li><a class="reference internal" href="#msg-err" id="id15">3.3&nbsp;&nbsp;&nbsp;可能设置msg-&gt;err的地方</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#what-i-do" id="id16">4&nbsp;&nbsp;&nbsp;what i do</a></li>
+</ul>
+</div>
+<p>错误处理是一个系统里面重要而容易忽略的环节, 我们读代码比写代码简单, 很大程度上就是因为读代码时基本不用考虑错误处理逻辑.</p>
+<p>twemproxy中, 主要的错误有:</p>
+<ul class="simple">
+<li>超内存 需要处理的地方最多</li>
+<li>连接后端错误</li>
+<li>server/cliet连接断掉</li>
+<li>msg 超时</li>
+<li>后端返回错误(E)</li>
+</ul>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id4">1&nbsp;&nbsp;&nbsp;如何处理错误</a></h2>
+<p>两种错误处理:</p>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>关连接:</dt>
+<dd><ul class="first last simple">
+<li>比如内存不够.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>向客户读返回一个 Err response:</dt>
+<dd><ul class="first last simple">
+<li>能识别的逻辑错误, 比如连后端失败.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<p>我们先看conn上的几个回调</p>
+<pre class="literal-block">
+client:
+
+    conn-&gt;recv = msg_recv;
+    conn-&gt;recv_next = req_recv_next;
+    conn-&gt;recv_done = req_recv_done;
+
+    conn-&gt;send = msg_send;
+    conn-&gt;send_next = rsp_send_next;
+    conn-&gt;send_done = rsp_send_done;
+    conn-&gt;close = client_close;
+    conn-&gt;active = client_active;
+
+server:
+
+    conn-&gt;recv = msg_recv;
+    conn-&gt;recv_next = rsp_recv_next;
+    conn-&gt;recv_done = rsp_recv_done;
+
+    conn-&gt;send = msg_send;
+    conn-&gt;send_next = req_send_next;
+    conn-&gt;send_done = req_send_done;
+
+    conn-&gt;close = server_close;
+    conn-&gt;active = server_active;
+</pre>
+<p>最外层, 如果core_recv/core_send返回 非NC_Ok, 或者设置了 <tt class="docutils literal"><span class="pre">conn-&gt;done</span></tt> ,  <tt class="docutils literal"><span class="pre">conn-&gt;err</span></tt> , 直接关连接:</p>
+<pre class="literal-block">
+rstatus_t
+core_core(void *arg, uint32_t events)
+{
+    if (events &amp; EVENT_ERR) {
+        core_error(ctx, conn);
+        return NC_ERROR;
+    }
+
+    if (events &amp; EVENT_READ) {
+        status = core_recv(ctx, conn);
+        if (status != NC_OK || conn-&gt;done || conn-&gt;err) {
+            core_close(ctx, conn);
+            return NC_ERROR;
+        }
+    }
+
+    if (events &amp; EVENT_WRITE) {
+        status = core_send(ctx, conn);
+        if (status != NC_OK || conn-&gt;done || conn-&gt;err) {
+            core_close(ctx, conn);
+            return NC_ERROR;
+        }
+    }
+
+    return NC_OK;
+}
+</pre>
+<p>这里:</p>
+<ul class="simple">
+<li><tt class="docutils literal">core_recv</tt> 就是 <tt class="docutils literal"><span class="pre">conn-&gt;recv</span></tt></li>
+<li><tt class="docutils literal">core_send</tt> 就是 <tt class="docutils literal"><span class="pre">conn-&gt;send</span></tt></li>
+<li>core_close 会调用 <tt class="docutils literal">server_close</tt> 或者 <tt class="docutils literal">client_close</tt></li>
+</ul>
+<div class="section" id="client-close">
+<h3><a class="toc-backref" href="#id5">1.1&nbsp;&nbsp;&nbsp;client_close</a></h3>
+<ol class="arabic">
+<li><p class="first">client_close_stats</p>
+</li>
+<li><p class="first">conn-&gt;unref (暂时不管)</p>
+</li>
+<li><p class="first">如果 conn-&gt;rmsg 存在, 说明连接的读缓冲区有内容未处理,
+把这个rmsg 丢掉</p>
+</li>
+<li><p class="first"><tt class="docutils literal"><span class="pre">conn-&gt;smsg</span></tt>,  <tt class="docutils literal"><span class="pre">conn-&gt;imsg_q</span></tt> 应该是为空的
+conn 用rmsg做读缓冲, 读到了就放到server_conn-&gt;omsg_q 里面, 所以clietn_conn-&gt;smsg没用, client_conn-&gt;imsg_q 也是完全没用
+参考 <a class="reference external" href="|filename|/notes/redis/twemproxy.rst">|filename|/notes/redis/twemproxy.rst</a></p>
+</li>
+<li><p class="first">如果 <tt class="docutils literal"><span class="pre">conn-&gt;omsg_q</span></tt> 里面有消息, 这些消息已经发给后端了, 正在等待后端响应:</p>
+<pre class="literal-block">
+for (msg = TAILQ_FIRST(&amp;conn-&gt;omsg_q); msg != NULL; msg = nmsg) {
+    nmsg = TAILQ_NEXT(msg, c_tqe);
+
+    conn-&gt;dequeue_outq(ctx, conn, msg);
+
+    if (msg-&gt;done) {
+        //日志: 这个消息的rsp被我丢了.
+        req_put(msg);
+    } else {
+        msg-&gt;swallow = 1;
+
+        ASSERT(msg-&gt;request);
+        ASSERT(msg-&gt;peer == NULL); //响应还没回来
+
+        //日志: 这个消息被我标记为 swallow
+        log_debug(LOG_INFO, &quot;close c %d schedule swallow of req %&quot;PRIu64&quot; &quot;
+                  &quot;len %&quot;PRIu32&quot; type %d&quot;, conn-&gt;sd, msg-&gt;id, msg-&gt;mlen,
+                  msg-&gt;type);
+    }
+}
+</pre>
+</li>
+</ol>
+<p>至于 <tt class="docutils literal">swallow</tt>, 英语意思是 <tt class="docutils literal">吞没</tt>, 只有在上面这种情况下, 才会设置swallow标志, 对于这样的消息, 它的rsp回来之后, 就不应该转给client了, 而直接丢掉就行:</p>
+<pre class="literal-block">
+static bool
+rsp_filter(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    pmsg = TAILQ_FIRST(&amp;conn-&gt;omsg_q); //这是req, 至于为什么用 TAILQ_FIRST, 此时还没有设置msg-&gt;peer.
+
+    ASSERT(pmsg-&gt;peer == NULL);
+    ASSERT(pmsg-&gt;request &amp;&amp; !pmsg-&gt;done);
+    if (pmsg-&gt;swallow) {
+        conn-&gt;dequeue_outq(ctx, conn, pmsg);
+        pmsg-&gt;done = 1;
+
+        log_debug(LOG_INFO, &quot;swallow rsp %&quot;PRIu64&quot; len %&quot;PRIu32&quot; of req &quot;
+                  &quot;%&quot;PRIu64&quot; on s %d&quot;, msg-&gt;id, msg-&gt;mlen, pmsg-&gt;id,
+                  conn-&gt;sd);
+
+        rsp_put(msg);
+        req_put(pmsg);
+        return true;
+    }
+}
+</pre>
+<p>另外在server_close的时候, 对server_conn-&gt;imsg_q 和server_conn-&gt;omsg_q, 如果有swallow req, 也直接丢掉(见server_close).</p>
+</div>
+<div class="section" id="server-close">
+<h3><a class="toc-backref" href="#id6">1.2&nbsp;&nbsp;&nbsp;server_close</a></h3>
+<ol class="arabic">
+<li><p class="first">server_close_stats</p>
+</li>
+<li><p class="first">conn-&gt;unref(conn)</p>
+</li>
+<li><p class="first">把server_conn中 的imsg_q 和omsg_q 中的消息 设置</p>
+<pre class="literal-block">
+msg-&gt;done = 1
+msg-&gt;error = 1
+msg-&gt;err = conn-&gt;err;
+</pre>
+</li>
+<li><p class="first">检查当前 c_conn上有没有完成的req, 给返回(因为这里对一些req设置了msg-&gt;done, 所以有可能有完成的req):</p>
+<pre class="literal-block">
+if (raeq_done(c_conn, TAILQ_FIRST(&amp;c_conn-&gt;omsg_q))) {
+    event_add_out(ctx-&gt;evb, msg-&gt;owner);
+}
+</pre>
+</li>
+</ol>
+</div>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id7">2&nbsp;&nbsp;&nbsp;各个回调中应该怎么返回错误和错误检查</a></h2>
+<p>参看这个神图:</p>
+<pre class="literal-block">
+*
+*             Client+             Proxy           Server+
+*                              (nutcracker)
+*                                   .
+*       msg_recv {read event}       .       msg_recv {read event}
+*         +                         .                         +
+*         |                         .                         |
+*         \                         .                         /
+*         req_recv_next             .             rsp_recv_next
+*           +                       .                       +
+*           |                       .                       |       Rsp
+*           req_recv_done           .           rsp_recv_done      &lt;===
+*             +                     .                     +
+*             |                     .                     |
+*    Req      \                     .                     /
+*    ===&gt;     req_filter*           .           *rsp_filter
+*               +                   .                   +
+*               |                   .                   |
+*               \                   .                   /
+*               req_forward-//  (a) . (c)  \\-rsp_forward
+*                                   .
+*                                   .
+*       msg_send {write event}      .      msg_send {write event}
+*         +                         .                         +
+*         |                         .                         |
+*    Rsp' \                         .                         /     Req'
+*   &lt;===  rsp_send_next             .             req_send_next     ===&gt;
+*           +                       .                       +
+*           |                       .                       |
+*           \                       .                       /
+*           rsp_send_done-//    (d) . (b)    //-req_send_done
+*
+*
+* (a) -&gt; (b) -&gt; (c) -&gt; (d) is the normal flow of transaction consisting
+* of a single request response, where (a) and (b) handle request from
+* client, while (c) and (d) handle the corresponding response from the
+* server.
+</pre>
+<div class="section" id="a-client-proxy">
+<h3><a class="toc-backref" href="#id8">2.1&nbsp;&nbsp;&nbsp;(a)client-&gt;proxy 路径</a></h3>
+<p>我们看core_recv 的调用链, 可能从什么地方返回这个错误码.</p>
+<ul>
+<li><p class="first">core_recv()</p>
+</li>
+<li><p class="first">conn-&gt;recv(), 即msg_recv</p>
+</li>
+<li><dl class="first docutils">
+<dt>msg_recv_chain(),</dt>
+<dd><ul class="first last simple">
+<li>无内存: return NC_ENOMEM;</li>
+<li>读返回EAGAIN: return NC_OK,</li>
+<li>读出错: return NC_ERROR</li>
+<li>返回msg_parse()</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>msg_parse(), 调用msg-&gt;parser(msg),</dt>
+<dd><ul class="first last">
+<li><p class="first">如果解析到一条消息(MSG_PARSE_OK), 返回msg_parsed()</p>
+</li>
+<li><dl class="first docutils">
+<dt>如果需要REPAIR, 返回msg_repair()</dt>
+<dd><ul class="first last simple">
+<li>msg_repair() 就是简单split一下, 可能返回NC_ENOMEM.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">如果parser出错, 函数里面同时设置 conn-&gt;err, 并且返回 NC_ERROR</p>
+<pre class="literal-block">
+static rstatus_t
+msg_parse(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    msg-&gt;parser(msg);
+
+    switch (msg-&gt;result) {
+    case MSG_PARSE_OK:
+        status = msg_parsed(ctx, conn, msg);
+        break;
+
+    case MSG_PARSE_REPAIR:
+        status = msg_repair(ctx, conn, msg);
+        break;
+
+    case MSG_PARSE_AGAIN:
+        status = NC_OK;
+        break;
+
+    default:
+        status = NC_ERROR;
+        conn-&gt;err = errno;
+        break;
+    }
+
+    return conn-&gt;err != 0 ? NC_ERROR : status;
+}
+</pre>
+</li>
+<li><p class="first">所以 <tt class="docutils literal"><span class="pre">msg-&gt;parser()</span></tt> 函数里面, 如果要返回错误, 是通过msg-&gt;result设置为一个错误码做的:</p>
+<pre class="literal-block">
+r-&gt;result = MSG_PARSE_ERROR;
+</pre>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">接下来的重点是 <tt class="docutils literal">msg_parsed()</tt> , 他的返回值也会直接返回到core_core:</p>
+<pre class="literal-block">
+ static rstatus_t
+ msg_parsed(struct context *ctx, struct conn *conn, struct msg *msg)
+ {
+     conn-&gt;recv_done(ctx, conn, msg, nmsg);
+
+     return NC_OK;
+ }
+
+这里挺重要, 这个函数虽然调用了conn-&gt;recv_done, 但是直接返回NC_OK, 而没有管conn-&gt;recv_done的返回值, 实际上, conn-&gt;recv_done() 没有返回值::
+
+ conn_recv_done_t   recv_done;     /* read done handler */
+ typedef void (*conn_recv_done_t)(struct context *, struct conn *, struct msg *, struct msg *);
+</pre>
+</li>
+<li><p class="first"><strong>到这里return链断了, 下面只能通过设置conn-&gt;err来表示错误</strong> .</p>
+</li>
+<li><dl class="first docutils">
+<dt>req_recv_done调用:</dt>
+<dd><ul class="first last simple">
+<li>req_forward (同样是一个void函数)   TODO: 这里在fragement里面, 我需要处理错误, 处理方法是设置c_conn-&gt;err, 这还不好处理..</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">req_forward 如果出错,  是通过 <tt class="docutils literal">req_forward_error</tt> 来告诉客户端的:</p>
+<pre class="literal-block">
+static void
+req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
+{
+    s_conn = server_pool_conn(ctx, c_conn-&gt;owner, key, keylen);
+    if (s_conn == NULL) {
+        req_forward_error(ctx, c_conn, msg);                //这里并不会设置c_conn-&gt;err, 这时如果设置c_conn-&gt;err, 就会直接关连接,
+                                                            //这里的处理方法是: 设置msg-&gt;err, 于是后面会构造一个ERR rsp返回给客户端, 这并不算一个连接错误.
+        return;
+    }
+
+    c_conn-&gt;enqueue_outq(ctx, c_conn, msg);                 //简单队列操作.
+    s_conn-&gt;enqueue_inq(ctx, s_conn, msg);
+
+    if (TAILQ_EMPTY(&amp;s_conn-&gt;imsg_q)) {
+        status = event_add_out(ctx-&gt;evb, s_conn);
+        if (status != NC_OK) {
+            req_forward_error(ctx, c_conn, msg);            //这里会告诉客户端出错.
+            s_conn-&gt;err = errno;                            //这里设置 s_conn-&gt;err, 关掉后端连接(什么时候处理 这里的s_conn-&gt;err????? 还有机会有事件么?)
+            return;
+        }
+    }
+</pre>
+</li>
+<li><p class="first">req_forward_error 需要标记msg-&gt;err, 此时消息未被转发到后端, 此时为了告诉客户端出错, 需要:</p>
+<blockquote>
+<ol class="arabic simple">
+<li>在c_conn上开始 ev_out 事件</li>
+<li>可写时, 构造一个ERR rsp返回给客户端.</li>
+</ol>
+</blockquote>
+<p>具体过程如下:</p>
+<pre class="literal-block">
+static void
+req_forward_error(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    rstatus_t status;
+
+    ASSERT(conn-&gt;client &amp;&amp; !conn-&gt;proxy);
+
+    msg-&gt;done = 1;
+    msg-&gt;error = 1;
+    msg-&gt;err = errno;  //(如果内存分配失败, errno会被设为12, 对应错误消息'Cannot allocate memory')
+
+    if (req_done(conn, TAILQ_FIRST(&amp;conn-&gt;omsg_q))) {
+        status = event_add_out(ctx-&gt;evb, conn);
+        if (status != NC_OK) {
+            conn-&gt;err = errno;
+        }
+    }
+}
+</pre>
+</li>
+</ul>
+<p>到这里, 这个cliet-&gt;proxy 的过程所有的出错路径都排查了.</p>
+</div>
+<div class="section" id="b-proxy-backend">
+<h3><a class="toc-backref" href="#id9">2.2&nbsp;&nbsp;&nbsp;(b)proxy-&gt;backend</a></h3>
+</div>
+<div class="section" id="c-backend-proxy">
+<h3><a class="toc-backref" href="#id10">2.3&nbsp;&nbsp;&nbsp;(c)backend-&gt;proxy</a></h3>
+<p>这是另一个recv路径, 前半部分和(a)路径基本一样:</p>
+<ul>
+<li><p class="first">core_recv()</p>
+</li>
+<li><p class="first">conn-&gt;recv(), 即msg_recv</p>
+</li>
+<li><p class="first">msg_recv_chain(),</p>
+</li>
+<li><p class="first">msg_parse(), 调用msg-&gt;parser(msg),</p>
+</li>
+<li><p class="first">msg_parsed()</p>
+</li>
+<li><p class="first"><strong>到这里return链断了, 下面只能通过设置conn-&gt;err来表示错误</strong> .</p>
+</li>
+<li><p class="first">rsp_recv_done() 和rsp_forward():</p>
+<pre class="literal-block">
+static void
+rsp_forward(struct context *ctx, struct conn *s_conn, struct msg *msg)
+{
+    pmsg-&gt;peer = msg;
+    msg-&gt;peer = pmsg;
+
+    msg-&gt;pre_coalesce(msg);                                         //void函数.
+
+    c_conn = pmsg-&gt;owner;
+    ASSERT(c_conn-&gt;client &amp;&amp; !c_conn-&gt;proxy);
+
+    if (req_done(c_conn, TAILQ_FIRST(&amp;c_conn-&gt;omsg_q))) {           //这里调用req_done.
+        status = event_add_out(ctx-&gt;evb, c_conn);
+        if (status != NC_OK) {
+            c_conn-&gt;err = errno;
+        }
+    }
+}
+</pre>
+</li>
+<li><p class="first">这里rsp_forward比req_forward复杂, req_forward只是简单的dequeue_outq, enqueue_inq, event_add_out, 并没有太多的寄回设置conn-&gt;err.</p>
+<p>rsp_forward则可能在pre_coalesce(), req_done(), post_coalesce() 函数里面设置.</p>
+</li>
+<li><p class="first">pre_coalesce():</p>
+<pre class="literal-block">
+void
+redis_pre_coalesce(struct msg *r)
+{
+    pr-&gt;frag_owner-&gt;nfrag_done++;
+
+    switch (r-&gt;type) {
+    case MSG_RSP_REDIS_INTEGER:
+        xxx;
+    case MSG_RSP_REDIS_MULTIBULK:
+        xxx;
+    case MSG_RSP_REDIS_STATUS:
+        xxx;
+    default:
+        mbuf = STAILQ_FIRST(&amp;r-&gt;mhdr);
+        log_hexdump(LOG_ERR, mbuf-&gt;pos, mbuf_length(mbuf), &quot;rsp fragment &quot;
+                    &quot;with unknown type %d&quot;, r-&gt;type);
+        pr-&gt;error = 1;
+        pr-&gt;err = EINVAL;       //这里都只是设置了msg-&gt;err.
+        break;
+    }
+}
+</pre>
+</li>
+<li><p class="first">在mget-improve之前, req_done() post_coalesce 都不会做什么设置.
+TODO: 这里的post_coalesce我需要处理错误, 处理方法应该类似pre_coalesce, 设置msg-&gt;error, msg-&gt;err</p>
+</li>
+</ul>
+</div>
+<div class="section" id="d-proxy-client">
+<h3><a class="toc-backref" href="#id11">2.4&nbsp;&nbsp;&nbsp;(d)proxy-&gt;client</a></h3>
+<p>接(c), rsp_forward 会在c_conn上开启out事件:</p>
+<pre class="literal-block">
+status = event_add_out(ctx-&gt;evb, c_conn);
+</pre>
+<p>当c_conn可写时, 会触发 msg_send-&gt;rsp_send_next-&gt;rsp_send_done 路径.</p>
+<p>这里前几步和 (a) 也一样, 出错了直接通过返回值返回:</p>
+<ul>
+<li><p class="first">msg_send 可能调用msg_send_chain 和rsp_send_next.</p>
+</li>
+<li><p class="first">rsp_send_next:</p>
+<pre class="literal-block">
+if (req_error(conn, pmsg)) { //这里也不会设置conn-&gt;err. 所以如果在msg层没有内存, 也会返回一个错误给客户端. 但是如果在rsp_make_error的时候再次没内存, 就只能关闭连接了.
+    msg = rsp_make_error(ctx, conn, pmsg);
+}
+</pre>
+</li>
+<li><p class="first">msg_send_chain 可能通过返回值告诉最上层发生了错误 (直接调用conn_sendv):</p>
+<pre class="literal-block">
+static rstatus_t
+msg_send_chain(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    conn-&gt;smsg = NULL;
+    n = conn_sendv(conn, &amp;sendv, nsend);
+
+    conn-&gt;send_done(ctx, conn, msg);
+
+    if (n &gt;= 0) {
+        return NC_OK;
+    }
+    return (n == NC_EAGAIN) ? NC_OK : NC_ERROR;
+}
+- 这里可能调用rsp_send_done, 单此时已经不能设置什么错误了
+</pre>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id12">3&nbsp;&nbsp;&nbsp;小结</a></h2>
+<p>因为总的能逻辑就是 <tt class="docutils literal">core_core</tt> 里面的这段逻辑:</p>
+<pre class="literal-block">
+status = core_recv(ctx, conn);
+if (status != NC_OK || conn-&gt;done || conn-&gt;err) {
+    core_close(ctx, conn);
+    return NC_ERROR;
+}
+</pre>
+<p>在处理请求中, 比如读msg的时候, 发现没有内存了, 或者解析出错了, 有两个方法返回错误:</p>
+<ul class="simple">
+<li>通过返回值在core_recv 返回一个非NC_OK值.</li>
+<li>设置conn-&gt;err 即可,</li>
+</ul>
+<p>如果在forward到后端时, 后端连接失败, 则可以通过 <tt class="docutils literal">req_forward_error</tt> 函数, 设置 msg-&gt;err,
+这时在 <tt class="docutils literal">rsp_send_next</tt> 中会用rsp_make_error生成一个err response返回给客户端.</p>
+<ul class="simple">
+<li>我们在forward时遇到内存不够, 调用req_forward_error就够了.</li>
+<li>收到response时遇到内存不够, 手动设置 msg-&gt;err就行.</li>
+</ul>
+<div class="section" id="conn-err">
+<h3><a class="toc-backref" href="#id13">3.1&nbsp;&nbsp;&nbsp;可能设置conn-&gt;err的地方</a></h3>
+<ul class="simple">
+<li>parse失败.</li>
+<li>调nc_read() nc_writev(), server_connect() 出错.</li>
+<li>调用event_add_xx(), event_del_xx()</li>
+<li>req_get()/rsp_get() 调用msg_get() 无内存返回NULL</li>
+<li>rsp_make_error 无内存返回NULL</li>
+<li>发生timeout</li>
+</ul>
+</div>
+<div class="section" id="return">
+<h3><a class="toc-backref" href="#id14">3.2&nbsp;&nbsp;&nbsp;可能通过return 方式返回错误</a></h3>
+<pre class="literal-block">
+static rstatus_t
+msg_parsed(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    ...
+    nmsg = msg_get(msg-&gt;owner, msg-&gt;request, conn-&gt;redis);
+    if (nmsg == NULL) {
+        mbuf_put(nbuf);
+        return NC_ENOMEM;
+    }
+</pre>
+</div>
+<div class="section" id="msg-err">
+<h3><a class="toc-backref" href="#id15">3.3&nbsp;&nbsp;&nbsp;可能设置msg-&gt;err的地方</a></h3>
+<pre class="literal-block">
+msg-&gt;ferror         #是否有frag错误.
+msg-&gt;error          #错误标志, 0/1
+msg-&gt;err = errno;   #errno.
+</pre>
+<p>比如memcache_pre_coalesce:</p>
+<pre class="literal-block">
+void
+redis_pre_coalesce(struct msg *r)
+{
+    pr-&gt;frag_owner-&gt;nfrag_done++;
+
+    switch (r-&gt;type) {
+    case MSG_RSP_REDIS_INTEGER:
+        xxx;
+    case MSG_RSP_REDIS_MULTIBULK:
+    if (pr-&gt;first_fragment) {
+        mbuf = mbuf_get();
+        if (mbuf == NULL) {
+            pr-&gt;error = 1;
+            pr-&gt;err = EINVAL;
+            return;
+        }
+        STAILQ_INSERT_HEAD(&amp;r-&gt;mhdr, mbuf, next);
+    }
+    case MSG_RSP_REDIS_STATUS:
+        xxx;
+    default:
+        mbuf = STAILQ_FIRST(&amp;r-&gt;mhdr);
+        log_hexdump(LOG_ERR, mbuf-&gt;pos, mbuf_length(mbuf), &quot;rsp fragment &quot;
+                    &quot;with unknown type %d&quot;, r-&gt;type);
+        pr-&gt;error = 1;
+        pr-&gt;err = EINVAL;       //这里都只是设置了msg-&gt;err.
+        break;
+    }
+}
+</pre>
+<pre class="literal-block">
+void
+redis_pre_coalesce(struct msg *r)
+{
+    if (pr-&gt;first_fragment) {
+        mbuf = mbuf_get();
+        if (mbuf == NULL) {
+            pr-&gt;error = 1;
+            pr-&gt;err = EINVAL;
+            return;
+        }
+        STAILQ_INSERT_HEAD(&amp;r-&gt;mhdr, mbuf, next);
+    }
+    ...
+}
+</pre>
+</div>
+</div>
+<div class="section" id="what-i-do">
+<h2><a class="toc-backref" href="#id16">4&nbsp;&nbsp;&nbsp;what i do</a></h2>
+<p>从前的msg_fragment是在msg_parsed里面, 还能通过return 返回错误.
+因为作者认为在msg_parsed 之后, 消息必然在recv_done里面传给后端了, 不会出错了. 所以recv_done等函数都是void函数:</p>
+<pre class="literal-block">
+static rstatus_t
+msg_parsed(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    conn-&gt;recv_done(ctx, conn, msg, nmsg);
+
+    return NC_OK;
+}
+</pre>
+<p>TODO 3: 我的fragement也得放到这里的msg_parsed里面, 否则的话, 就得修改 recv_done的返回值了, 这个动作更大些.</p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

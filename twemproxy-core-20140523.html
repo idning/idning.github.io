@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>twemproxy-core-20140523</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/twemproxy-core-20140523.html">2014-05-25 12:56:48</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#what-happend" id="id1">1&nbsp;&nbsp;&nbsp;what happend</a></li>
+<li><a class="reference internal" href="#repetition" id="id2">2&nbsp;&nbsp;&nbsp;Repetition</a></li>
+<li><a class="reference internal" href="#explain" id="id3">3&nbsp;&nbsp;&nbsp;explain</a></li>
+<li><a class="reference internal" href="#add-a-testcase" id="id4">4&nbsp;&nbsp;&nbsp;add-a-testcase</a></li>
+<li><a class="reference internal" href="#fix" id="id5">5&nbsp;&nbsp;&nbsp;fix</a></li>
+<li><a class="reference internal" href="#more-bugs" id="id6">6&nbsp;&nbsp;&nbsp;more bugs</a></li>
+</ul>
+</div>
+<div class="section" id="what-happend">
+<h2><a class="toc-backref" href="#id1">1&nbsp;&nbsp;&nbsp;what happend</a></h2>
+<p>today we got a core of twemproxy:</p>
+<pre class="literal-block">
+$ gdb -c core.14420 ./bin/nutcracker
+
+(gdb) bt
+#0  0x000000302af2e2ed in raise () from /lib64/tls/libc.so.6
+#1  0x000000302af2fa3e in abort () from /lib64/tls/libc.so.6
+#2  0x0000000000419c82 in nc_assert (cond=0x444dc0 &quot;!TAILQ_EMPTY(&amp;send_msgq) &amp;&amp; nsend != 0&quot;, file=0x444aa8 &quot;nc_message.c&quot;, line=745, panic=1) at nc_util.c:308
+#3  0x000000000040d0d6 in msg_send_chain (ctx=0x553090, conn=0x55b380, msg=0x0) at nc_message.c:745
+#4  0x000000000040d568 in msg_send (ctx=0x553090, conn=0x55b380) at nc_message.c:820
+#5  0x00000000004059af in core_send (ctx=0x553090, conn=0x55b380) at nc_core.c:173
+#6  0x0000000000405ffe in core_core (arg=0x55b380, events=65280) at nc_core.c:301
+#7  0x0000000000429297 in event_wait (evb=0x5652e0, timeout=389) at nc_epoll.c:269
+#8  0x000000000040606f in core_loop (ctx=0x553090) at nc_core.c:316
+#9  0x000000000041b109 in nc_run (nci=0x7fbfffea80) at nc.c:530
+#10 0x000000000041b20d in main (argc=14, argv=0x7fbfffecc8) at nc.c:579
+(gdb) f 3
+#3  0x000000000040d0d6 in msg_send_chain (ctx=0x553090, conn=0x55b380, msg=0x0) at nc_message.c:745
+745         ASSERT(!TAILQ_EMPTY(&amp;send_msgq) &amp;&amp; nsend != 0);
+(gdb) l
+740             if (msg == NULL) {
+741                 break;
+742             }
+743         }
+744
+745         ASSERT(!TAILQ_EMPTY(&amp;send_msgq) &amp;&amp; nsend != 0);
+746
+747         conn-&gt;smsg = NULL;
+748
+749         n = conn_sendv(conn, &amp;sendv, nsend);
+</pre>
+<p>it is caused by this <tt class="docutils literal">ASSERT</tt> at nc_message.c:745,</p>
+<p>this core is not always raise when we do the same request again,</p>
+<p>if we use -v 9 to debug, it never raise.</p>
+</div>
+<div class="section" id="repetition">
+<h2><a class="toc-backref" href="#id2">2&nbsp;&nbsp;&nbsp;Repetition</a></h2>
+<p>use gdb, we found that the msg we want to send is:</p>
+<pre class="literal-block">
+(gdb) p * (send_msgq.tqh_first )
+$6 = {c_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {lastfile = 0x444e28 &quot;nc_request.c&quot;, lastline = 291, prevfile = 0x444e28 &quot;nc_request.c&quot;, prevline = 270}}, s_tqe = {tqe_next = 0x0, tqe_prev = 0x0,
+    trace = {lastfile = 0x444e28 &quot;nc_request.c&quot;, lastline = 302, prevfile = 0x444e28 &quot;nc_request.c&quot;, prevline = 279}}, m_tqe = {tqe_next = 0x0, tqe_prev = 0x7fbfffe8c0, trace = {
+      lastfile = 0x444aa8 &quot;nc_message.c&quot;, lastline = 712, prevfile = 0x444aa8 &quot;nc_message.c&quot;, prevline = 196}}, id = 6515, peer = 0x810cc0, owner = 0x55ae00, tmo_rbe = {left = 0x0, right = 0x0,
+    parent = 0x0, key = 0, data = 0x0, color = 0 '\0'}, mhdr = {stqh_first = 0x82ecc0, stqh_last = 0x82ecc8}, mlen = 0, state = 0,
+  pos = 0x82eaf4 &quot;:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n&quot;,
+  token = 0x0, parser = 0x42713b &lt;redis_parse_rsp&gt;, result = MSG_PARSE_OK, pre_splitcopy = 0x427e1d &lt;redis_pre_splitcopy&gt;, post_splitcopy = 0x427f8a &lt;redis_post_splitcopy&gt;,
+  pre_coalesce = 0x42816a &lt;redis_pre_coalesce&gt;, post_coalesce = 0x428557 &lt;redis_post_coalesce&gt;, type = MSG_RSP_REDIS_INTEGER, key_start = 0x0, key_end = 0x0, vlen = 0, end = 0x0, narg_start = 0x0,
+  narg_end = 0x0, narg = 0, rnarg = 0, rlen = 0, integer = 0, frag_owner = 0x0, nfrag = 0, frag_id = 0, err = 0, error = 0, ferror = 0, request = 0, quit = 0, noreply = 0, done = 0, fdone = 0,
+  first_fragment = 0, last_fragment = 0, swallow = 0, redis = 1}
+</pre>
+<p>this is the only msg( and the last msg) in send_msgq, <tt class="docutils literal">mlen=0</tt> ,</p>
+<p>and it's peer request is a fragment of a delete cmd:</p>
+<pre class="literal-block">
+(gdb) p * (send_msgq.tqh_first -&gt; peer )
+$5 = {c_tqe = {tqe_next = 0x75e140, tqe_prev = 0x55b400, trace = {lastfile = 0x444e28 &quot;nc_request.c&quot;, lastline = 270, prevfile = 0x0, prevline = 0}}, s_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {
+      lastfile = 0x444e28 &quot;nc_request.c&quot;, lastline = 302, prevfile = 0x444e28 &quot;nc_request.c&quot;, prevline = 279}}, m_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {lastfile = 0x444aa8 &quot;nc_message.c&quot;,
+      lastline = 758, prevfile = 0x444aa8 &quot;nc_message.c&quot;, prevline = 712}}, id = 4515, peer = 0x5fe2c0, owner = 0x55b380, tmo_rbe = {left = 0x0, right = 0x0, parent = 0x0, key = 0, data = 0x0,
+    color = 0 '\0'}, mhdr = {stqh_first = 0x6c1090, stqh_last = 0x6c1098}, mlen = 47, state = 0,
+  pos = 0x6c0eef &quot;*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_393307809209&quot;..., token = 0x0, parser = 0x421279 &lt;redis_parse_req&gt;, result = MSG_PARSE_OK, pre_splitcopy = 0x427e1d &lt;redis_pre_splitcopy&gt;,
+  post_splitcopy = 0x427f8a &lt;redis_post_splitcopy&gt;, pre_coalesce = 0x42816a &lt;redis_pre_coalesce&gt;, post_coalesce = 0x428557 &lt;redis_post_coalesce&gt;, type = MSG_REQ_REDIS_DEL,
+  key_start = 0x6c0ed2 &quot;rrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nD&quot;...,
+  key_end = 0x6c0eed &quot;\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092&quot;..., vlen = 0, end = 0x0,
+  narg_start = 0x6c0ec0 &quot;*2\r\n$3\r\ndel\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_566362775949&quot;...,
+  narg_end = 0x6c0ec2 &quot;\r\n$3\r\ndel\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_56636277594915&quot;..., narg = 2, rnarg = 0, rlen = 0, integer = 0, frag_owner = 0x75e4f0, nfrag = 0, frag_id = 1256, err = 0, error = 0, ferror = 0, request = 1, quit = 0,
+  noreply = 0, done = 1, fdone = 1, first_fragment = 0, last_fragment = 1, swallow = 0, redis = 1}
+</pre>
+<p>the orig msg is:</p>
+<pre class="literal-block">
+(gdb) p * (send_msgq.tqh_first -&gt; peer -&gt;frag_owner )
+$23 = {c_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {lastfile = 0x444e28 &quot;nc_request.c&quot;, lastline = 291, prevfile = 0x444e28 &quot;nc_request.c&quot;, prevline = 270}}, s_tqe = {tqe_next = 0x0, tqe_prev = 0x0,
+    trace = {lastfile = 0x444e28 &quot;nc_request.c&quot;, lastline = 302, prevfile = 0x444e28 &quot;nc_request.c&quot;, prevline = 279}}, m_tqe = {tqe_next = 0x5f9740, tqe_prev = 0x551f80, trace = {
+      lastfile = 0x444aa8 &quot;nc_message.c&quot;, lastline = 360, prevfile = 0x444aa8 &quot;nc_message.c&quot;, prevline = 758}}, id = 4514, peer = 0x0, owner = 0x55b380, tmo_rbe = {left = 0x0, right = 0x0, parent = 0x0,
+    key = 0, data = 0x0, color = 1 '\001'}, mhdr = {stqh_first = 0x0, stqh_last = 0x75e5c8}, mlen = 34, state = 27,
+  pos = 0x74f15f &quot;$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n&quot;..., token = 0x0, parser = 0x421279 &lt;redis_parse_req&gt;, result = MSG_PARSE_FRAGMENT, pre_splitcopy = 0x427e1d &lt;redis_pre_splitcopy&gt;,
+  post_splitcopy = 0x427f8a &lt;redis_post_splitcopy&gt;, pre_coalesce = 0x42816a &lt;redis_pre_coalesce&gt;, post_coalesce = 0x428557 &lt;redis_post_coalesce&gt;, type = MSG_REQ_REDIS_DEL,
+  key_start = 0x74f142 &quot;rrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\ncoun&quot;...,
+  key_end = 0x74f15d &quot;\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3&quot;..., vlen = 0, end = 0x0,
+  narg_start = 0x74ed80 &quot;*2\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r&quot;,
+  narg_end = 0x74ed82 &quot;\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r&quot;, narg = 3, rnarg = 1, rlen = 0, integer = 0, frag_owner = 0x75e4f0,
+  nfrag = 2, frag_id = 1256, err = 0, error = 0, ferror = 0, request = 1, quit = 0, noreply = 0, done = 1, fdone = 1, first_fragment = 1, last_fragment = 0, swallow = 0, redis = 1}
+</pre>
+<p>we found that it's a DEL cmd with narg=3. the orig cmd is:</p>
+<pre class="literal-block">
+DEL rrr_kkk_3933078092091789232 rrr_kkk_5663627759491506624
+</pre>
+<p>so we try to repetition this bug with lot's of MULTI-DEL.</p>
+</div>
+<div class="section" id="explain">
+<h2><a class="toc-backref" href="#id3">3&nbsp;&nbsp;&nbsp;explain</a></h2>
+<p>a MULTI-DEL cmd will split into many <tt class="docutils literal">DEL</tt> in nutcracker,</p>
+<p>response will coalesce. (all fragment except the first one will be rewrite to empty msg), following pic show the split and coalesce of msg:</p>
+<img alt="" src="/imgs/twemproxy-core-201405-001.png" />
+<p>ok, let's check this code:</p>
+<pre class="literal-block">
+static rstatus_t
+msg_send_chain(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    ...
+    TAILQ_INIT(&amp;send_msgq);
+    array_set(&amp;sendv, iov, sizeof(iov[0]), NC_IOV_MAX);
+    nsend = 0;
+    for (;;) {
+        ASSERT(conn-&gt;smsg == msg);
+
+        TAILQ_INSERT_TAIL(&amp;send_msgq, msg, m_tqe);
+
+        for (mbuf = STAILQ_FIRST(&amp;msg-&gt;mhdr);
+             mbuf != NULL &amp;&amp; array_n(&amp;sendv) &lt; NC_IOV_MAX &amp;&amp; nsend &lt; limit;
+             mbuf = nbuf) {
+            nbuf = STAILQ_NEXT(mbuf, next);
+
+            if (mbuf_empty(mbuf)) {
+                continue;
+            }
+
+            mlen = mbuf_length(mbuf);
+            if ((nsend + mlen) &gt; limit) {
+                mlen = limit - nsend;
+            }
+
+            ciov = array_push(&amp;sendv);
+            ciov-&gt;iov_base = mbuf-&gt;pos;
+            ciov-&gt;iov_len = mlen;
+
+            nsend += mlen;
+        }
+
+        if (array_n(&amp;sendv) &gt;= NC_IOV_MAX || nsend &gt;= limit) {
+            break;
+        }
+
+        msg = conn-&gt;send_next(ctx, conn);
+        if (msg == NULL) {
+            break;
+        }
+    }
+
+    //log_debug(LOG_VVERB, &quot;conn-&gt;client: %d, len_sendv: %d nsend: %d&quot;, conn-&gt;client, array_n(&amp;sendv), nsend);
+    ASSERT(!TAILQ_EMPTY(&amp;send_msgq) &amp;&amp; nsend != 0);
+    conn-&gt;smsg = NULL;
+    n = conn_sendv(conn, &amp;sendv, nsend);
+</pre>
+<p><tt class="docutils literal">conn_send</tt> send no more than <tt class="docutils literal">NC_IOV_MAX(128)</tt> pieces in this function,</p>
+<p>if the first fragment of MULTI-DEL response is send on last batch. and this is the last msg in send queue, the next call of <tt class="docutils literal">msg_send_chain</tt> will got <tt class="docutils literal">nsend == 0</tt>:</p>
+<p>following img show such a case:</p>
+<ol class="arabic simple">
+<li>mget on 126 keys</li>
+<li>a mutli-del cmd</li>
+</ol>
+<img alt="" src="/imgs/twemproxy-core-201405-002.png" />
+</div>
+<div class="section" id="add-a-testcase">
+<h2><a class="toc-backref" href="#id4">4&nbsp;&nbsp;&nbsp;add-a-testcase</a></h2>
+<p>the test case with <a class="reference external" href="https://github.com/idning/test-twemproxy">test-twemproxy</a>:</p>
+<pre class="literal-block">
+def test_multi_delete_20140525():
+    conn = redis.Redis('127.0.0.5', 4100)
+    cnt = 126
+    keys = ['key-%s'%i for i in range(cnt)]
+    pipe = conn.pipeline(transaction=False)
+    pipe.mget(keys)
+    pipe.delete(*keys)
+    print pipe.execute()
+</pre>
+<p>see: <a class="reference external" href="https://github.com/idning/test-twemproxy/blob/master/test_redis/test_del.py#L56-L63">https://github.com/idning/test-twemproxy/blob/master/test_redis/test_del.py#L56-L63</a></p>
+</div>
+<div class="section" id="fix">
+<h2><a class="toc-backref" href="#id5">5&nbsp;&nbsp;&nbsp;fix</a></h2>
+<p>we do not need this comment here:</p>
+<pre class="literal-block">
+ASSERT(!TAILQ_EMPTY(&amp;send_msgq) &amp;&amp; nsend != 0);
+</pre>
+<p>and we should eat all the fragment of MULTI-DEL in <tt class="docutils literal">msg_send_chain</tt></p>
+</div>
+<div class="section" id="more-bugs">
+<h2><a class="toc-backref" href="#id6">6&nbsp;&nbsp;&nbsp;more bugs</a></h2>
+<p>current master (8a4f5c0)can not pass following cases:</p>
+<pre class="literal-block">
+test_redis.test_mget_mset.test_mget_special_key ... ERROR
+test_redis.test_mget_mset.test_mget_special_key_2 ... ERROR
+</pre>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

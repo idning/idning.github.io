@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>twemproxy-deadlock-on-signal_handler</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/twemproxy-deadlock-on-signal_handler.html">2014-06-14 05:54:42</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id7">1&nbsp;&nbsp;&nbsp;现象</a></li>
+<li><a class="reference internal" href="#localtime" id="id8">2&nbsp;&nbsp;&nbsp;localtime() 的实现</a><ul class="auto-toc">
+<li><a class="reference internal" href="#tz-convert-is-not-signal-safe" id="id9">2.1&nbsp;&nbsp;&nbsp;__tz_convert is not signal-safe</a></li>
+<li><a class="reference internal" href="#free-signal-safe" id="id10">2.2&nbsp;&nbsp;&nbsp;类似的, free()也不是signal-safe</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id2" id="id11">3&nbsp;&nbsp;&nbsp;模拟复现</a></li>
+<li><a class="reference internal" href="#id3" id="id12">4&nbsp;&nbsp;&nbsp;修复</a></li>
+<li><a class="reference internal" href="#signal-safe-thread-safe" id="id13">5&nbsp;&nbsp;&nbsp;signal-safe/thread safe/可重入</a><ul class="auto-toc">
+<li><a class="reference internal" href="#sprintfasync-signal-safe" id="id14">5.1&nbsp;&nbsp;&nbsp;sprintf不是async-signal-safe</a></li>
+<li><a class="reference internal" href="#async-signal-safe" id="id15">5.2&nbsp;&nbsp;&nbsp;确定一个函数是否 async-signal-safe</a></li>
+<li><a class="reference internal" href="#id4" id="id16">5.3&nbsp;&nbsp;&nbsp;其它系统中</a></li>
+<li><a class="reference internal" href="#as-safe" id="id17">5.4&nbsp;&nbsp;&nbsp;这些函数是AS-SAFE的</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id5" id="id18">6&nbsp;&nbsp;&nbsp;其它</a><ul class="auto-toc">
+<li><a class="reference internal" href="#nginx" id="id19">6.1&nbsp;&nbsp;&nbsp;nginx为什么没有这个问题</a></li>
+<li><a class="reference internal" href="#mysql" id="id20">6.2&nbsp;&nbsp;&nbsp;mysql</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id6" id="id21">7&nbsp;&nbsp;&nbsp;小结</a></li>
+<li><a class="reference internal" href="#reference" id="id22">8&nbsp;&nbsp;&nbsp;Reference</a></li>
+</ul>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id7">1&nbsp;&nbsp;&nbsp;现象</a></h2>
+<p>我们的 <a class="reference external" href="https://github.com/idning/redis-mgr">redis-mgr</a> 会默认对集群中的第一个twemproxy使用 <tt class="docutils literal"><span class="pre">-v</span> 5</tt> 打印 <tt class="docutils literal">notice</tt> 级别的日志, 切日志使用的是, <tt class="docutils literal">kill <span class="pre">-HUP</span></tt>.</p>
+<p>线上发现两次切日志之后twemproxy停止响应, gdb:</p>
+<pre class="literal-block">
+Loaded symbols for /lib64/ld-linux-x86-64.so.2
+__lll_lock_wait_private () at ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S:97
+97      ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S: No such file or directory.
+        in ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S
+(gdb) bt
+#0  __lll_lock_wait_private () at ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S:97
+#1  0x00007f0393918b2d in _L_lock_1934 () at tzset.c:138
+#2  0x00007f03939188e7 in __tz_convert (timer=0x7f0393bfd9f4, use_localtime=1, tp=0x7f0393c00360) at tzset.c:619
+#3  0x0000000000410fba in _log (file=0x431036 &quot;nc_signal.c&quot;, line=122, panic=0, fmt=0x43101c &quot;signal %d (%s) received%s&quot;) at nc_log.c:140
+#4  0x000000000041016c in signal_handler (signo=&lt;value optimized out&gt;) at nc_signal.c:122
+#5  &lt;signal handler called&gt;
+
+#6  0x00007f03939552d5 in *__GI___xstat (vers=&lt;value optimized out&gt;, name=&lt;value optimized out&gt;, buf=0x7fff2a266fc0) at ../sysdeps/unix/sysv/linux/wordsize-64/xstat.c:38
+#7  0x00007f03939193f0 in __tzfile_read (file=0x7f03939c5b7c &quot;/etc/localtime&quot;, extra=0, extrap=&lt;value optimized out&gt;) at tzfile.c:173
+#8  0x00007f03939187a4 in tzset_internal (always=&lt;value optimized out&gt;, explicit=&lt;value optimized out&gt;) at tzset.c:439
+#9  0x00007f0393918909 in __tz_convert (timer=0x7fff2a267158, use_localtime=1, tp=0x7f0393c00360) at tzset.c:624
+#10 0x0000000000410fba in _log (file=0x42ed0c &quot;nc_server.c&quot;, line=645, panic=0, fmt=0x42ece0 &quot;key '%.*s' on dist %d maps to server '%.*s'&quot;) at nc_log.c:140
+
+#11 0x000000000040887e in server_pool_server (ctx=0x1c0e090, pool=0x1c0e360, key=0x1c150c2 &quot;key:__rand_int__\r\n&quot;, keylen=16) at nc_server.c:644
+#12 server_pool_conn (ctx=0x1c0e090, pool=0x1c0e360, key=0x1c150c2 &quot;key:__rand_int__\r\n&quot;, keylen=16) at nc_server.c:668
+#13 0x000000000040ae04 in req_forward (ctx=0x1c0e090, conn=0x1c14e70, msg=0x1c14f70, nmsg=&lt;value optimized out&gt;) at nc_request.c:482
+#14 req_recv_done (ctx=0x1c0e090, conn=0x1c14e70, msg=0x1c14f70, nmsg=&lt;value optimized out&gt;) at nc_request.c:524
+#15 0x0000000000409f00 in msg_parsed (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:451
+#16 msg_parse (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:581
+#17 msg_recv_chain (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:642
+#18 msg_recv (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:681
+#19 0x0000000000406179 in core_recv (arg=0x1c14e70, events=&lt;value optimized out&gt;) at nc_core.c:158
+#20 core_core (arg=0x1c14e70, events=&lt;value optimized out&gt;) at nc_core.c:293
+#21 0x000000000041bbb8 in event_wait (evb=0x1c0e570, timeout=&lt;value optimized out&gt;) at nc_epoll.c:269
+#22 0x0000000000405f89 in core_loop (ctx=0x1c0e090) at nc_core.c:316
+#23 0x0000000000412a38 in nc_run (argc=&lt;value optimized out&gt;, argv=0x7fff2a267690) at nc.c:531
+#24 main (argc=&lt;value optimized out&gt;, argv=0x7fff2a267690) at nc.c:580
+(gdb)
+</pre>
+<p>both of the <tt class="docutils literal">normal Program flow</tt> and the <tt class="docutils literal">signal_handler</tt> call <tt class="docutils literal">__tz_convert()</tt>, it looks that __tz_convert use a lock and this make the signal_handler never return, let's have a look <tt class="docutils literal">__tz_convert</tt></p>
+<p>nc_signal.c:</p>
+<pre class="literal-block">
+void
+signal_handler(int signo)
+{
+    struct signal *sig;
+    void (*action)(void);
+    char *actionstr;
+    bool done;
+
+    switch (signo) {
+    case SIGHUP:
+        actionstr = &quot;, reopening log file&quot;;
+        action = log_reopen;
+        break;
+    }
+
+    loga(&quot;signal %d (%s) received%s&quot;, signo, sig-&gt;signame, actionstr);
+
+    if (action != NULL) {
+        action();
+    }
+
+    if (done) {
+        exit(1);
+    }
+}
+</pre>
+<p>loga 打印日志的时候, 会调用localtime():</p>
+<pre class="literal-block">
+void
+_log(const char *file, int line, int panic, const char *fmt, ...)
+{
+    ...
+    t = time(NULL);
+    local = localtime(&amp;t);
+    timestr = asctime(local);
+
+    len += nc_scnprintf(buf + len, size - len, &quot;[%.*s] %s:%d &quot;,
+                        strlen(timestr) - 1, timestr, file, line);
+
+    va_start(args, fmt);
+    len += nc_vscnprintf(buf + len, size - len, fmt, args);
+    va_end(args);
+
+    buf[len++] = '\n';
+
+    n = nc_write(l-&gt;fd, buf, len);
+}
+</pre>
+<p>首先 <tt class="docutils literal">localtime()</tt> 不是线程安全的, 同时它也不是signal-safe的, 所以在signal_handler里面使用localtime()就可能造成死锁.</p>
+</div>
+<div class="section" id="localtime">
+<h2><a class="toc-backref" href="#id8">2&nbsp;&nbsp;&nbsp;localtime() 的实现</a></h2>
+<p>glibc/time/localtime.c:</p>
+<pre class="literal-block">
+22  struct tm _tmbuf;
+23
+24
+25  /* Return the `struct tm' representation of *T in local time,
+26     using *TP to store the result.  */
+27  struct tm *
+28  __localtime_r (t, tp)
+29       const time_t *t;
+30       struct tm *tp;
+31  {
+32    return __tz_convert (t, 1, tp);
+33  }
+34  weak_alias (__localtime_r, localtime_r)
+35
+36
+37  /* Return the `struct tm' representation of *T in local time.  */
+38  struct tm *
+39  localtime (t)
+40       const time_t *t;
+41  {
+42    return __tz_convert (t, 1, &amp;_tmbuf);
+43  }
+</pre>
+<p><tt class="docutils literal">localtime()</tt> 和 <tt class="docutils literal">localtime_r()</tt> 都是简单的调用 <tt class="docutils literal">__tz_convert()</tt>, 区别只是在于 <tt class="docutils literal">localtime()</tt> 使用了一个全局变量 <tt class="docutils literal">_tmbuf</tt> , 所以不是线程安全的.</p>
+<p>但是 <tt class="docutils literal">__tz_convert()</tt> 不是 <tt class="docutils literal"><span class="pre">signal-safe</span></tt> 的.</p>
+<div class="section" id="tz-convert-is-not-signal-safe">
+<h3><a class="toc-backref" href="#id9">2.1&nbsp;&nbsp;&nbsp;__tz_convert is not signal-safe</a></h3>
+<p>glibc/time/tzset.c:</p>
+<pre class="literal-block">
+39  /* This locks all the state variables in tzfile.c and this file.  */
+40  __libc_lock_define_initialized (static, tzset_lock)
+
+...
+
+613 /* Return the `struct tm' representation of *TIMER in the local timezone.
+614    Use local time if USE_LOCALTIME is nonzero, UTC otherwise.  */
+615 struct tm *
+616 __tz_convert (const time_t *timer, int use_localtime, struct tm *tp)
+617 {
+618   long int leap_correction;
+619   int leap_extra_secs;
+620
+621   if (timer == NULL)
+622     {
+623       __set_errno (EINVAL);
+624       return NULL;
+625     }
+626
+627   __libc_lock_lock (tzset_lock);
+628
+629   /* Update internal database according to current TZ setting.
+630      POSIX.1 8.3.7.2 says that localtime_r is not required to set tzname.
+631      This is a good idea since this allows at least a bit more parallelism.  */
+632   tzset_internal (tp == &amp;_tmbuf &amp;&amp; use_localtime, 1);
+</pre>
+<p>这里用了一个锁 <tt class="docutils literal">tzset_lock</tt>, 它是用来保护对 <tt class="docutils literal">tzset_internal()</tt> 的调用的, <tt class="docutils literal">tzset_internal</tt> 是一个类似单态的模式, 第一次调用这个函数的时候初始化一些变量:</p>
+<pre class="literal-block">
+399 static void
+400 internal_function
+401 tzset_internal (always, explicit)
+402      int always;
+403      int explicit;
+404 {
+405   static int is_initialized;
+406   const char *tz;
+407
+408   if (is_initialized &amp;&amp; !always)
+409     return;
+410   is_initialized = 1;
+      ...
+465   __tzset_parse_tz (tz);
+466 }
+</pre>
+<p><tt class="docutils literal">tzset_internal</tt> 是用于初始化这个程序的时区设置, 并设置到 <tt class="docutils literal">tz_rules</tt> 这个全局变量:</p>
+<pre class="literal-block">
+48  /* This structure contains all the information about a
+49     timezone given in the POSIX standard TZ envariable.  */
+50  typedef struct
+51    {
+52      const char *name;
+53
+54      /* When to change.  */
+55      enum { J0, J1, M } type;    /* Interpretation of:  */
+56      unsigned short int m, n, d; /* Month, week, day.  */
+57      int secs;                   /* Time of day.  */
+58
+59      long int offset;            /* Seconds east of GMT (west if &lt; 0).  */
+60
+61      /* We cache the computed time of change for a
+62         given year so we don't have to recompute it.  */
+63      time_t change;      /* When to change to this zone.  */
+64      int computed_for;   /* Year above is computed for.  */
+65    } tz_rule;
+66
+67  /* tz_rules[0] is standard, tz_rules[1] is daylight.  */
+68  static tz_rule tz_rules[2];
+</pre>
+<p>glibc作为一个库, 其实有三个地方可以初始化一些变量:</p>
+<ol class="arabic simple">
+<li>程序启动的时候</li>
+<li>第一次调用的时候</li>
+<li>每次调用时再计算</li>
+</ol>
+<ul class="simple">
+<li>第1个方法会造成不必要的开销(如果这个程序没调用过 <tt class="docutils literal">localtime</tt> , 也得初始化)</li>
+<li>第3个方法在每次调用时计算, 效率低,</li>
+</ul>
+<p>所以glibc的 <tt class="docutils literal">localtime()</tt> 选择在第一次调用时初始化, 熟悉单态模式的话就了解, 这里必须加一个锁. 就是这个锁导致 <tt class="docutils literal">localtime()</tt> 不是signal-safe的.</p>
+</div>
+<div class="section" id="free-signal-safe">
+<h3><a class="toc-backref" href="#id10">2.2&nbsp;&nbsp;&nbsp;类似的, free()也不是signal-safe</a></h3>
+<p>free/malloc也用了锁:</p>
+<pre class="literal-block">
+2907        __libc_free (void *mem)
+2908        {
+          ...
+2942          _int_free (ar_ptr, p, 0);
+2943        }
+
+3798        static void
+3799        _int_free (mstate av, mchunkptr p, int have_lock)
+3919          else if (!chunk_is_mmapped(p)) {
+3920            if (! have_lock) {
+3921              (void)mutex_lock(&amp;av-&gt;mutex);
+3922              locked = 1;
+3923            }
+        ...
+4052            if (! have_lock) {
+4053              assert (locked);
+4054              (void)mutex_unlock(&amp;av-&gt;mutex);
+4055            }
+4056          }
+</pre>
+</div>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id11">3&nbsp;&nbsp;&nbsp;模拟复现</a></h2>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/idning/langtest/c/signal-safe$ cat test.c
+#include &lt;signal.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;time.h&gt;
+#include &lt;unistd.h&gt;
+
+void handler(int signum)
+{
+    char result[100];
+    time_t now;
+    struct tm time1;
+
+    now = time(NULL);
+    localtime_r(&amp;now, &amp;time1);
+    strftime(result, 100, &quot;%T&quot;, &amp;time1);
+    printf(&quot;At %s, user pressed Ctrl-C\n&quot;, result);
+}
+
+int main (void)
+{
+    time_t now;
+    struct tm ltime;
+    int i;
+
+    if (signal(SIGHUP, handler) == SIG_IGN){
+        return;
+    }
+
+    now = time(NULL);
+    for(i=0 ; ; i++){
+        localtime_r(&amp;now, &amp;ltime);
+        if(i%1000 == 0){
+            printf(&quot;%d\n&quot;, i);
+        }
+    }
+
+    return 0;
+}
+ning&#64;ning-laptop ~/idning/langtest/c/signal-safe$ cat Makefile
+all:
+    cc test.c
+    ./a.out  &amp;
+    sleep 1
+    pkill -HUP -f 'a.out'
+    ps aux | grep a.out
+    gdb -p `pidof a.out`
+</pre>
+<pre class="literal-block">
+(gdb) bt
+#0  __lll_lock_wait_private () at ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S:97
+#1  0x00002b928c8bfb2d in _L_lock_1934 () at tzset.c:138
+#2  0x00002b928c8bf8e7 in __tz_convert (timer=0x2b928cba49f4, use_localtime=1, tp=0x7fff5cef1840) at tzset.c:619
+#3  0x0000000000400708 in handler ()
+#4  &lt;signal handler called&gt;
+#5  _IO_str_init_static_internal (sf=0x7fff5cef1d90, ptr=0x7de354 &quot;8&quot;, size=&lt;value optimized out&gt;, pstart=0x0)
+    at strops.c:63
+#6  0x00002b928c88d265 in _IO_vsscanf (string=0x7de354 &quot;8&quot;, format=0x2b928c96cb58 &quot;%hu%n:%hu%n:%hu%n&quot;,
+    args=0x7fff5cef1eb0) at iovsscanf.c:44
+#7  0x00002b928c87a5b8 in __sscanf (s=0x0, format=0x7de354 &quot;8&quot;) at sscanf.c:34
+#8  0x00002b928c8bee32 in __tzset_parse_tz (tz=0x7de354 &quot;8&quot;) at tzset.c:212
+#9  0x00002b928c8c00ac in __tzfile_compute (timer=1402735871, use_localtime=&lt;value optimized out&gt;,
+    leap_correct=0x7fff5cef2090, leap_hit=0x7fff5cef209c, tp=0x7fff5cef20c0) at tzfile.c:682
+#10 0x00002b928c8bf9a7 in __tz_convert (timer=0x7fff5cef2100, use_localtime=1, tp=0x7fff5cef20c0) at tzset.c:627
+#11 0x00000000004007a1 in main ()
+</pre>
+<p>这个栈和twemproxy出现的栈是一样的.</p>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id12">4&nbsp;&nbsp;&nbsp;修复</a></h2>
+<ol class="arabic">
+<li><p class="first">有没有``signal-safe`` + <tt class="docutils literal"><span class="pre">thread-safe</span></tt> 的localtime实现?</p>
+<p>至少是可以自己来实现这样一个逻辑的.</p>
+</li>
+<li><p class="first">修改signal_handler, 只使用signal-safe的函数:</p>
+<blockquote>
+<p>pull request 在此: <a class="reference external" href="https://github.com/twitter/twemproxy/pull/231">https://github.com/twitter/twemproxy/pull/231</a></p>
+</blockquote>
+</li>
+</ol>
+</div>
+<div class="section" id="signal-safe-thread-safe">
+<h2><a class="toc-backref" href="#id13">5&nbsp;&nbsp;&nbsp;signal-safe/thread safe/可重入</a></h2>
+<p><a class="reference external" href="http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html">http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html</a></p>
+<p>定义</p>
+<pre class="literal-block">
+3.313 Reentrant Function
+
+A function whose effect, when called by two or more threads, is guaranteed to be as if the threads each executed the function one after another in an undefined order, even if the actual execution is interleaved.
+
+Thread-Safe
+
+A function that may be safely invoked concurrently by multiple threads. Each function defined in the System Interfaces volume of IEEE Std 1003.1-2001 is thread-safe unless explicitly stated otherwise. Examples are any &quot;pure&quot; function, a function which holds a mutex locked while it is accessing static storage, or objects shared among threads.
+
+3.26 Async-Signal-Safe Function
+
+A function that may be invoked, without restriction, from signal-catching functions. No function is async-signal-safe unless explicitly described as such.
+</pre>
+<ul>
+<li><dl class="first docutils">
+<dt>Reentrant:</dt>
+<dd><ul class="first last simple">
+<li>不使用全局变量.</li>
+<li>不调用non-reentrant函数.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Thread-safe:</dt>
+<dd><ul class="first last simple">
+<li>要求较低,</li>
+<li>可以访问全局变量，不过需要加锁</li>
+<li>每次调用它返回不同的结果也没关系</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Async-Signal-Safe:</dt>
+<dd><ul class="first last simple">
+<li>只有几个固定的函数是 signal-safe的</li>
+<li>使用了锁的一定不是信号安全的（除非屏蔽了信号）</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">可重入函数一定是线程安全的</p>
+</li>
+<li><p class="first">可重入函数一定是Async-Signal-Safe的.</p>
+</li>
+</ul>
+<div class="section" id="sprintfasync-signal-safe">
+<h3><a class="toc-backref" href="#id14">5.1&nbsp;&nbsp;&nbsp;sprintf不是async-signal-safe</a></h3>
+<p>因为malloc/free不是signal-safe, 而gblic 的 vsnprintf用了malloc, 所以sprintf也不是signal-safe</p>
+</div>
+<div class="section" id="async-signal-safe">
+<h3><a class="toc-backref" href="#id15">5.2&nbsp;&nbsp;&nbsp;确定一个函数是否 async-signal-safe</a></h3>
+<p>最好严格遵循 <tt class="docutils literal">man 7 signal</tt> 的列表, 注意不同系统中async-signal-safe函数列表不同, 比如这里是FreeBSD的库中 signal-safe情况:</p>
+<p><a class="reference external" href="http://www.openbsd.org/cgi-bin/man.cgi?query=signal">http://www.openbsd.org/cgi-bin/man.cgi?query=signal</a></p>
+<p>这里有glibc 的各个函数列表:</p>
+<p><a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary">http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary</a></p>
+<ul>
+<li><p class="first">下面文档定义了glibc中几种safe概念:</p>
+<p><a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/POSIX-Safety-Concepts.html">http://www.gnu.org/software/libc/manual/html_node/POSIX-Safety-Concepts.html</a></p>
+<blockquote>
+<ul>
+<li><p class="first"><cite>MT-Safe</cite> : Thread-Safe functions are safe to call in the presence of other threads</p>
+</li>
+<li><p class="first"><cite>AS-Safe</cite> :  Async-Signal-Safe functions are safe to call from asynchronous signal handlers. AS, in AS-Safe, stands for Asynchronous Signal.</p>
+</li>
+<li><dl class="first docutils">
+<dt><cite>AC-Safe</cite> <span class="classifier-delimiter">:</span> <span class="classifier">Async-Cancel-Safe functions are safe to call when asynchronous cancellation is enabled. AC in AC-Safe stands for Asynchronous Cancellation.</span></dt>
+<dd><ul class="first last simple">
+<li>The POSIX standard defines only three functions to be AC-Safe: pthread_cancel, pthread_setcancelstate, and pthread_setcanceltype</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</blockquote>
+</li>
+<li><p class="first">下面文档定义了glibc中, 导致unsafe的原因:</p>
+<p><a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/Unsafe-Features.html">http://www.gnu.org/software/libc/manual/html_node/Unsafe-Features.html</a></p>
+<blockquote>
+<ul class="simple">
+<li><tt class="docutils literal">lock</tt> Functions marked with lock as an AS-Unsafe feature may be interrupted by a signal while holding a non-recursive lock. If the signal handler calls another such function that takes the same lock, the result is a deadlock.</li>
+<li><tt class="docutils literal">corrupt</tt> Functions marked with corrupt as an AS-Unsafe feature may corrupt data structures and misbehave when they interrupt,</li>
+<li><tt class="docutils literal">heap</tt> Functions marked with heap may call heap memory management functions from the malloc/free family of functions and are only as safe as those functions.</li>
+</ul>
+</blockquote>
+</li>
+</ul>
+<p>例如 <tt class="docutils literal">vsnprintf</tt> 就是AS-Unsafe, 因为它用了malloc/free这样的heap函数:</p>
+<pre class="literal-block">
+— Function: int vsnprintf (char *s, size_t size, const char *template, va_list ap)
+Preliminary: | MT-Safe locale | AS-Unsafe heap | AC-Unsafe mem | See POSIX Safety Concepts.
+</pre>
+<p>所有printf系列函数都是 <tt class="docutils literal"><span class="pre">AS-Unsafe</span></tt> 的.</p>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id16">5.3&nbsp;&nbsp;&nbsp;其它系统中</a></h3>
+<p>FreeBSD中更多的signal-safe函数:</p>
+<pre class="literal-block">
+ffs, htonl, htons, memccpy, memchr, memcmp, memcpy, memmove, memset, ntohl, ntohs, stpcpy, stpncpy, strcat, strchr, strcmp, strcpy, strcspn, strlen, strncat, strncmp, strncpy, strnlen, strpbrk, strrchr, strspn, strstr, strtok_r, wcpcpy, wcpncpy, wcscat, wcschr, wcscmp, wcscpy, wcscspn, wcslen, wcsncat, wcsncmp, wcsncpy, wcsnlen, wcspbrk, wcsrchr, wcsspn, wcsstr, wcstok, wmemchr, wmemcmp, wmemcpy, wmemmove, wmemset
+</pre>
+<p>上面这些函数在目前已知的实现中, 都是signal-safe的, 参考下文, 这些函数已经加到signal-safe函数列表中, 参见: <a class="reference external" href="http://austingroupbugs.net/view.php?id=692#c1609">http://austingroupbugs.net/view.php?id=692#c1609</a></p>
+</div>
+<div class="section" id="as-safe">
+<h3><a class="toc-backref" href="#id17">5.4&nbsp;&nbsp;&nbsp;这些函数是AS-SAFE的</a></h3>
+<ul class="simple">
+<li><tt class="docutils literal">strtol</tt> (参考http://www.gnu.org/software/libc/manual/html_node/Parsing-of-Integers.html#Parsing-of-Integers)</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id5">
+<h2><a class="toc-backref" href="#id18">6&nbsp;&nbsp;&nbsp;其它</a></h2>
+<div class="section" id="nginx">
+<h3><a class="toc-backref" href="#id19">6.1&nbsp;&nbsp;&nbsp;nginx为什么没有这个问题</a></h3>
+<p>nginx自己实现了一套printf:</p>
+<pre class="literal-block">
+u_char *
+ngx_vslprintf(u_char *buf, u_char *last, const char *fmt, va_list args)
+{
+    u_char                *p, zero;
+    ngx_uint_t             width, sign, hex, max_width, frac_width, n;
+
+    while (*fmt &amp;&amp; buf &lt; last) {
+
+        /*
+         * &quot;buf &lt; last&quot; means that we could copy at least one character:
+         * the plain character, &quot;%%&quot;, &quot;%c&quot;, and minus without the checking
+         */
+
+        if (*fmt == '%') {
+
+            i64 = 0;
+            ui64 = 0;
+</pre>
+<p>ngx还使用了时间cache, 从而能够在打日志的时候使用正确的时间字符串.</p>
+<p>ngx 中时间cache是通过timer信号来更新的, 略复杂.</p>
+</div>
+<div class="section" id="mysql">
+<h3><a class="toc-backref" href="#id20">6.2&nbsp;&nbsp;&nbsp;mysql</a></h3>
+<p>也是实现了一族safe函数.</p>
+<pre class="literal-block">
+size_t my_safe_snprintf(char* to, size_t n, const char* fmt, ...)
+  ATTRIBUTE_FORMAT(printf, 3, 4);
+
+/**
+  A (very) limited version of snprintf, which writes the result to STDERR.
+  &#64;sa my_safe_snprintf
+  Implemented with simplicity, and async-signal-safety in mind.
+  &#64;note Has an internal buffer capacity of 512 bytes,
+  which should suffice for our signal handling routines.
+*/
+size_t my_safe_printf_stderr(const char* fmt, ...)
+  ATTRIBUTE_FORMAT(printf, 1, 2);
+</pre>
+</div>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id21">7&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ul class="simple">
+<li>记住linux中, localtime, vsnprintf, malloc/free都是 AS-Unsafe的.</li>
+</ul>
+</div>
+<div class="section" id="reference">
+<h2><a class="toc-backref" href="#id22">8&nbsp;&nbsp;&nbsp;Reference</a></h2>
+<ul class="simple">
+<li>linux signal-safe函数列表: <a class="reference external" href="http://man7.org/linux/man-pages/man7/signal.7.html">http://man7.org/linux/man-pages/man7/signal.7.html</a></li>
+<li>FreeBSD signal-safe 函数列表: <a class="reference external" href="http://www.openbsd.org/cgi-bin/man.cgi?query=signal">http://www.openbsd.org/cgi-bin/man.cgi?query=signal</a></li>
+<li>FreeBSD 中 其它可以认为signal-safe的函数(目前已知实现都是safe的): <a class="reference external" href="http://austingroupbugs.net/view.php?id=692#c1609">http://austingroupbugs.net/view.php?id=692#c1609</a></li>
+<li>glibc 中所有函数是否signal-safe: <a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary">http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary</a></li>
+<li>va_start 是宏</li>
+<li>glibc代码(这个网站不错): <a class="reference external" href="http://code.woboq.org/userspace/glibc/time/tzset.c.html">http://code.woboq.org/userspace/glibc/time/tzset.c.html</a></li>
+<li>一个libc free时内存溢出后死锁的问题(这个和信号无关, 分析很赞): <a class="reference external" href="http://www.cnblogs.com/hokyhu/archive/2012/09/14/2685437.html">http://www.cnblogs.com/hokyhu/archive/2012/09/14/2685437.html</a></li>
+<li><a class="reference external" href="http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html">http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html</a></li>
+<li>reentrant，thread-safe 和 async-signal-safe: <a class="reference external" href="http://wangcong.org/blog/archives/506">http://wangcong.org/blog/archives/506</a></li>
+<li>redis源码中之前也存在这个问题: <a class="reference external" href="https://github.com/antirez/redis/issues/213">https://github.com/antirez/redis/issues/213</a></li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

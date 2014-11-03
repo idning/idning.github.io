@@ -2939,7 +2939,638 @@ static int proc_scan(Server *serv, Link *link, const Request &amp;amp;req, Respo
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-</summary><category term="all"></category><category term="redis"></category></entry><entry><title>我们还需要80列的限制么</title><link href="/do_we_need_80_column_rule.html" rel="alternate"></link><updated>2014-07-21T13:02:07+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-21:do_we_need_80_column_rule.html</id><summary type="html">&lt;p&gt;现在, 我们写代码通常不限制80列. 现在我们的屏幕都很宽, 一般都能放180列到200列. 所以貌似没必要限制80列了&lt;/p&gt;
+</summary><category term="all"></category><category term="redis"></category></entry><entry><title>twemproxy错误处理</title><link href="/twemproxy-error-handler.html" rel="alternate"></link><updated>2014-07-23T09:37:30+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-23:twemproxy-error-handler.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;如何处理错误&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#client-close" id="id5"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;client_close&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#server-close" id="id6"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;server_close&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id7"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;各个回调中应该怎么返回错误和错误检查&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#a-client-proxy" id="id8"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;(a)client-&amp;gt;proxy 路径&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#b-proxy-backend" id="id9"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;(b)proxy-&amp;gt;backend&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#c-backend-proxy" id="id10"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;(c)backend-&amp;gt;proxy&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#d-proxy-client" id="id11"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;(d)proxy-&amp;gt;client&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id12"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#conn-err" id="id13"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;可能设置conn-&amp;gt;err的地方&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#return" id="id14"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;可能通过return 方式返回错误&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#msg-err" id="id15"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;可能设置msg-&amp;gt;err的地方&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#what-i-do" id="id16"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;what i do&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;错误处理是一个系统里面重要而容易忽略的环节, 我们读代码比写代码简单, 很大程度上就是因为读代码时基本不用考虑错误处理逻辑.&lt;/p&gt;
+&lt;p&gt;twemproxy中, 主要的错误有:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;超内存 需要处理的地方最多&lt;/li&gt;
+&lt;li&gt;连接后端错误&lt;/li&gt;
+&lt;li&gt;server/cliet连接断掉&lt;/li&gt;
+&lt;li&gt;msg 超时&lt;/li&gt;
+&lt;li&gt;后端返回错误(E)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;如何处理错误&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;两种错误处理:&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;关连接:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;比如内存不够.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;向客户读返回一个 Err response:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;能识别的逻辑错误, 比如连后端失败.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;我们先看conn上的几个回调&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+client:
+
+    conn-&amp;gt;recv = msg_recv;
+    conn-&amp;gt;recv_next = req_recv_next;
+    conn-&amp;gt;recv_done = req_recv_done;
+
+    conn-&amp;gt;send = msg_send;
+    conn-&amp;gt;send_next = rsp_send_next;
+    conn-&amp;gt;send_done = rsp_send_done;
+    conn-&amp;gt;close = client_close;
+    conn-&amp;gt;active = client_active;
+
+server:
+
+    conn-&amp;gt;recv = msg_recv;
+    conn-&amp;gt;recv_next = rsp_recv_next;
+    conn-&amp;gt;recv_done = rsp_recv_done;
+
+    conn-&amp;gt;send = msg_send;
+    conn-&amp;gt;send_next = req_send_next;
+    conn-&amp;gt;send_done = req_send_done;
+
+    conn-&amp;gt;close = server_close;
+    conn-&amp;gt;active = server_active;
+&lt;/pre&gt;
+&lt;p&gt;最外层, 如果core_recv/core_send返回 非NC_Ok, 或者设置了 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;done&lt;/span&gt;&lt;/tt&gt; ,  &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;err&lt;/span&gt;&lt;/tt&gt; , 直接关连接:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+rstatus_t
+core_core(void *arg, uint32_t events)
+{
+    if (events &amp;amp; EVENT_ERR) {
+        core_error(ctx, conn);
+        return NC_ERROR;
+    }
+
+    if (events &amp;amp; EVENT_READ) {
+        status = core_recv(ctx, conn);
+        if (status != NC_OK || conn-&amp;gt;done || conn-&amp;gt;err) {
+            core_close(ctx, conn);
+            return NC_ERROR;
+        }
+    }
+
+    if (events &amp;amp; EVENT_WRITE) {
+        status = core_send(ctx, conn);
+        if (status != NC_OK || conn-&amp;gt;done || conn-&amp;gt;err) {
+            core_close(ctx, conn);
+            return NC_ERROR;
+        }
+    }
+
+    return NC_OK;
+}
+&lt;/pre&gt;
+&lt;p&gt;这里:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;core_recv&lt;/tt&gt; 就是 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;recv&lt;/span&gt;&lt;/tt&gt;&lt;/li&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;core_send&lt;/tt&gt; 就是 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;send&lt;/span&gt;&lt;/tt&gt;&lt;/li&gt;
+&lt;li&gt;core_close 会调用 &lt;tt class="docutils literal"&gt;server_close&lt;/tt&gt; 或者 &lt;tt class="docutils literal"&gt;client_close&lt;/tt&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="client-close"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id5"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;client_close&lt;/a&gt;&lt;/h3&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;client_close_stats&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;conn-&amp;gt;unref (暂时不管)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;如果 conn-&amp;gt;rmsg 存在, 说明连接的读缓冲区有内容未处理,
+把这个rmsg 丢掉&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;smsg&lt;/span&gt;&lt;/tt&gt;,  &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;imsg_q&lt;/span&gt;&lt;/tt&gt; 应该是为空的
+conn 用rmsg做读缓冲, 读到了就放到server_conn-&amp;gt;omsg_q 里面, 所以clietn_conn-&amp;gt;smsg没用, client_conn-&amp;gt;imsg_q 也是完全没用
+参考 &lt;a class="reference external" href="|filename|/notes/redis/twemproxy.rst"&gt;|filename|/notes/redis/twemproxy.rst&lt;/a&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;如果 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;omsg_q&lt;/span&gt;&lt;/tt&gt; 里面有消息, 这些消息已经发给后端了, 正在等待后端响应:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+for (msg = TAILQ_FIRST(&amp;amp;conn-&amp;gt;omsg_q); msg != NULL; msg = nmsg) {
+    nmsg = TAILQ_NEXT(msg, c_tqe);
+
+    conn-&amp;gt;dequeue_outq(ctx, conn, msg);
+
+    if (msg-&amp;gt;done) {
+        //日志: 这个消息的rsp被我丢了.
+        req_put(msg);
+    } else {
+        msg-&amp;gt;swallow = 1;
+
+        ASSERT(msg-&amp;gt;request);
+        ASSERT(msg-&amp;gt;peer == NULL); //响应还没回来
+
+        //日志: 这个消息被我标记为 swallow
+        log_debug(LOG_INFO, &amp;quot;close c %d schedule swallow of req %&amp;quot;PRIu64&amp;quot; &amp;quot;
+                  &amp;quot;len %&amp;quot;PRIu32&amp;quot; type %d&amp;quot;, conn-&amp;gt;sd, msg-&amp;gt;id, msg-&amp;gt;mlen,
+                  msg-&amp;gt;type);
+    }
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;至于 &lt;tt class="docutils literal"&gt;swallow&lt;/tt&gt;, 英语意思是 &lt;tt class="docutils literal"&gt;吞没&lt;/tt&gt;, 只有在上面这种情况下, 才会设置swallow标志, 对于这样的消息, 它的rsp回来之后, 就不应该转给client了, 而直接丢掉就行:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static bool
+rsp_filter(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    pmsg = TAILQ_FIRST(&amp;amp;conn-&amp;gt;omsg_q); //这是req, 至于为什么用 TAILQ_FIRST, 此时还没有设置msg-&amp;gt;peer.
+
+    ASSERT(pmsg-&amp;gt;peer == NULL);
+    ASSERT(pmsg-&amp;gt;request &amp;amp;&amp;amp; !pmsg-&amp;gt;done);
+    if (pmsg-&amp;gt;swallow) {
+        conn-&amp;gt;dequeue_outq(ctx, conn, pmsg);
+        pmsg-&amp;gt;done = 1;
+
+        log_debug(LOG_INFO, &amp;quot;swallow rsp %&amp;quot;PRIu64&amp;quot; len %&amp;quot;PRIu32&amp;quot; of req &amp;quot;
+                  &amp;quot;%&amp;quot;PRIu64&amp;quot; on s %d&amp;quot;, msg-&amp;gt;id, msg-&amp;gt;mlen, pmsg-&amp;gt;id,
+                  conn-&amp;gt;sd);
+
+        rsp_put(msg);
+        req_put(pmsg);
+        return true;
+    }
+}
+&lt;/pre&gt;
+&lt;p&gt;另外在server_close的时候, 对server_conn-&amp;gt;imsg_q 和server_conn-&amp;gt;omsg_q, 如果有swallow req, 也直接丢掉(见server_close).&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="server-close"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id6"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;server_close&lt;/a&gt;&lt;/h3&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;server_close_stats&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;conn-&amp;gt;unref(conn)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;把server_conn中 的imsg_q 和omsg_q 中的消息 设置&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+msg-&amp;gt;done = 1
+msg-&amp;gt;error = 1
+msg-&amp;gt;err = conn-&amp;gt;err;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;检查当前 c_conn上有没有完成的req, 给返回(因为这里对一些req设置了msg-&amp;gt;done, 所以有可能有完成的req):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+if (raeq_done(c_conn, TAILQ_FIRST(&amp;amp;c_conn-&amp;gt;omsg_q))) {
+    event_add_out(ctx-&amp;gt;evb, msg-&amp;gt;owner);
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;各个回调中应该怎么返回错误和错误检查&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;参看这个神图:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+*
+*             Client+             Proxy           Server+
+*                              (nutcracker)
+*                                   .
+*       msg_recv {read event}       .       msg_recv {read event}
+*         +                         .                         +
+*         |                         .                         |
+*         \                         .                         /
+*         req_recv_next             .             rsp_recv_next
+*           +                       .                       +
+*           |                       .                       |       Rsp
+*           req_recv_done           .           rsp_recv_done      &amp;lt;===
+*             +                     .                     +
+*             |                     .                     |
+*    Req      \                     .                     /
+*    ===&amp;gt;     req_filter*           .           *rsp_filter
+*               +                   .                   +
+*               |                   .                   |
+*               \                   .                   /
+*               req_forward-//  (a) . (c)  \\-rsp_forward
+*                                   .
+*                                   .
+*       msg_send {write event}      .      msg_send {write event}
+*         +                         .                         +
+*         |                         .                         |
+*    Rsp' \                         .                         /     Req'
+*   &amp;lt;===  rsp_send_next             .             req_send_next     ===&amp;gt;
+*           +                       .                       +
+*           |                       .                       |
+*           \                       .                       /
+*           rsp_send_done-//    (d) . (b)    //-req_send_done
+*
+*
+* (a) -&amp;gt; (b) -&amp;gt; (c) -&amp;gt; (d) is the normal flow of transaction consisting
+* of a single request response, where (a) and (b) handle request from
+* client, while (c) and (d) handle the corresponding response from the
+* server.
+&lt;/pre&gt;
+&lt;div class="section" id="a-client-proxy"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;(a)client-&amp;gt;proxy 路径&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;我们看core_recv 的调用链, 可能从什么地方返回这个错误码.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;core_recv()&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;conn-&amp;gt;recv(), 即msg_recv&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;msg_recv_chain(),&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;无内存: return NC_ENOMEM;&lt;/li&gt;
+&lt;li&gt;读返回EAGAIN: return NC_OK,&lt;/li&gt;
+&lt;li&gt;读出错: return NC_ERROR&lt;/li&gt;
+&lt;li&gt;返回msg_parse()&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;msg_parse(), 调用msg-&amp;gt;parser(msg),&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;p class="first"&gt;如果解析到一条消息(MSG_PARSE_OK), 返回msg_parsed()&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;如果需要REPAIR, 返回msg_repair()&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;msg_repair() 就是简单split一下, 可能返回NC_ENOMEM.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;如果parser出错, 函数里面同时设置 conn-&amp;gt;err, 并且返回 NC_ERROR&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static rstatus_t
+msg_parse(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    msg-&amp;gt;parser(msg);
+
+    switch (msg-&amp;gt;result) {
+    case MSG_PARSE_OK:
+        status = msg_parsed(ctx, conn, msg);
+        break;
+
+    case MSG_PARSE_REPAIR:
+        status = msg_repair(ctx, conn, msg);
+        break;
+
+    case MSG_PARSE_AGAIN:
+        status = NC_OK;
+        break;
+
+    default:
+        status = NC_ERROR;
+        conn-&amp;gt;err = errno;
+        break;
+    }
+
+    return conn-&amp;gt;err != 0 ? NC_ERROR : status;
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;所以 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;msg-&amp;gt;parser()&lt;/span&gt;&lt;/tt&gt; 函数里面, 如果要返回错误, 是通过msg-&amp;gt;result设置为一个错误码做的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+r-&amp;gt;result = MSG_PARSE_ERROR;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;接下来的重点是 &lt;tt class="docutils literal"&gt;msg_parsed()&lt;/tt&gt; , 他的返回值也会直接返回到core_core:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ static rstatus_t
+ msg_parsed(struct context *ctx, struct conn *conn, struct msg *msg)
+ {
+     conn-&amp;gt;recv_done(ctx, conn, msg, nmsg);
+
+     return NC_OK;
+ }
+
+这里挺重要, 这个函数虽然调用了conn-&amp;gt;recv_done, 但是直接返回NC_OK, 而没有管conn-&amp;gt;recv_done的返回值, 实际上, conn-&amp;gt;recv_done() 没有返回值::
+
+ conn_recv_done_t   recv_done;     /* read done handler */
+ typedef void (*conn_recv_done_t)(struct context *, struct conn *, struct msg *, struct msg *);
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;strong&gt;到这里return链断了, 下面只能通过设置conn-&amp;gt;err来表示错误&lt;/strong&gt; .&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;req_recv_done调用:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;req_forward (同样是一个void函数)   TODO: 这里在fragement里面, 我需要处理错误, 处理方法是设置c_conn-&amp;gt;err, 这还不好处理..&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;req_forward 如果出错,  是通过 &lt;tt class="docutils literal"&gt;req_forward_error&lt;/tt&gt; 来告诉客户端的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void
+req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
+{
+    s_conn = server_pool_conn(ctx, c_conn-&amp;gt;owner, key, keylen);
+    if (s_conn == NULL) {
+        req_forward_error(ctx, c_conn, msg);                //这里并不会设置c_conn-&amp;gt;err, 这时如果设置c_conn-&amp;gt;err, 就会直接关连接,
+                                                            //这里的处理方法是: 设置msg-&amp;gt;err, 于是后面会构造一个ERR rsp返回给客户端, 这并不算一个连接错误.
+        return;
+    }
+
+    c_conn-&amp;gt;enqueue_outq(ctx, c_conn, msg);                 //简单队列操作.
+    s_conn-&amp;gt;enqueue_inq(ctx, s_conn, msg);
+
+    if (TAILQ_EMPTY(&amp;amp;s_conn-&amp;gt;imsg_q)) {
+        status = event_add_out(ctx-&amp;gt;evb, s_conn);
+        if (status != NC_OK) {
+            req_forward_error(ctx, c_conn, msg);            //这里会告诉客户端出错.
+            s_conn-&amp;gt;err = errno;                            //这里设置 s_conn-&amp;gt;err, 关掉后端连接(什么时候处理 这里的s_conn-&amp;gt;err????? 还有机会有事件么?)
+            return;
+        }
+    }
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;req_forward_error 需要标记msg-&amp;gt;err, 此时消息未被转发到后端, 此时为了告诉客户端出错, 需要:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;在c_conn上开始 ev_out 事件&lt;/li&gt;
+&lt;li&gt;可写时, 构造一个ERR rsp返回给客户端.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;具体过程如下:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void
+req_forward_error(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    rstatus_t status;
+
+    ASSERT(conn-&amp;gt;client &amp;amp;&amp;amp; !conn-&amp;gt;proxy);
+
+    msg-&amp;gt;done = 1;
+    msg-&amp;gt;error = 1;
+    msg-&amp;gt;err = errno;  //(如果内存分配失败, errno会被设为12, 对应错误消息'Cannot allocate memory')
+
+    if (req_done(conn, TAILQ_FIRST(&amp;amp;conn-&amp;gt;omsg_q))) {
+        status = event_add_out(ctx-&amp;gt;evb, conn);
+        if (status != NC_OK) {
+            conn-&amp;gt;err = errno;
+        }
+    }
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;到这里, 这个cliet-&amp;gt;proxy 的过程所有的出错路径都排查了.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="b-proxy-backend"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;(b)proxy-&amp;gt;backend&lt;/a&gt;&lt;/h3&gt;
+&lt;/div&gt;
+&lt;div class="section" id="c-backend-proxy"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;(c)backend-&amp;gt;proxy&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;这是另一个recv路径, 前半部分和(a)路径基本一样:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;core_recv()&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;conn-&amp;gt;recv(), 即msg_recv&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;msg_recv_chain(),&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;msg_parse(), 调用msg-&amp;gt;parser(msg),&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;msg_parsed()&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;strong&gt;到这里return链断了, 下面只能通过设置conn-&amp;gt;err来表示错误&lt;/strong&gt; .&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;rsp_recv_done() 和rsp_forward():&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void
+rsp_forward(struct context *ctx, struct conn *s_conn, struct msg *msg)
+{
+    pmsg-&amp;gt;peer = msg;
+    msg-&amp;gt;peer = pmsg;
+
+    msg-&amp;gt;pre_coalesce(msg);                                         //void函数.
+
+    c_conn = pmsg-&amp;gt;owner;
+    ASSERT(c_conn-&amp;gt;client &amp;amp;&amp;amp; !c_conn-&amp;gt;proxy);
+
+    if (req_done(c_conn, TAILQ_FIRST(&amp;amp;c_conn-&amp;gt;omsg_q))) {           //这里调用req_done.
+        status = event_add_out(ctx-&amp;gt;evb, c_conn);
+        if (status != NC_OK) {
+            c_conn-&amp;gt;err = errno;
+        }
+    }
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;这里rsp_forward比req_forward复杂, req_forward只是简单的dequeue_outq, enqueue_inq, event_add_out, 并没有太多的寄回设置conn-&amp;gt;err.&lt;/p&gt;
+&lt;p&gt;rsp_forward则可能在pre_coalesce(), req_done(), post_coalesce() 函数里面设置.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;pre_coalesce():&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void
+redis_pre_coalesce(struct msg *r)
+{
+    pr-&amp;gt;frag_owner-&amp;gt;nfrag_done++;
+
+    switch (r-&amp;gt;type) {
+    case MSG_RSP_REDIS_INTEGER:
+        xxx;
+    case MSG_RSP_REDIS_MULTIBULK:
+        xxx;
+    case MSG_RSP_REDIS_STATUS:
+        xxx;
+    default:
+        mbuf = STAILQ_FIRST(&amp;amp;r-&amp;gt;mhdr);
+        log_hexdump(LOG_ERR, mbuf-&amp;gt;pos, mbuf_length(mbuf), &amp;quot;rsp fragment &amp;quot;
+                    &amp;quot;with unknown type %d&amp;quot;, r-&amp;gt;type);
+        pr-&amp;gt;error = 1;
+        pr-&amp;gt;err = EINVAL;       //这里都只是设置了msg-&amp;gt;err.
+        break;
+    }
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;在mget-improve之前, req_done() post_coalesce 都不会做什么设置.
+TODO: 这里的post_coalesce我需要处理错误, 处理方法应该类似pre_coalesce, 设置msg-&amp;gt;error, msg-&amp;gt;err&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="d-proxy-client"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id11"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;(d)proxy-&amp;gt;client&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;接(c), rsp_forward 会在c_conn上开启out事件:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+status = event_add_out(ctx-&amp;gt;evb, c_conn);
+&lt;/pre&gt;
+&lt;p&gt;当c_conn可写时, 会触发 msg_send-&amp;gt;rsp_send_next-&amp;gt;rsp_send_done 路径.&lt;/p&gt;
+&lt;p&gt;这里前几步和 (a) 也一样, 出错了直接通过返回值返回:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;msg_send 可能调用msg_send_chain 和rsp_send_next.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;rsp_send_next:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+if (req_error(conn, pmsg)) { //这里也不会设置conn-&amp;gt;err. 所以如果在msg层没有内存, 也会返回一个错误给客户端. 但是如果在rsp_make_error的时候再次没内存, 就只能关闭连接了.
+    msg = rsp_make_error(ctx, conn, pmsg);
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;msg_send_chain 可能通过返回值告诉最上层发生了错误 (直接调用conn_sendv):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static rstatus_t
+msg_send_chain(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    conn-&amp;gt;smsg = NULL;
+    n = conn_sendv(conn, &amp;amp;sendv, nsend);
+
+    conn-&amp;gt;send_done(ctx, conn, msg);
+
+    if (n &amp;gt;= 0) {
+        return NC_OK;
+    }
+    return (n == NC_EAGAIN) ? NC_OK : NC_ERROR;
+}
+- 这里可能调用rsp_send_done, 单此时已经不能设置什么错误了
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id12"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;因为总的能逻辑就是 &lt;tt class="docutils literal"&gt;core_core&lt;/tt&gt; 里面的这段逻辑:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+status = core_recv(ctx, conn);
+if (status != NC_OK || conn-&amp;gt;done || conn-&amp;gt;err) {
+    core_close(ctx, conn);
+    return NC_ERROR;
+}
+&lt;/pre&gt;
+&lt;p&gt;在处理请求中, 比如读msg的时候, 发现没有内存了, 或者解析出错了, 有两个方法返回错误:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;通过返回值在core_recv 返回一个非NC_OK值.&lt;/li&gt;
+&lt;li&gt;设置conn-&amp;gt;err 即可,&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果在forward到后端时, 后端连接失败, 则可以通过 &lt;tt class="docutils literal"&gt;req_forward_error&lt;/tt&gt; 函数, 设置 msg-&amp;gt;err,
+这时在 &lt;tt class="docutils literal"&gt;rsp_send_next&lt;/tt&gt; 中会用rsp_make_error生成一个err response返回给客户端.&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;我们在forward时遇到内存不够, 调用req_forward_error就够了.&lt;/li&gt;
+&lt;li&gt;收到response时遇到内存不够, 手动设置 msg-&amp;gt;err就行.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="conn-err"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id13"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;可能设置conn-&amp;gt;err的地方&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;parse失败.&lt;/li&gt;
+&lt;li&gt;调nc_read() nc_writev(), server_connect() 出错.&lt;/li&gt;
+&lt;li&gt;调用event_add_xx(), event_del_xx()&lt;/li&gt;
+&lt;li&gt;req_get()/rsp_get() 调用msg_get() 无内存返回NULL&lt;/li&gt;
+&lt;li&gt;rsp_make_error 无内存返回NULL&lt;/li&gt;
+&lt;li&gt;发生timeout&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="return"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id14"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;可能通过return 方式返回错误&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+static rstatus_t
+msg_parsed(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    ...
+    nmsg = msg_get(msg-&amp;gt;owner, msg-&amp;gt;request, conn-&amp;gt;redis);
+    if (nmsg == NULL) {
+        mbuf_put(nbuf);
+        return NC_ENOMEM;
+    }
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="msg-err"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id15"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;可能设置msg-&amp;gt;err的地方&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+msg-&amp;gt;ferror         #是否有frag错误.
+msg-&amp;gt;error          #错误标志, 0/1
+msg-&amp;gt;err = errno;   #errno.
+&lt;/pre&gt;
+&lt;p&gt;比如memcache_pre_coalesce:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void
+redis_pre_coalesce(struct msg *r)
+{
+    pr-&amp;gt;frag_owner-&amp;gt;nfrag_done++;
+
+    switch (r-&amp;gt;type) {
+    case MSG_RSP_REDIS_INTEGER:
+        xxx;
+    case MSG_RSP_REDIS_MULTIBULK:
+    if (pr-&amp;gt;first_fragment) {
+        mbuf = mbuf_get();
+        if (mbuf == NULL) {
+            pr-&amp;gt;error = 1;
+            pr-&amp;gt;err = EINVAL;
+            return;
+        }
+        STAILQ_INSERT_HEAD(&amp;amp;r-&amp;gt;mhdr, mbuf, next);
+    }
+    case MSG_RSP_REDIS_STATUS:
+        xxx;
+    default:
+        mbuf = STAILQ_FIRST(&amp;amp;r-&amp;gt;mhdr);
+        log_hexdump(LOG_ERR, mbuf-&amp;gt;pos, mbuf_length(mbuf), &amp;quot;rsp fragment &amp;quot;
+                    &amp;quot;with unknown type %d&amp;quot;, r-&amp;gt;type);
+        pr-&amp;gt;error = 1;
+        pr-&amp;gt;err = EINVAL;       //这里都只是设置了msg-&amp;gt;err.
+        break;
+    }
+}
+&lt;/pre&gt;
+&lt;pre class="literal-block"&gt;
+void
+redis_pre_coalesce(struct msg *r)
+{
+    if (pr-&amp;gt;first_fragment) {
+        mbuf = mbuf_get();
+        if (mbuf == NULL) {
+            pr-&amp;gt;error = 1;
+            pr-&amp;gt;err = EINVAL;
+            return;
+        }
+        STAILQ_INSERT_HEAD(&amp;amp;r-&amp;gt;mhdr, mbuf, next);
+    }
+    ...
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="what-i-do"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id16"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;what i do&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;从前的msg_fragment是在msg_parsed里面, 还能通过return 返回错误.
+因为作者认为在msg_parsed 之后, 消息必然在recv_done里面传给后端了, 不会出错了. 所以recv_done等函数都是void函数:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static rstatus_t
+msg_parsed(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    conn-&amp;gt;recv_done(ctx, conn, msg, nmsg);
+
+    return NC_OK;
+}
+&lt;/pre&gt;
+&lt;p&gt;TODO 3: 我的fragement也得放到这里的msg_parsed里面, 否则的话, 就得修改 recv_done的返回值了, 这个动作更大些.&lt;/p&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>我们还需要80列的限制么</title><link href="/do_we_need_80_column_rule.html" rel="alternate"></link><updated>2014-07-21T13:02:07+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-21:do_we_need_80_column_rule.html</id><summary type="html">&lt;p&gt;现在, 我们写代码通常不限制80列. 现在我们的屏幕都很宽, 一般都能放180列到200列. 所以貌似没必要限制80列了&lt;/p&gt;
 &lt;p&gt;但是, 我们经常用diff工具来查看代码, 这样超过80列的代码在diff工具中就不好看了.&lt;/p&gt;
 &lt;p&gt;所以, 我们还是坚持80列原则把.&lt;/p&gt;
 </summary><category term="all"></category></entry><entry><title>从twemproxy计算 redis hitrate</title><link href="/redis-hitrate.html" rel="alternate"></link><updated>2014-07-11T11:37:13+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-11:redis-hitrate.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
@@ -3585,6 +4216,723 @@ Redis HZ is 100 in 2.6
 &lt;ul class="simple"&gt;
 &lt;li&gt;对于快速淘汰的cache集群, 应该设置较大的hz, 100是一个无害值.&lt;/li&gt;
 &lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>twemproxy-deadlock-on-signal_handler</title><link href="/twemproxy-deadlock-on-signal_handler.html" rel="alternate"></link><updated>2014-06-14T05:54:42+08:00</updated><author><name>ning</name></author><id>tag:,2014-06-14:twemproxy-deadlock-on-signal_handler.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id7"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;现象&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#localtime" id="id8"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;localtime() 的实现&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#tz-convert-is-not-signal-safe" id="id9"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;__tz_convert is not signal-safe&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#free-signal-safe" id="id10"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;类似的, free()也不是signal-safe&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id11"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;模拟复现&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id12"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;修复&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#signal-safe-thread-safe" id="id13"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;signal-safe/thread safe/可重入&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#sprintfasync-signal-safe" id="id14"&gt;5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;sprintf不是async-signal-safe&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#async-signal-safe" id="id15"&gt;5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;确定一个函数是否 async-signal-safe&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id16"&gt;5.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它系统中&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#as-safe" id="id17"&gt;5.4&amp;nbsp;&amp;nbsp;&amp;nbsp;这些函数是AS-SAFE的&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id18"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#nginx" id="id19"&gt;6.1&amp;nbsp;&amp;nbsp;&amp;nbsp;nginx为什么没有这个问题&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mysql" id="id20"&gt;6.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id21"&gt;7&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#reference" id="id22"&gt;8&amp;nbsp;&amp;nbsp;&amp;nbsp;Reference&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;现象&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;我们的 &lt;a class="reference external" href="https://github.com/idning/redis-mgr"&gt;redis-mgr&lt;/a&gt; 会默认对集群中的第一个twemproxy使用 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;-v&lt;/span&gt; 5&lt;/tt&gt; 打印 &lt;tt class="docutils literal"&gt;notice&lt;/tt&gt; 级别的日志, 切日志使用的是, &lt;tt class="docutils literal"&gt;kill &lt;span class="pre"&gt;-HUP&lt;/span&gt;&lt;/tt&gt;.&lt;/p&gt;
+&lt;p&gt;线上发现两次切日志之后twemproxy停止响应, gdb:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Loaded symbols for /lib64/ld-linux-x86-64.so.2
+__lll_lock_wait_private () at ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S:97
+97      ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S: No such file or directory.
+        in ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S
+(gdb) bt
+#0  __lll_lock_wait_private () at ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S:97
+#1  0x00007f0393918b2d in _L_lock_1934 () at tzset.c:138
+#2  0x00007f03939188e7 in __tz_convert (timer=0x7f0393bfd9f4, use_localtime=1, tp=0x7f0393c00360) at tzset.c:619
+#3  0x0000000000410fba in _log (file=0x431036 &amp;quot;nc_signal.c&amp;quot;, line=122, panic=0, fmt=0x43101c &amp;quot;signal %d (%s) received%s&amp;quot;) at nc_log.c:140
+#4  0x000000000041016c in signal_handler (signo=&amp;lt;value optimized out&amp;gt;) at nc_signal.c:122
+#5  &amp;lt;signal handler called&amp;gt;
+
+#6  0x00007f03939552d5 in *__GI___xstat (vers=&amp;lt;value optimized out&amp;gt;, name=&amp;lt;value optimized out&amp;gt;, buf=0x7fff2a266fc0) at ../sysdeps/unix/sysv/linux/wordsize-64/xstat.c:38
+#7  0x00007f03939193f0 in __tzfile_read (file=0x7f03939c5b7c &amp;quot;/etc/localtime&amp;quot;, extra=0, extrap=&amp;lt;value optimized out&amp;gt;) at tzfile.c:173
+#8  0x00007f03939187a4 in tzset_internal (always=&amp;lt;value optimized out&amp;gt;, explicit=&amp;lt;value optimized out&amp;gt;) at tzset.c:439
+#9  0x00007f0393918909 in __tz_convert (timer=0x7fff2a267158, use_localtime=1, tp=0x7f0393c00360) at tzset.c:624
+#10 0x0000000000410fba in _log (file=0x42ed0c &amp;quot;nc_server.c&amp;quot;, line=645, panic=0, fmt=0x42ece0 &amp;quot;key '%.*s' on dist %d maps to server '%.*s'&amp;quot;) at nc_log.c:140
+
+#11 0x000000000040887e in server_pool_server (ctx=0x1c0e090, pool=0x1c0e360, key=0x1c150c2 &amp;quot;key:__rand_int__\r\n&amp;quot;, keylen=16) at nc_server.c:644
+#12 server_pool_conn (ctx=0x1c0e090, pool=0x1c0e360, key=0x1c150c2 &amp;quot;key:__rand_int__\r\n&amp;quot;, keylen=16) at nc_server.c:668
+#13 0x000000000040ae04 in req_forward (ctx=0x1c0e090, conn=0x1c14e70, msg=0x1c14f70, nmsg=&amp;lt;value optimized out&amp;gt;) at nc_request.c:482
+#14 req_recv_done (ctx=0x1c0e090, conn=0x1c14e70, msg=0x1c14f70, nmsg=&amp;lt;value optimized out&amp;gt;) at nc_request.c:524
+#15 0x0000000000409f00 in msg_parsed (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:451
+#16 msg_parse (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:581
+#17 msg_recv_chain (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:642
+#18 msg_recv (ctx=0x1c0e090, conn=0x1c14e70) at nc_message.c:681
+#19 0x0000000000406179 in core_recv (arg=0x1c14e70, events=&amp;lt;value optimized out&amp;gt;) at nc_core.c:158
+#20 core_core (arg=0x1c14e70, events=&amp;lt;value optimized out&amp;gt;) at nc_core.c:293
+#21 0x000000000041bbb8 in event_wait (evb=0x1c0e570, timeout=&amp;lt;value optimized out&amp;gt;) at nc_epoll.c:269
+#22 0x0000000000405f89 in core_loop (ctx=0x1c0e090) at nc_core.c:316
+#23 0x0000000000412a38 in nc_run (argc=&amp;lt;value optimized out&amp;gt;, argv=0x7fff2a267690) at nc.c:531
+#24 main (argc=&amp;lt;value optimized out&amp;gt;, argv=0x7fff2a267690) at nc.c:580
+(gdb)
+&lt;/pre&gt;
+&lt;p&gt;both of the &lt;tt class="docutils literal"&gt;normal Program flow&lt;/tt&gt; and the &lt;tt class="docutils literal"&gt;signal_handler&lt;/tt&gt; call &lt;tt class="docutils literal"&gt;__tz_convert()&lt;/tt&gt;, it looks that __tz_convert use a lock and this make the signal_handler never return, let's have a look &lt;tt class="docutils literal"&gt;__tz_convert&lt;/tt&gt;&lt;/p&gt;
+&lt;p&gt;nc_signal.c:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void
+signal_handler(int signo)
+{
+    struct signal *sig;
+    void (*action)(void);
+    char *actionstr;
+    bool done;
+
+    switch (signo) {
+    case SIGHUP:
+        actionstr = &amp;quot;, reopening log file&amp;quot;;
+        action = log_reopen;
+        break;
+    }
+
+    loga(&amp;quot;signal %d (%s) received%s&amp;quot;, signo, sig-&amp;gt;signame, actionstr);
+
+    if (action != NULL) {
+        action();
+    }
+
+    if (done) {
+        exit(1);
+    }
+}
+&lt;/pre&gt;
+&lt;p&gt;loga 打印日志的时候, 会调用localtime():&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void
+_log(const char *file, int line, int panic, const char *fmt, ...)
+{
+    ...
+    t = time(NULL);
+    local = localtime(&amp;amp;t);
+    timestr = asctime(local);
+
+    len += nc_scnprintf(buf + len, size - len, &amp;quot;[%.*s] %s:%d &amp;quot;,
+                        strlen(timestr) - 1, timestr, file, line);
+
+    va_start(args, fmt);
+    len += nc_vscnprintf(buf + len, size - len, fmt, args);
+    va_end(args);
+
+    buf[len++] = '\n';
+
+    n = nc_write(l-&amp;gt;fd, buf, len);
+}
+&lt;/pre&gt;
+&lt;p&gt;首先 &lt;tt class="docutils literal"&gt;localtime()&lt;/tt&gt; 不是线程安全的, 同时它也不是signal-safe的, 所以在signal_handler里面使用localtime()就可能造成死锁.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="localtime"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id8"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;localtime() 的实现&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;glibc/time/localtime.c:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+22  struct tm _tmbuf;
+23
+24
+25  /* Return the `struct tm' representation of *T in local time,
+26     using *TP to store the result.  */
+27  struct tm *
+28  __localtime_r (t, tp)
+29       const time_t *t;
+30       struct tm *tp;
+31  {
+32    return __tz_convert (t, 1, tp);
+33  }
+34  weak_alias (__localtime_r, localtime_r)
+35
+36
+37  /* Return the `struct tm' representation of *T in local time.  */
+38  struct tm *
+39  localtime (t)
+40       const time_t *t;
+41  {
+42    return __tz_convert (t, 1, &amp;amp;_tmbuf);
+43  }
+&lt;/pre&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;localtime()&lt;/tt&gt; 和 &lt;tt class="docutils literal"&gt;localtime_r()&lt;/tt&gt; 都是简单的调用 &lt;tt class="docutils literal"&gt;__tz_convert()&lt;/tt&gt;, 区别只是在于 &lt;tt class="docutils literal"&gt;localtime()&lt;/tt&gt; 使用了一个全局变量 &lt;tt class="docutils literal"&gt;_tmbuf&lt;/tt&gt; , 所以不是线程安全的.&lt;/p&gt;
+&lt;p&gt;但是 &lt;tt class="docutils literal"&gt;__tz_convert()&lt;/tt&gt; 不是 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;signal-safe&lt;/span&gt;&lt;/tt&gt; 的.&lt;/p&gt;
+&lt;div class="section" id="tz-convert-is-not-signal-safe"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;__tz_convert is not signal-safe&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;glibc/time/tzset.c:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+39  /* This locks all the state variables in tzfile.c and this file.  */
+40  __libc_lock_define_initialized (static, tzset_lock)
+
+...
+
+613 /* Return the `struct tm' representation of *TIMER in the local timezone.
+614    Use local time if USE_LOCALTIME is nonzero, UTC otherwise.  */
+615 struct tm *
+616 __tz_convert (const time_t *timer, int use_localtime, struct tm *tp)
+617 {
+618   long int leap_correction;
+619   int leap_extra_secs;
+620
+621   if (timer == NULL)
+622     {
+623       __set_errno (EINVAL);
+624       return NULL;
+625     }
+626
+627   __libc_lock_lock (tzset_lock);
+628
+629   /* Update internal database according to current TZ setting.
+630      POSIX.1 8.3.7.2 says that localtime_r is not required to set tzname.
+631      This is a good idea since this allows at least a bit more parallelism.  */
+632   tzset_internal (tp == &amp;amp;_tmbuf &amp;amp;&amp;amp; use_localtime, 1);
+&lt;/pre&gt;
+&lt;p&gt;这里用了一个锁 &lt;tt class="docutils literal"&gt;tzset_lock&lt;/tt&gt;, 它是用来保护对 &lt;tt class="docutils literal"&gt;tzset_internal()&lt;/tt&gt; 的调用的, &lt;tt class="docutils literal"&gt;tzset_internal&lt;/tt&gt; 是一个类似单态的模式, 第一次调用这个函数的时候初始化一些变量:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+399 static void
+400 internal_function
+401 tzset_internal (always, explicit)
+402      int always;
+403      int explicit;
+404 {
+405   static int is_initialized;
+406   const char *tz;
+407
+408   if (is_initialized &amp;amp;&amp;amp; !always)
+409     return;
+410   is_initialized = 1;
+      ...
+465   __tzset_parse_tz (tz);
+466 }
+&lt;/pre&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;tzset_internal&lt;/tt&gt; 是用于初始化这个程序的时区设置, 并设置到 &lt;tt class="docutils literal"&gt;tz_rules&lt;/tt&gt; 这个全局变量:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+48  /* This structure contains all the information about a
+49     timezone given in the POSIX standard TZ envariable.  */
+50  typedef struct
+51    {
+52      const char *name;
+53
+54      /* When to change.  */
+55      enum { J0, J1, M } type;    /* Interpretation of:  */
+56      unsigned short int m, n, d; /* Month, week, day.  */
+57      int secs;                   /* Time of day.  */
+58
+59      long int offset;            /* Seconds east of GMT (west if &amp;lt; 0).  */
+60
+61      /* We cache the computed time of change for a
+62         given year so we don't have to recompute it.  */
+63      time_t change;      /* When to change to this zone.  */
+64      int computed_for;   /* Year above is computed for.  */
+65    } tz_rule;
+66
+67  /* tz_rules[0] is standard, tz_rules[1] is daylight.  */
+68  static tz_rule tz_rules[2];
+&lt;/pre&gt;
+&lt;p&gt;glibc作为一个库, 其实有三个地方可以初始化一些变量:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;程序启动的时候&lt;/li&gt;
+&lt;li&gt;第一次调用的时候&lt;/li&gt;
+&lt;li&gt;每次调用时再计算&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;第1个方法会造成不必要的开销(如果这个程序没调用过 &lt;tt class="docutils literal"&gt;localtime&lt;/tt&gt; , 也得初始化)&lt;/li&gt;
+&lt;li&gt;第3个方法在每次调用时计算, 效率低,&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;所以glibc的 &lt;tt class="docutils literal"&gt;localtime()&lt;/tt&gt; 选择在第一次调用时初始化, 熟悉单态模式的话就了解, 这里必须加一个锁. 就是这个锁导致 &lt;tt class="docutils literal"&gt;localtime()&lt;/tt&gt; 不是signal-safe的.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="free-signal-safe"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;类似的, free()也不是signal-safe&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;free/malloc也用了锁:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+2907        __libc_free (void *mem)
+2908        {
+          ...
+2942          _int_free (ar_ptr, p, 0);
+2943        }
+
+3798        static void
+3799        _int_free (mstate av, mchunkptr p, int have_lock)
+3919          else if (!chunk_is_mmapped(p)) {
+3920            if (! have_lock) {
+3921              (void)mutex_lock(&amp;amp;av-&amp;gt;mutex);
+3922              locked = 1;
+3923            }
+        ...
+4052            if (! have_lock) {
+4053              assert (locked);
+4054              (void)mutex_unlock(&amp;amp;av-&amp;gt;mutex);
+4055            }
+4056          }
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id11"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;模拟复现&lt;/a&gt;&lt;/h2&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop ~/idning/langtest/c/signal-safe$ cat test.c
+#include &amp;lt;signal.h&amp;gt;
+#include &amp;lt;stdio.h&amp;gt;
+#include &amp;lt;time.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+
+void handler(int signum)
+{
+    char result[100];
+    time_t now;
+    struct tm time1;
+
+    now = time(NULL);
+    localtime_r(&amp;amp;now, &amp;amp;time1);
+    strftime(result, 100, &amp;quot;%T&amp;quot;, &amp;amp;time1);
+    printf(&amp;quot;At %s, user pressed Ctrl-C\n&amp;quot;, result);
+}
+
+int main (void)
+{
+    time_t now;
+    struct tm ltime;
+    int i;
+
+    if (signal(SIGHUP, handler) == SIG_IGN){
+        return;
+    }
+
+    now = time(NULL);
+    for(i=0 ; ; i++){
+        localtime_r(&amp;amp;now, &amp;amp;ltime);
+        if(i%1000 == 0){
+            printf(&amp;quot;%d\n&amp;quot;, i);
+        }
+    }
+
+    return 0;
+}
+ning&amp;#64;ning-laptop ~/idning/langtest/c/signal-safe$ cat Makefile
+all:
+    cc test.c
+    ./a.out  &amp;amp;
+    sleep 1
+    pkill -HUP -f 'a.out'
+    ps aux | grep a.out
+    gdb -p `pidof a.out`
+&lt;/pre&gt;
+&lt;pre class="literal-block"&gt;
+(gdb) bt
+#0  __lll_lock_wait_private () at ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S:97
+#1  0x00002b928c8bfb2d in _L_lock_1934 () at tzset.c:138
+#2  0x00002b928c8bf8e7 in __tz_convert (timer=0x2b928cba49f4, use_localtime=1, tp=0x7fff5cef1840) at tzset.c:619
+#3  0x0000000000400708 in handler ()
+#4  &amp;lt;signal handler called&amp;gt;
+#5  _IO_str_init_static_internal (sf=0x7fff5cef1d90, ptr=0x7de354 &amp;quot;8&amp;quot;, size=&amp;lt;value optimized out&amp;gt;, pstart=0x0)
+    at strops.c:63
+#6  0x00002b928c88d265 in _IO_vsscanf (string=0x7de354 &amp;quot;8&amp;quot;, format=0x2b928c96cb58 &amp;quot;%hu%n:%hu%n:%hu%n&amp;quot;,
+    args=0x7fff5cef1eb0) at iovsscanf.c:44
+#7  0x00002b928c87a5b8 in __sscanf (s=0x0, format=0x7de354 &amp;quot;8&amp;quot;) at sscanf.c:34
+#8  0x00002b928c8bee32 in __tzset_parse_tz (tz=0x7de354 &amp;quot;8&amp;quot;) at tzset.c:212
+#9  0x00002b928c8c00ac in __tzfile_compute (timer=1402735871, use_localtime=&amp;lt;value optimized out&amp;gt;,
+    leap_correct=0x7fff5cef2090, leap_hit=0x7fff5cef209c, tp=0x7fff5cef20c0) at tzfile.c:682
+#10 0x00002b928c8bf9a7 in __tz_convert (timer=0x7fff5cef2100, use_localtime=1, tp=0x7fff5cef20c0) at tzset.c:627
+#11 0x00000000004007a1 in main ()
+&lt;/pre&gt;
+&lt;p&gt;这个栈和twemproxy出现的栈是一样的.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id12"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;修复&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;有没有``signal-safe`` + &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;thread-safe&lt;/span&gt;&lt;/tt&gt; 的localtime实现?&lt;/p&gt;
+&lt;p&gt;至少是可以自己来实现这样一个逻辑的.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;修改signal_handler, 只使用signal-safe的函数:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;pull request 在此: &lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/231"&gt;https://github.com/twitter/twemproxy/pull/231&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="signal-safe-thread-safe"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id13"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;signal-safe/thread safe/可重入&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html"&gt;http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;定义&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+3.313 Reentrant Function
+
+A function whose effect, when called by two or more threads, is guaranteed to be as if the threads each executed the function one after another in an undefined order, even if the actual execution is interleaved.
+
+Thread-Safe
+
+A function that may be safely invoked concurrently by multiple threads. Each function defined in the System Interfaces volume of IEEE Std 1003.1-2001 is thread-safe unless explicitly stated otherwise. Examples are any &amp;quot;pure&amp;quot; function, a function which holds a mutex locked while it is accessing static storage, or objects shared among threads.
+
+3.26 Async-Signal-Safe Function
+
+A function that may be invoked, without restriction, from signal-catching functions. No function is async-signal-safe unless explicitly described as such.
+&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Reentrant:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不使用全局变量.&lt;/li&gt;
+&lt;li&gt;不调用non-reentrant函数.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Thread-safe:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;要求较低,&lt;/li&gt;
+&lt;li&gt;可以访问全局变量，不过需要加锁&lt;/li&gt;
+&lt;li&gt;每次调用它返回不同的结果也没关系&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Async-Signal-Safe:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;只有几个固定的函数是 signal-safe的&lt;/li&gt;
+&lt;li&gt;使用了锁的一定不是信号安全的（除非屏蔽了信号）&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;可重入函数一定是线程安全的&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;可重入函数一定是Async-Signal-Safe的.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="sprintfasync-signal-safe"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id14"&gt;5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;sprintf不是async-signal-safe&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;因为malloc/free不是signal-safe, 而gblic 的 vsnprintf用了malloc, 所以sprintf也不是signal-safe&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="async-signal-safe"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id15"&gt;5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;确定一个函数是否 async-signal-safe&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;最好严格遵循 &lt;tt class="docutils literal"&gt;man 7 signal&lt;/tt&gt; 的列表, 注意不同系统中async-signal-safe函数列表不同, 比如这里是FreeBSD的库中 signal-safe情况:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.openbsd.org/cgi-bin/man.cgi?query=signal"&gt;http://www.openbsd.org/cgi-bin/man.cgi?query=signal&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;这里有glibc 的各个函数列表:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary"&gt;http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary&lt;/a&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;下面文档定义了glibc中几种safe概念:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/POSIX-Safety-Concepts.html"&gt;http://www.gnu.org/software/libc/manual/html_node/POSIX-Safety-Concepts.html&lt;/a&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;cite&gt;MT-Safe&lt;/cite&gt; : Thread-Safe functions are safe to call in the presence of other threads&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;cite&gt;AS-Safe&lt;/cite&gt; :  Async-Signal-Safe functions are safe to call from asynchronous signal handlers. AS, in AS-Safe, stands for Asynchronous Signal.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;&lt;cite&gt;AC-Safe&lt;/cite&gt; &lt;span class="classifier-delimiter"&gt;:&lt;/span&gt; &lt;span class="classifier"&gt;Async-Cancel-Safe functions are safe to call when asynchronous cancellation is enabled. AC in AC-Safe stands for Asynchronous Cancellation.&lt;/span&gt;&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;The POSIX standard defines only three functions to be AC-Safe: pthread_cancel, pthread_setcancelstate, and pthread_setcanceltype&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;下面文档定义了glibc中, 导致unsafe的原因:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/Unsafe-Features.html"&gt;http://www.gnu.org/software/libc/manual/html_node/Unsafe-Features.html&lt;/a&gt;&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;lock&lt;/tt&gt; Functions marked with lock as an AS-Unsafe feature may be interrupted by a signal while holding a non-recursive lock. If the signal handler calls another such function that takes the same lock, the result is a deadlock.&lt;/li&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;corrupt&lt;/tt&gt; Functions marked with corrupt as an AS-Unsafe feature may corrupt data structures and misbehave when they interrupt,&lt;/li&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;heap&lt;/tt&gt; Functions marked with heap may call heap memory management functions from the malloc/free family of functions and are only as safe as those functions.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;例如 &lt;tt class="docutils literal"&gt;vsnprintf&lt;/tt&gt; 就是AS-Unsafe, 因为它用了malloc/free这样的heap函数:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+— Function: int vsnprintf (char *s, size_t size, const char *template, va_list ap)
+Preliminary: | MT-Safe locale | AS-Unsafe heap | AC-Unsafe mem | See POSIX Safety Concepts.
+&lt;/pre&gt;
+&lt;p&gt;所有printf系列函数都是 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;AS-Unsafe&lt;/span&gt;&lt;/tt&gt; 的.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id16"&gt;5.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它系统中&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;FreeBSD中更多的signal-safe函数:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ffs, htonl, htons, memccpy, memchr, memcmp, memcpy, memmove, memset, ntohl, ntohs, stpcpy, stpncpy, strcat, strchr, strcmp, strcpy, strcspn, strlen, strncat, strncmp, strncpy, strnlen, strpbrk, strrchr, strspn, strstr, strtok_r, wcpcpy, wcpncpy, wcscat, wcschr, wcscmp, wcscpy, wcscspn, wcslen, wcsncat, wcsncmp, wcsncpy, wcsnlen, wcspbrk, wcsrchr, wcsspn, wcsstr, wcstok, wmemchr, wmemcmp, wmemcpy, wmemmove, wmemset
+&lt;/pre&gt;
+&lt;p&gt;上面这些函数在目前已知的实现中, 都是signal-safe的, 参考下文, 这些函数已经加到signal-safe函数列表中, 参见: &lt;a class="reference external" href="http://austingroupbugs.net/view.php?id=692#c1609"&gt;http://austingroupbugs.net/view.php?id=692#c1609&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="as-safe"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id17"&gt;5.4&amp;nbsp;&amp;nbsp;&amp;nbsp;这些函数是AS-SAFE的&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;strtol&lt;/tt&gt; (参考http://www.gnu.org/software/libc/manual/html_node/Parsing-of-Integers.html#Parsing-of-Integers)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id18"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="nginx"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id19"&gt;6.1&amp;nbsp;&amp;nbsp;&amp;nbsp;nginx为什么没有这个问题&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;nginx自己实现了一套printf:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+u_char *
+ngx_vslprintf(u_char *buf, u_char *last, const char *fmt, va_list args)
+{
+    u_char                *p, zero;
+    ngx_uint_t             width, sign, hex, max_width, frac_width, n;
+
+    while (*fmt &amp;amp;&amp;amp; buf &amp;lt; last) {
+
+        /*
+         * &amp;quot;buf &amp;lt; last&amp;quot; means that we could copy at least one character:
+         * the plain character, &amp;quot;%%&amp;quot;, &amp;quot;%c&amp;quot;, and minus without the checking
+         */
+
+        if (*fmt == '%') {
+
+            i64 = 0;
+            ui64 = 0;
+&lt;/pre&gt;
+&lt;p&gt;ngx还使用了时间cache, 从而能够在打日志的时候使用正确的时间字符串.&lt;/p&gt;
+&lt;p&gt;ngx 中时间cache是通过timer信号来更新的, 略复杂.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mysql"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id20"&gt;6.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;也是实现了一族safe函数.&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+size_t my_safe_snprintf(char* to, size_t n, const char* fmt, ...)
+  ATTRIBUTE_FORMAT(printf, 3, 4);
+
+/**
+  A (very) limited version of snprintf, which writes the result to STDERR.
+  &amp;#64;sa my_safe_snprintf
+  Implemented with simplicity, and async-signal-safety in mind.
+  &amp;#64;note Has an internal buffer capacity of 512 bytes,
+  which should suffice for our signal handling routines.
+*/
+size_t my_safe_printf_stderr(const char* fmt, ...)
+  ATTRIBUTE_FORMAT(printf, 1, 2);
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id21"&gt;7&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;记住linux中, localtime, vsnprintf, malloc/free都是 AS-Unsafe的.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="reference"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id22"&gt;8&amp;nbsp;&amp;nbsp;&amp;nbsp;Reference&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;linux signal-safe函数列表: &lt;a class="reference external" href="http://man7.org/linux/man-pages/man7/signal.7.html"&gt;http://man7.org/linux/man-pages/man7/signal.7.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;FreeBSD signal-safe 函数列表: &lt;a class="reference external" href="http://www.openbsd.org/cgi-bin/man.cgi?query=signal"&gt;http://www.openbsd.org/cgi-bin/man.cgi?query=signal&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;FreeBSD 中 其它可以认为signal-safe的函数(目前已知实现都是safe的): &lt;a class="reference external" href="http://austingroupbugs.net/view.php?id=692#c1609"&gt;http://austingroupbugs.net/view.php?id=692#c1609&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;glibc 中所有函数是否signal-safe: &lt;a class="reference external" href="http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary"&gt;http://www.gnu.org/software/libc/manual/html_node/Library-Summary.html#Library-Summary&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;va_start 是宏&lt;/li&gt;
+&lt;li&gt;glibc代码(这个网站不错): &lt;a class="reference external" href="http://code.woboq.org/userspace/glibc/time/tzset.c.html"&gt;http://code.woboq.org/userspace/glibc/time/tzset.c.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;一个libc free时内存溢出后死锁的问题(这个和信号无关, 分析很赞): &lt;a class="reference external" href="http://www.cnblogs.com/hokyhu/archive/2012/09/14/2685437.html"&gt;http://www.cnblogs.com/hokyhu/archive/2012/09/14/2685437.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html"&gt;http://pubs.opengroup.org/onlinepubs/000095399/basedefs/xbd_chap03.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;reentrant，thread-safe 和 async-signal-safe: &lt;a class="reference external" href="http://wangcong.org/blog/archives/506"&gt;http://wangcong.org/blog/archives/506&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;redis源码中之前也存在这个问题: &lt;a class="reference external" href="https://github.com/antirez/redis/issues/213"&gt;https://github.com/antirez/redis/issues/213&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>twemproxy-core-20140523</title><link href="/twemproxy-core-20140523.html" rel="alternate"></link><updated>2014-05-25T12:56:48+08:00</updated><author><name>ning</name></author><id>tag:,2014-05-25:twemproxy-core-20140523.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#what-happend" id="id1"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;what happend&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#repetition" id="id2"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;Repetition&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#explain" id="id3"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;explain&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#add-a-testcase" id="id4"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;add-a-testcase&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#fix" id="id5"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;fix&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#more-bugs" id="id6"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;more bugs&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="what-happend"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id1"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;what happend&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;today we got a core of twemproxy:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ gdb -c core.14420 ./bin/nutcracker
+
+(gdb) bt
+#0  0x000000302af2e2ed in raise () from /lib64/tls/libc.so.6
+#1  0x000000302af2fa3e in abort () from /lib64/tls/libc.so.6
+#2  0x0000000000419c82 in nc_assert (cond=0x444dc0 &amp;quot;!TAILQ_EMPTY(&amp;amp;send_msgq) &amp;amp;&amp;amp; nsend != 0&amp;quot;, file=0x444aa8 &amp;quot;nc_message.c&amp;quot;, line=745, panic=1) at nc_util.c:308
+#3  0x000000000040d0d6 in msg_send_chain (ctx=0x553090, conn=0x55b380, msg=0x0) at nc_message.c:745
+#4  0x000000000040d568 in msg_send (ctx=0x553090, conn=0x55b380) at nc_message.c:820
+#5  0x00000000004059af in core_send (ctx=0x553090, conn=0x55b380) at nc_core.c:173
+#6  0x0000000000405ffe in core_core (arg=0x55b380, events=65280) at nc_core.c:301
+#7  0x0000000000429297 in event_wait (evb=0x5652e0, timeout=389) at nc_epoll.c:269
+#8  0x000000000040606f in core_loop (ctx=0x553090) at nc_core.c:316
+#9  0x000000000041b109 in nc_run (nci=0x7fbfffea80) at nc.c:530
+#10 0x000000000041b20d in main (argc=14, argv=0x7fbfffecc8) at nc.c:579
+(gdb) f 3
+#3  0x000000000040d0d6 in msg_send_chain (ctx=0x553090, conn=0x55b380, msg=0x0) at nc_message.c:745
+745         ASSERT(!TAILQ_EMPTY(&amp;amp;send_msgq) &amp;amp;&amp;amp; nsend != 0);
+(gdb) l
+740             if (msg == NULL) {
+741                 break;
+742             }
+743         }
+744
+745         ASSERT(!TAILQ_EMPTY(&amp;amp;send_msgq) &amp;amp;&amp;amp; nsend != 0);
+746
+747         conn-&amp;gt;smsg = NULL;
+748
+749         n = conn_sendv(conn, &amp;amp;sendv, nsend);
+&lt;/pre&gt;
+&lt;p&gt;it is caused by this &lt;tt class="docutils literal"&gt;ASSERT&lt;/tt&gt; at nc_message.c:745,&lt;/p&gt;
+&lt;p&gt;this core is not always raise when we do the same request again,&lt;/p&gt;
+&lt;p&gt;if we use -v 9 to debug, it never raise.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="repetition"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id2"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;Repetition&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;use gdb, we found that the msg we want to send is:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+(gdb) p * (send_msgq.tqh_first )
+$6 = {c_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {lastfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, lastline = 291, prevfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, prevline = 270}}, s_tqe = {tqe_next = 0x0, tqe_prev = 0x0,
+    trace = {lastfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, lastline = 302, prevfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, prevline = 279}}, m_tqe = {tqe_next = 0x0, tqe_prev = 0x7fbfffe8c0, trace = {
+      lastfile = 0x444aa8 &amp;quot;nc_message.c&amp;quot;, lastline = 712, prevfile = 0x444aa8 &amp;quot;nc_message.c&amp;quot;, prevline = 196}}, id = 6515, peer = 0x810cc0, owner = 0x55ae00, tmo_rbe = {left = 0x0, right = 0x0,
+    parent = 0x0, key = 0, data = 0x0, color = 0 '\0'}, mhdr = {stqh_first = 0x82ecc0, stqh_last = 0x82ecc8}, mlen = 0, state = 0,
+  pos = 0x82eaf4 &amp;quot;:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n:0\r\n&amp;quot;,
+  token = 0x0, parser = 0x42713b &amp;lt;redis_parse_rsp&amp;gt;, result = MSG_PARSE_OK, pre_splitcopy = 0x427e1d &amp;lt;redis_pre_splitcopy&amp;gt;, post_splitcopy = 0x427f8a &amp;lt;redis_post_splitcopy&amp;gt;,
+  pre_coalesce = 0x42816a &amp;lt;redis_pre_coalesce&amp;gt;, post_coalesce = 0x428557 &amp;lt;redis_post_coalesce&amp;gt;, type = MSG_RSP_REDIS_INTEGER, key_start = 0x0, key_end = 0x0, vlen = 0, end = 0x0, narg_start = 0x0,
+  narg_end = 0x0, narg = 0, rnarg = 0, rlen = 0, integer = 0, frag_owner = 0x0, nfrag = 0, frag_id = 0, err = 0, error = 0, ferror = 0, request = 0, quit = 0, noreply = 0, done = 0, fdone = 0,
+  first_fragment = 0, last_fragment = 0, swallow = 0, redis = 1}
+&lt;/pre&gt;
+&lt;p&gt;this is the only msg( and the last msg) in send_msgq, &lt;tt class="docutils literal"&gt;mlen=0&lt;/tt&gt; ,&lt;/p&gt;
+&lt;p&gt;and it's peer request is a fragment of a delete cmd:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+(gdb) p * (send_msgq.tqh_first -&amp;gt; peer )
+$5 = {c_tqe = {tqe_next = 0x75e140, tqe_prev = 0x55b400, trace = {lastfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, lastline = 270, prevfile = 0x0, prevline = 0}}, s_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {
+      lastfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, lastline = 302, prevfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, prevline = 279}}, m_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {lastfile = 0x444aa8 &amp;quot;nc_message.c&amp;quot;,
+      lastline = 758, prevfile = 0x444aa8 &amp;quot;nc_message.c&amp;quot;, prevline = 712}}, id = 4515, peer = 0x5fe2c0, owner = 0x55b380, tmo_rbe = {left = 0x0, right = 0x0, parent = 0x0, key = 0, data = 0x0,
+    color = 0 '\0'}, mhdr = {stqh_first = 0x6c1090, stqh_last = 0x6c1098}, mlen = 47, state = 0,
+  pos = 0x6c0eef &amp;quot;*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_393307809209&amp;quot;..., token = 0x0, parser = 0x421279 &amp;lt;redis_parse_req&amp;gt;, result = MSG_PARSE_OK, pre_splitcopy = 0x427e1d &amp;lt;redis_pre_splitcopy&amp;gt;,
+  post_splitcopy = 0x427f8a &amp;lt;redis_post_splitcopy&amp;gt;, pre_coalesce = 0x42816a &amp;lt;redis_pre_coalesce&amp;gt;, post_coalesce = 0x428557 &amp;lt;redis_post_coalesce&amp;gt;, type = MSG_REQ_REDIS_DEL,
+  key_start = 0x6c0ed2 &amp;quot;rrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nD&amp;quot;...,
+  key_end = 0x6c0eed &amp;quot;\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092&amp;quot;..., vlen = 0, end = 0x0,
+  narg_start = 0x6c0ec0 &amp;quot;*2\r\n$3\r\ndel\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_566362775949&amp;quot;...,
+  narg_end = 0x6c0ec2 &amp;quot;\r\n$3\r\ndel\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_56636277594915&amp;quot;..., narg = 2, rnarg = 0, rlen = 0, integer = 0, frag_owner = 0x75e4f0, nfrag = 0, frag_id = 1256, err = 0, error = 0, ferror = 0, request = 1, quit = 0,
+  noreply = 0, done = 1, fdone = 1, first_fragment = 0, last_fragment = 1, swallow = 0, redis = 1}
+&lt;/pre&gt;
+&lt;p&gt;the orig msg is:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+(gdb) p * (send_msgq.tqh_first -&amp;gt; peer -&amp;gt;frag_owner )
+$23 = {c_tqe = {tqe_next = 0x0, tqe_prev = 0x0, trace = {lastfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, lastline = 291, prevfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, prevline = 270}}, s_tqe = {tqe_next = 0x0, tqe_prev = 0x0,
+    trace = {lastfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, lastline = 302, prevfile = 0x444e28 &amp;quot;nc_request.c&amp;quot;, prevline = 279}}, m_tqe = {tqe_next = 0x5f9740, tqe_prev = 0x551f80, trace = {
+      lastfile = 0x444aa8 &amp;quot;nc_message.c&amp;quot;, lastline = 360, prevfile = 0x444aa8 &amp;quot;nc_message.c&amp;quot;, prevline = 758}}, id = 4514, peer = 0x0, owner = 0x55b380, tmo_rbe = {left = 0x0, right = 0x0, parent = 0x0,
+    key = 0, data = 0x0, color = 1 '\001'}, mhdr = {stqh_first = 0x0, stqh_last = 0x75e5c8}, mlen = 34, state = 27,
+  pos = 0x74f15f &amp;quot;$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n&amp;quot;..., token = 0x0, parser = 0x421279 &amp;lt;redis_parse_req&amp;gt;, result = MSG_PARSE_FRAGMENT, pre_splitcopy = 0x427e1d &amp;lt;redis_pre_splitcopy&amp;gt;,
+  post_splitcopy = 0x427f8a &amp;lt;redis_post_splitcopy&amp;gt;, pre_coalesce = 0x42816a &amp;lt;redis_pre_coalesce&amp;gt;, post_coalesce = 0x428557 &amp;lt;redis_post_coalesce&amp;gt;, type = MSG_REQ_REDIS_DEL,
+  key_start = 0x74f142 &amp;quot;rrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\ncoun&amp;quot;...,
+  key_end = 0x74f15d &amp;quot;\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3&amp;quot;..., vlen = 0, end = 0x0,
+  narg_start = 0x74ed80 &amp;quot;*2\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r&amp;quot;,
+  narg_end = 0x74ed82 &amp;quot;\r\n$3\r\nDEL\r\n$27\r\nrrr_kkk_3933078092091789232\r\n$27\r\nrrr_kkk_5663627759491506624\r\n*3\r\n$3\r\nDEL\r&amp;quot;, narg = 3, rnarg = 1, rlen = 0, integer = 0, frag_owner = 0x75e4f0,
+  nfrag = 2, frag_id = 1256, err = 0, error = 0, ferror = 0, request = 1, quit = 0, noreply = 0, done = 1, fdone = 1, first_fragment = 1, last_fragment = 0, swallow = 0, redis = 1}
+&lt;/pre&gt;
+&lt;p&gt;we found that it's a DEL cmd with narg=3. the orig cmd is:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+DEL rrr_kkk_3933078092091789232 rrr_kkk_5663627759491506624
+&lt;/pre&gt;
+&lt;p&gt;so we try to repetition this bug with lot's of MULTI-DEL.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="explain"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id3"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;explain&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;a MULTI-DEL cmd will split into many &lt;tt class="docutils literal"&gt;DEL&lt;/tt&gt; in nutcracker,&lt;/p&gt;
+&lt;p&gt;response will coalesce. (all fragment except the first one will be rewrite to empty msg), following pic show the split and coalesce of msg:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-core-201405-001.png" /&gt;
+&lt;p&gt;ok, let's check this code:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static rstatus_t
+msg_send_chain(struct context *ctx, struct conn *conn, struct msg *msg)
+{
+    ...
+    TAILQ_INIT(&amp;amp;send_msgq);
+    array_set(&amp;amp;sendv, iov, sizeof(iov[0]), NC_IOV_MAX);
+    nsend = 0;
+    for (;;) {
+        ASSERT(conn-&amp;gt;smsg == msg);
+
+        TAILQ_INSERT_TAIL(&amp;amp;send_msgq, msg, m_tqe);
+
+        for (mbuf = STAILQ_FIRST(&amp;amp;msg-&amp;gt;mhdr);
+             mbuf != NULL &amp;amp;&amp;amp; array_n(&amp;amp;sendv) &amp;lt; NC_IOV_MAX &amp;amp;&amp;amp; nsend &amp;lt; limit;
+             mbuf = nbuf) {
+            nbuf = STAILQ_NEXT(mbuf, next);
+
+            if (mbuf_empty(mbuf)) {
+                continue;
+            }
+
+            mlen = mbuf_length(mbuf);
+            if ((nsend + mlen) &amp;gt; limit) {
+                mlen = limit - nsend;
+            }
+
+            ciov = array_push(&amp;amp;sendv);
+            ciov-&amp;gt;iov_base = mbuf-&amp;gt;pos;
+            ciov-&amp;gt;iov_len = mlen;
+
+            nsend += mlen;
+        }
+
+        if (array_n(&amp;amp;sendv) &amp;gt;= NC_IOV_MAX || nsend &amp;gt;= limit) {
+            break;
+        }
+
+        msg = conn-&amp;gt;send_next(ctx, conn);
+        if (msg == NULL) {
+            break;
+        }
+    }
+
+    //log_debug(LOG_VVERB, &amp;quot;conn-&amp;gt;client: %d, len_sendv: %d nsend: %d&amp;quot;, conn-&amp;gt;client, array_n(&amp;amp;sendv), nsend);
+    ASSERT(!TAILQ_EMPTY(&amp;amp;send_msgq) &amp;amp;&amp;amp; nsend != 0);
+    conn-&amp;gt;smsg = NULL;
+    n = conn_sendv(conn, &amp;amp;sendv, nsend);
+&lt;/pre&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;conn_send&lt;/tt&gt; send no more than &lt;tt class="docutils literal"&gt;NC_IOV_MAX(128)&lt;/tt&gt; pieces in this function,&lt;/p&gt;
+&lt;p&gt;if the first fragment of MULTI-DEL response is send on last batch. and this is the last msg in send queue, the next call of &lt;tt class="docutils literal"&gt;msg_send_chain&lt;/tt&gt; will got &lt;tt class="docutils literal"&gt;nsend == 0&lt;/tt&gt;:&lt;/p&gt;
+&lt;p&gt;following img show such a case:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;mget on 126 keys&lt;/li&gt;
+&lt;li&gt;a mutli-del cmd&lt;/li&gt;
+&lt;/ol&gt;
+&lt;img alt="" src="/imgs/twemproxy-core-201405-002.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="add-a-testcase"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;add-a-testcase&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;the test case with &lt;a class="reference external" href="https://github.com/idning/test-twemproxy"&gt;test-twemproxy&lt;/a&gt;:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+def test_multi_delete_20140525():
+    conn = redis.Redis('127.0.0.5', 4100)
+    cnt = 126
+    keys = ['key-%s'%i for i in range(cnt)]
+    pipe = conn.pipeline(transaction=False)
+    pipe.mget(keys)
+    pipe.delete(*keys)
+    print pipe.execute()
+&lt;/pre&gt;
+&lt;p&gt;see: &lt;a class="reference external" href="https://github.com/idning/test-twemproxy/blob/master/test_redis/test_del.py#L56-L63"&gt;https://github.com/idning/test-twemproxy/blob/master/test_redis/test_del.py#L56-L63&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="fix"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;fix&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;we do not need this comment here:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ASSERT(!TAILQ_EMPTY(&amp;amp;send_msgq) &amp;amp;&amp;amp; nsend != 0);
+&lt;/pre&gt;
+&lt;p&gt;and we should eat all the fragment of MULTI-DEL in &lt;tt class="docutils literal"&gt;msg_send_chain&lt;/tt&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="more-bugs"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;more bugs&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;current master (8a4f5c0)can not pass following cases:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+test_redis.test_mget_mset.test_mget_special_key ... ERROR
+test_redis.test_mget_mset.test_mget_special_key_2 ... ERROR
+&lt;/pre&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>fatcache-cr</title><link href="/fatcache-cr.html" rel="alternate"></link><updated>2014-05-21T14:17:46+08:00</updated><author><name>ning</name></author><id>tag:,2014-05-21:fatcache-cr.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
@@ -5026,6 +6374,174 @@ rl_getset key         (返回同rl_get, 当leveldb有值，redis无值时，会�
 &lt;/table&gt;
 &lt;/div&gt;
 &lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>twemproxy-cfg-reload</title><link href="/twemproxy-cfg-reload.html" rel="alternate"></link><updated>2014-04-28T16:46:45+08:00</updated><author><name>ning</name></author><id>tag:,2014-04-28:twemproxy-cfg-reload.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#nginx" id="id9"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;nginx 怎么做的&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id10"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;配置修改&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id11"&gt;1.1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;过程&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id12"&gt;1.1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;细节&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id13"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;热升级二进制&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id14"&gt;1.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;过程&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id15"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;关键点&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id16"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;应该做到怎样&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;配置热加载:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+case SIGUSR2:
+&lt;/pre&gt;
+&lt;div class="section" id="nginx"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id9"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;nginx 怎么做的&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;nginx 有两种情况:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;配置修改&lt;/li&gt;
+&lt;li&gt;热升级二进制&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;配置修改&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;难点在于:&lt;/p&gt;
+&lt;p&gt;因为不能由各个子进程分别做监听, 只能父进程监听后, 确定监听sokcet列表, 然后fork出子进程, 由子进程继承监听socket.&lt;/p&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id11"&gt;1.1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;过程&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;启动后:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |
++---+   +---+
+|   |   |   |
+| 1 |   | 2 |
+|   |   |   |
++---+   +---+
+&lt;/pre&gt;
+&lt;p&gt;向父进程0发信号, 派生出新的子进程:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |         a|       |
++---+   +---+      +---+   +---+
+|   |   |   |      |   |   |   |
+| 1 |   | 2 |      | 3 |   | 4 |
+|   |   |   |      |   |   |   |
++---+   +---+      +---+   +---+
+&lt;/pre&gt;
+&lt;p&gt;父进程收到信号后, 解析新的配置, 得到新的需要监听的列表, 以及每个监听socket对应的配置, 并派生新worker,
+新worker启动后, 向老worker 发送优雅关闭的信号即可, 最后达到这样:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
++-------------------------------+
+|               0               |
++-------------------------------+
+                    a|       |
+                   +---+   +---+
+                   |   |   |   |
+                   | 3 |   | 4 |
+                   |   |   |   |
+                   +---+   +---+
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id12"&gt;1.1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;细节&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;考虑父进程收到信号后, 派生新worker的过程. 假设&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;旧配置监听8000, 8001, 8002几个port,&lt;/li&gt;
+&lt;li&gt;新配置监听8000, 8001, 8003.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;那么父进程解析完新的配置文件后, 会对比监听列表, 决定关闭8002, 新开8003, 保留8000, 8001, 然后把这三个fd开着, fork出新worker.&lt;/p&gt;
+&lt;p&gt;新worker 直接使用新的配置结构即可.&lt;/p&gt;
+&lt;p&gt;这里父进程可以直接修改自己的老配置为新配置(不会影响到 老的worker自己的那一份老配置)&lt;/p&gt;
+&lt;p&gt;对于twemporxy这样单进程模型, 就不能这样做, 如果在运行时修改自己的配置, 一个请求很可能跨两种不同的配置. 这就容易出问题.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id13"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;热升级二进制&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id14"&gt;1.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;过程&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |
++---+   +---+
+|   |   |   |
+| 1 |   | 2 |
+|   |   |   |
++---+   +---+
+&lt;/pre&gt;
+&lt;p&gt;发信号:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
++-------------------------------+
+|               0               |
++-------------------------------+
+  |       |                 |
++---+   +---+    +----------------------+
+|   |   |   |    |          3           |
+| 1 |   | 2 |    +----------------------+
+|   |   |   |          |       |
++---+   +---+        +---+   +---+
+                     |   |   |   |
+                     | 4 |   | 5 |
+                     |   |   |   |
+                     +---+   +---+
+&lt;/pre&gt;
+&lt;p&gt;发信号后0派生出一个新的master 3, 这个过程会把所有老的fd传给3, 由3来决定把哪些fd关掉. 新开哪些fd, 之后3会派生自己的worker.&lt;/p&gt;
+&lt;p&gt;0和3之间传递fd是通过环境变量来做的, 0会向环境变量里面写:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+fds=3:8:72
+&lt;/pre&gt;
+&lt;p&gt;这样的, 表示这三个listen fd, 子进程拿到这三个fd, 解析自己的配置, 看需要监听哪些端口, 和这些fd对比(这些fd可以通过getsockaddr获取所监听的端口)&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id15"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;关键点&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;传递fd:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;像nginx,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;子进程派生时, 保留父进程fd, 根据情况 关闭 开启新的listen fd.&lt;/li&gt;
+&lt;li&gt;但是nginx是master和多worker的进程模型.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;用sendmsg 把fd发送过去.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;库: &lt;a class="reference external" href="http://www.normalesup.org/~george/comp/libancillary/"&gt;http://www.normalesup.org/~george/comp/libancillary/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id7"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id16"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;应该做到怎样&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;配置:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;增加pool&lt;/li&gt;
+&lt;li&gt;pool属性变化.&lt;/li&gt;
+&lt;li&gt;减少pool.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;思路1: 改造tw为master-worker模式.&lt;/li&gt;
+&lt;li&gt;思路2: 派生新进程, 通过环境变量来传递fd.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id8"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;按照思路2, 实现: &lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/257"&gt;https://github.com/twitter/twemproxy/pull/257&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>redis-aof-replay</title><link href="/redis-aof-replay.html" rel="alternate"></link><updated>2014-02-27T09:44:50+08:00</updated><author><name>ning</name></author><id>tag:,2014-02-27:redis-aof-replay.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
@@ -6322,6 +7838,214 @@ cluster0-22001 [redis:127.0.0.5:22001] &amp;lt;- 127.0.0.5:23001
 cluster0-22002 [redis:127.0.0.5:22002] &amp;lt;- 127.0.0.5:23002
 cluster0-22003 [redis:127.0.0.5:22003] &amp;lt;- 127.0.0.5:23003
 &lt;/pre&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>twemproxy-benchmark</title><link href="/twemproxy-benchmark.html" rel="alternate"></link><updated>2014-02-10T16:04:26+08:00</updated><author><name>ning</name></author><id>tag:,2014-02-10:twemproxy-benchmark.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;过程&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id7"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id8"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;具体性能分析&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;在我们用 redis-mgr 部署的集群里面, 使用 benchmark测试:&lt;/p&gt;
+&lt;p&gt;以比较典型的部署:&lt;/p&gt;
+&lt;p&gt;4台机器,&lt;/p&gt;
+&lt;p&gt;每台机器2个redis-master, 2个nutcracker:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+'redis': [
+    ('m-01:2200', '/home/ning/redis-sandbox2/redis-2200'), ('m-02:3200', '/home/ning/redis-sandbox2/redis-3200'),
+    ('m-01:2201', '/home/ning/redis-sandbox2/redis-2201'), ('m-02:3201', '/home/ning/redis-sandbox2/redis-3201'),
+    ('m-02:2202', '/home/ning/redis-sandbox2/redis-2202'), ('m-03:3202', '/home/ning/redis-sandbox2/redis-3202'),
+    ('m-02:2203', '/home/ning/redis-sandbox2/redis-2203'), ('m-03:3203', '/home/ning/redis-sandbox2/redis-3203'),
+    ('m-03:2204', '/home/ning/redis-sandbox2/redis-2204'), ('m-04:3204', '/home/ning/redis-sandbox2/redis-3204'),
+    ('m-03:2205', '/home/ning/redis-sandbox2/redis-2205'), ('m-04:3205', '/home/ning/redis-sandbox2/redis-3205'),
+    ('m-04:2206', '/home/ning/redis-sandbox2/redis-2206'), ('m-01:3206', '/home/ning/redis-sandbox2/redis-3206'),
+    ('m-04:2207', '/home/ning/redis-sandbox2/redis-2207'), ('m-01:3207', '/home/ning/redis-sandbox2/redis-3207'),
+],
+'nutcracker': [
+    ('m-01:4200', '/home/ning/redis-sandbox2/nutcracker-4200'),
+    ('m-01:4201', '/home/ning/redis-sandbox2/nutcracker-4201'),
+    ('m-02:4200', '/home/ning/redis-sandbox2/nutcracker-4200'),
+    ('m-02:4201', '/home/ning/redis-sandbox2/nutcracker-4201'),
+    ('m-03:4200', '/home/ning/redis-sandbox2/nutcracker-4200'),
+    ('m-03:4201', '/home/ning/redis-sandbox2/nutcracker-4201'),
+    ('m-04:4200', '/home/ning/redis-sandbox2/nutcracker-4200'),
+    ('m-04:4201', '/home/ning/redis-sandbox2/nutcracker-4201'),
+],
+&lt;/pre&gt;
+&lt;p&gt;使用如下benchmark:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./bin/deploy.py cluster_sandbox2 nbench 1000000
+2014-02-10 16:15:52,758 [MainThread] [INFO] start running: ./bin/deploy.py -v cluster_sandbox2 nbench 1000000
+2014-02-10 16:15:52,783 [Thread-1] [INFO] ssh -n -f ning&amp;#64;10.65.19.52 &amp;quot;cd /home/ning/redis-sandbox2/redis-2200 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.19.52 -p 4200 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+2014-02-10 16:15:52,799 [Thread-2] [INFO] ssh -n -f ning&amp;#64;10.65.19.26 &amp;quot;cd /home/ning/redis-sandbox2/redis-2202 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.19.52 -p 4201 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+2014-02-10 16:15:52,814 [Thread-3] [INFO] ssh -n -f ning&amp;#64;10.65.19.52 &amp;quot;cd /home/ning/redis-sandbox2/redis-2200 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.19.26 -p 4200 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+2014-02-10 16:15:52,831 [Thread-4] [INFO] ssh -n -f ning&amp;#64;10.65.19.52 &amp;quot;cd /home/ning/redis-sandbox2/redis-2201 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.19.26 -p 4201 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+2014-02-10 16:15:52,843 [Thread-5] [INFO] ssh -n -f ning&amp;#64;10.65.19.52 &amp;quot;cd /home/ning/redis-sandbox2/redis-2201 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.19.27 -p 4200 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+2014-02-10 16:15:52,855 [Thread-6] [INFO] ssh -n -f ning&amp;#64;10.65.19.26 &amp;quot;cd /home/ning/redis-sandbox2/redis-2202 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.19.27 -p 4201 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+2014-02-10 16:15:52,870 [Thread-7] [INFO] ssh -n -f ning&amp;#64;10.65.19.26 &amp;quot;cd /home/ning/redis-sandbox2/redis-2203 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.15.234 -p 4200 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+2014-02-10 16:15:52,887 [Thread-8] [INFO] ssh -n -f ning&amp;#64;10.65.19.52 &amp;quot;cd /home/ning/redis-sandbox2/redis-2201 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.15.234 -p 4201 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+&lt;/pre&gt;
+&lt;p&gt;想当于起8个worker, 随机登录到这4台机器上, 用redis-benchmark向随机一个nutcracker 发:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+bin/redis-benchmark --csv -h 10.65.19.52 -p 4200 -r 100000 -t set,get -n 1000000 -c 100
+&lt;/pre&gt;
+&lt;p&gt;实际效果, 从redis-master 观察到的 qps 如下:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+_2200  2201  2202  2203  2204  2205  2206  2207
+31070 31187 31330 31143 31129 30843 30561 31198 16:10:27
+28709 28226 28184 28054 27960 27934 27763 28227 16:10:28
+28039 28104 28076 28148 28140 28065 28108 28429 16:10:29
+28060 28026 27791 27938 28006 27968 27901 28236 16:10:31
+27277 27314 27120 26693 27308 26892 26961 27100 16:10:32
+&lt;/pre&gt;
+&lt;p&gt;这些redis-benchmark跑完结果如下:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Warning: Permanently added '10.65.19.26' (RSA) to the list of known hosts.
+&amp;quot;SET&amp;quot;,&amp;quot;32128.51&amp;quot;
+&amp;quot;GET&amp;quot;,&amp;quot;32101.70&amp;quot;
+Warning: Permanently added '10.65.19.26' (RSA) to the list of known hosts.
+&amp;quot;SET&amp;quot;,&amp;quot;28050.49&amp;quot;
+&amp;quot;GET&amp;quot;,&amp;quot;37503.75&amp;quot;
+&lt;/pre&gt;
+&lt;p&gt;此时目标机器上nutcracker进程占cpu 50%左右&lt;/p&gt;
+&lt;p&gt;总的来说, 单个redis实例, qps只能到2.5w左右, 并不能发挥全部潜力&lt;/p&gt;
+&lt;p&gt;如果直接向redis-master 发benchmark:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+./bin/deploy.py cluster_sandbox2 mbench 1000000
+
+_2200  2201  2202  2203  2204  2205  2206  2207
+65403 52966 72511 59942 56849 67403 73925 73807 16:14:29
+59207 59013 72661 59847 62023 70425 73797 73419 16:14:30
+61209 64150 72458 59782 61011 71315 73880 57140 16:14:31
+61558 69808 63582 57293 58958 71804 73205 70450 16:14:32
+61728 70484 60712 61016 58986 64976 73757 73305 16:14:33
+
+Warning: Permanently added '10.65.19.26' (RSA) to the list of known hosts.
+&amp;quot;SET&amp;quot;,&amp;quot;63123.34&amp;quot;
+&amp;quot;GET&amp;quot;,&amp;quot;72854.44&amp;quot;
+&lt;/pre&gt;
+&lt;p&gt;看到每个redis实例的qps约7w/s.&lt;/p&gt;
+&lt;p&gt;为什么经过了一个nutcracker, pqs就从 7w下降到2.5w呢?&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;过程&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;试试单个benchmark进程:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ssh -n -f ning&amp;#64;10.65.19.52 &amp;quot;cd /home/ning/redis-sandbox2/redis-2200 &amp;amp;&amp;amp; bin/redis-benchmark --csv -h 10.65.19.52 -p 4200 -r 100000 -t set,get -n 1000000 -c 100 &amp;quot;
+&amp;quot;SET&amp;quot;,&amp;quot;70185.29&amp;quot;
+&amp;quot;GET&amp;quot;,&amp;quot;67449.08&amp;quot;
+每个master上的压力大约9k, 总压力能到7w左右
+ 2200  2201  2202  2203  2204  2205  2206  2207
+ 9320  9233  9144  9256  9128  9191  9296  9239 16:19:56
+&lt;/pre&gt;
+&lt;p&gt;能到7w左右, 是没有问题的, 此时目标机器上nutcracker进程占cpu 90%-99%.&lt;/p&gt;
+&lt;p&gt;发现问题, 用自己的nbench命令, 是随机选择一个机器作为压力发起的机器, 存在很大的不均匀现象:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ssh -n -f ning&amp;#64;10.65.19.52
+ssh -n -f ning&amp;#64;10.65.19.52
+ssh -n -f ning&amp;#64;10.65.19.52
+ssh -n -f ning&amp;#64;10.65.19.52
+ssh -n -f ning&amp;#64;10.65.19.52
+ssh -n -f ning&amp;#64;10.65.19.26
+ssh -n -f ning&amp;#64;10.65.19.26
+ssh -n -f ning&amp;#64;10.65.19.26
+&lt;/pre&gt;
+&lt;p&gt;因为每台机器上有4个redis, 2个proxy, 再开2个benchmark 进程, 就会打满8个核(总共就8个核)&lt;/p&gt;
+&lt;p&gt;如果有3个benchmark进程在同一个机器上, 多余的benchmark进程的压力就上不来 (benchmark进程也占87%左右的cpu)&lt;/p&gt;
+&lt;p&gt;原来发benchmark的任务实现:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+def nbench(self, cnt=100000):
+    '''
+    run benchmark against nutcracker
+    '''
+    for s in self.all_nutcracker:
+        args = copy.deepcopy(s.args)
+        args['cnt'] = cnt
+        cmd = TT('bin/redis-benchmark --csv -h $host -p $port -r 100000 -t set,get -n $cnt -c 100 ', args)
+        BenchThread(random.choice(self._active_masters()), cmd).start()
+&lt;/pre&gt;
+&lt;p&gt;修改了一下:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+def nbench(self, cnt=100000):
+    '''
+    run benchmark against nutcracker
+    '''
+    i = 0
+    masters= self._active_masters()
+    for s in self.all_nutcracker:
+        args = copy.deepcopy(s.args)
+        args['cnt'] = cnt
+        cmd = TT('bin/redis-benchmark --csv -h $host -p $port -r 100000 -t set,get -n $cnt -c 100 ', args)
+
+        BenchThread(masters[i], cmd).start()
+        i += 1
+        i %= len(masters)
+&lt;/pre&gt;
+&lt;p&gt;保证均匀的在各个机器上起benchmark进程, 就能得到很高的qps, 和直连差别已经很小:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+_2200  2201  2202  2203  2204  2205  2206  2207
+63227 62220 63270 63240 61574 62673 62855 62078 16:43:34
+63889 64202 64157 63754 63181 63986 64152 64234 16:43:35
+66386 66852 66858 66445 66835 66672 66700 67084 16:43:36
+&lt;/pre&gt;
+&lt;p&gt;此时几个核的压力分布:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+PID   USER     PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+14903 ning     16   0 18928 1908  708 R 90.4  0.0   6:05.93 nutcracker
+14865 ning     16   0 22328 2968  712 R 88.8  0.0  10:53.54 nutcracker
+517   ning     16   0 22924 6432  680 S 87.8  0.0   0:09.84 redis-benchmark
+519   ning     16   0 22924 6136  680 R 87.1  0.0   0:09.33 redis-benchmark
+30753 ning     16   0  118m  82m 1116 S 70.9  0.1  18:31.10 redis-server
+10746 ning     16   0  126m  87m 1112 R 70.0  0.1  13:40.51 redis-server
+21287 ning     16   0 52196  17m 1132 R 38.6  0.0  12:24.57 redis-server
+28560 ning     16   0 55420  17m 1240 R 37.0  0.0  17:27.72 redis-server
+&lt;/pre&gt;
+&lt;p&gt;可以看出, 满负荷的时候, nutcracker占满cpu, benchmark也很消耗cpu,&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;看到的nutcracker导致集群性能下降, 其实是自己的benchmark方法不合理, 客户端性能受限导致&lt;/li&gt;
+&lt;li&gt;如果在cpu很空闲的机器上发benchmark, qps应该更高.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id8"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;具体性能分析&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;火焰图:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy_flame.png" style="width: 600px; height: 145px;" /&gt;
+&lt;p&gt;&lt;a class="reference external" href="imgs/twemproxy-flame.svg"&gt;svg&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;可以看出:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;程序逻辑:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;event_wait&lt;/li&gt;
+&lt;li&gt;msg_recv&lt;/li&gt;
+&lt;li&gt;msg_send&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;conn_recv: 18.4% , conn_sendv 36.9% 这基本等于调用系统调用read/write 的时间
+总共占 55%. 这一部分时间是不可能被优化的了&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;event_add_out, event_del_out, 下面都是epoll_ctl, 在不同场景下调用, 大约有4种情况,
+占用时间18%左右&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;event_wait 占用 &lt;tt class="docutils literal"&gt;2.9%&lt;/tt&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;redis_parse_req &lt;tt class="docutils literal"&gt;2.6%&lt;/tt&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;parse_req, 队列的enqueue, dequeue 操作合起来占5%左右.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;其它&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;可优化的空间较小了.&lt;/p&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>Understanding the Linux Kernel(notes)</title><link href="/ulk.html" rel="alternate"></link><updated>2014-01-05T11:54:31+08:00</updated><author><name>ning</name></author><id>tag:,2014-01-05:ulk.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
@@ -9002,6 +10726,2325 @@ sched_getaffinity()
 &lt;/dl&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>twemproxy</title><link href="/twemproxy.html" rel="alternate"></link><updated>2014-01-03T17:33:27+08:00</updated><author><name>ning</name></author><id>tag:,2014-01-03:twemproxy.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#twemporxy-nutcracker" id="id1"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;Twemporxy(nutcracker) 介绍&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;twemproxy 是一个 redis/memcache 代理. 实现sharding逻辑&lt;/p&gt;
+&lt;div class="section" id="twemporxy-nutcracker"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id1"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;Twemporxy(nutcracker) 介绍&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;2012.2月由twitter 开源:&lt;/li&gt;
+&lt;li&gt;刚开始是只做 memcached 协议&lt;/li&gt;
+&lt;li&gt;主要目标是作为分布式连接池, 减少后端连接.(数千前端, 都要连后端的memcached) =&amp;gt; 几个前端聚合用一个proxy.&lt;/li&gt;
+&lt;li&gt;后端长连接&lt;/li&gt;
+&lt;li&gt;config by YAML&lt;/li&gt;
+&lt;li&gt;Use multiple hashing modes, including consistent hashing&lt;/li&gt;
+&lt;li&gt;stats 统计信息.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>twemproxy代码分析</title><link href="/twemproxy-src.html" rel="alternate"></link><updated>2013-12-15T15:12:02+08:00</updated><author><name>ning</name></author><id>tag:,2013-12-15:twemproxy-src.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id45"&gt;调研&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id46"&gt;文章调研&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-twemproxy-a-redis-proxy-from-twitter" id="id47"&gt;Redis 作者:Twemproxy, a Redis proxy from Twitter&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id48"&gt;存储分片和Twemproxy核心解读&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-twemproxy-benchmark" id="id49"&gt;redis-twemproxy-benchmark&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id50"&gt;这个文章总结不错&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hash" id="id51"&gt;hash函数&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id52"&gt;配置&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#user" id="id53"&gt;user&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id54"&gt;不支持&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id55"&gt;代码分析&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id56"&gt;模块划分&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#event" id="id57"&gt;event&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id58"&gt;请求处理&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#main" id="id59"&gt;main&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#os-utils" id="id60"&gt;os utils&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#ds-utils" id="id61"&gt;ds utils&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id62"&gt;协议&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id11" id="id63"&gt;hash&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id12" id="id64"&gt;event 机制&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#epool" id="id65"&gt;epool 实现&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#event-create" id="id66"&gt;上层对event_create 的使用&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#event-wait" id="id67"&gt;上层对event_wait的使用&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#libevent" id="id68"&gt;和libevent 对比&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id13" id="id69"&gt;重要结构&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#server-poolserver" id="id70"&gt;server_pool和server.&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#conn-msg-mbuf" id="id71"&gt;conn, msg, mbuf&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#conn" id="id72"&gt;conn&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#msg" id="id73"&gt;msg&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mbuf" id="id74"&gt;mbuf&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id14" id="id75"&gt;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id15" id="id76"&gt;请求处理&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#core-core" id="id77"&gt;读写总控函数 core_core&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#accept" id="id78"&gt;accept连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#nc-connection-c" id="id79"&gt;nc_connection.c&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#messsage-c" id="id80"&gt;messsage.c&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id16" id="id81"&gt;一个请求被处理的流程&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id17" id="id82"&gt;初始状态&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id18" id="id83"&gt;1.读取请求&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id19" id="id84"&gt;2.转发到后端&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id20" id="id85"&gt;3.接收后端响应&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#client" id="id86"&gt;4.把响应回给client&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#buf" id="id87"&gt;buf处理上的特点&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id21" id="id88"&gt;后端如何处理&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id22" id="id89"&gt;协议&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id23" id="id90"&gt;hash&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id24" id="id91"&gt;具体hash函数&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#crc32" id="id92"&gt;crc32&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hsieh" id="id93"&gt;hsieh&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#jenkins-lookup3" id="id94"&gt;Jenkins lookup3&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#jenkins-one-at-a-time" id="id95"&gt;Jenkins one_at_a_time&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#fnv-xxx" id="id96"&gt;FNV-XXX&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#murmur" id="id97"&gt;murmur&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id25" id="id98"&gt;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#dispatch" id="id99"&gt;dispatch方法&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#rbtree" id="id100"&gt;rbtree&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mget" id="id101"&gt;如何处理mget&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#nginx" id="id102"&gt;代码严重受nginx影响&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id26" id="id103"&gt;(代码)小结&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id27" id="id104"&gt;注意&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id28" id="id105"&gt;使用&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id29" id="id106"&gt;配置参数&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hashdistribution" id="id107"&gt;hash和distribution见前面分析&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#auto-eject-hosts" id="id108"&gt;auto_eject_hosts相关&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#timeout" id="id109"&gt;timeout&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#log" id="id110"&gt;log&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mbuf-size" id="id111"&gt;mbuf size&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#max-key-lenght" id="id112"&gt;max key lenght&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#server-connections-1" id="id113"&gt;server_connections: &amp;gt; 1&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id30" id="id114"&gt;监控&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-mgr" id="id115"&gt;使用redis-mgr部署&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id31" id="id116"&gt;日志级别&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id32" id="id117"&gt;修改日志级别:&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id33" id="id118"&gt;2.动态调整日志级别:&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id34" id="id119"&gt;3.切日志&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id35" id="id120"&gt;自己实现一个自动的主从切换?&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#sentinel" id="id121"&gt;sentinel验证&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id36" id="id122"&gt;配置和优化&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#m-512" id="id123"&gt;-m 512&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id37" id="id124"&gt;问题&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#preconnect-true-redis-core" id="id125"&gt;preconnect: true 的时候, 如果后端redis挂掉, 会core&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#pipeline-replay" id="id126"&gt;pipeline/replay时消耗大量内存:&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mgetcase" id="id127"&gt;mget慢这个case&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id38" id="id128"&gt;应该允许释放mbuf&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id39" id="id129"&gt;#一轮完了再集中加事件, 不要多次加, 重复加&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id40" id="id130"&gt;#可能的优化:mget&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id41" id="id131"&gt;改造&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#key" id="id132"&gt;key过长回错误&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id42" id="id133"&gt;社区情况&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id43" id="id134"&gt;小结&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id44" id="id135"&gt;期望&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id45"&gt;调研&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id46"&gt;文章调研&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="redis-twemproxy-a-redis-proxy-from-twitter"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id47"&gt;Redis 作者:Twemproxy, a Redis proxy from Twitter&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://antirez.com/news/44"&gt;http://antirez.com/news/44&lt;/a&gt;&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;计划中的redis-cluster: Multiple instances is a share-nothing architecture.&lt;/li&gt;
+&lt;li&gt;2.6 中实现了Redis Sentinel, 即将实现 partial resynchronization&lt;/li&gt;
+&lt;li&gt;Twemproxy 是 single-threaded proxy&lt;/li&gt;
+&lt;li&gt;What's awesome about Twemproxy is that it can be configured both to disable nodes on failure, and retry after some time&lt;/li&gt;
+&lt;li&gt;失败时, 可以disable 或者 retry
+- 作为data store : retry
+- 作为cache: disable(node-ejection)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;同样的一组后端, 可以配成两种:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+redis1:
+  listen: 0.0.0.0:9999
+  redis: true
+  hash: fnv1a_64
+  distribution: ketama
+  auto_eject_hosts: true
+  timeout: 400
+  server_retry_timeout: 2000
+  server_failure_limit: 1
+  servers:
+   - 127.0.0.1:6379:1
+   - 127.0.0.1:6380:1
+   - 127.0.0.1:6381:1
+   - 127.0.0.1:6382:1
+
+redis2:
+  listen: 0.0.0.0:10000
+  redis: true
+  hash: fnv1a_64
+  distribution: ketama
+  auto_eject_hosts: false
+  timeout: 400
+  servers:
+   - 127.0.0.1:6379:1
+   - 127.0.0.1:6380:1
+   - 127.0.0.1:6381:1
+   - 127.0.0.1:6382:1
+&lt;/pre&gt;
+&lt;p&gt;限制:&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;不支持 mset, transaction:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+I think that twemproxy do it right, not supporting multiple keys commands nor transactions. Currently is AFAIK even more strict than Redis Cluster that instead allows MULTI/EXEC blocks if all the commands are about the same key.
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;对mget, mdel 支持, 性能待测试:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+However there is some support for commands with multiple keys. MGET and DEL are handled correctly. Interestingly MGET will split the request among different servers and will return the reply as a single entity. This is pretty cool even if I don't get the right performance numbers with this feature (see later).
+
+So I expected to see almost the same numbers with an MGET as I see when I run the MGET against a single instance
+but I get only 50% of the operations per second. Maybe it's the time to reconstruct the reply, I'm not sure.
+
+mget 只有50%
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;不支持EVAL,&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;错误处理: (antirez 测试还挺认真)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;non supported command: closes the connection.&lt;/li&gt;
+&lt;li&gt;sending just a &amp;quot;GET&amp;quot;: hang&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;希望: 支持HA&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;能直接做主从切换.&lt;/li&gt;
+&lt;li&gt;配置热加载也可以啊~ (checking the Sentinel configuration regularly to upgrade the servers table if a failover happened.)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;性能: 好!!!&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;This Thing Is Fast. Really fast, it is almost as fast as talking directly with Redis. I would say you lose 20% of performances at worst.&lt;/li&gt;
+&lt;li&gt;MGET可以优化 (目前性能降低50%)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;结论:
+- I strongly suggest Redis users to give it a try.&lt;/p&gt;
+&lt;p&gt;人们的讨论:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;对于MGET: The response time will then be &lt;em&gt;at least&lt;/em&gt; as slow as the slowest node&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id48"&gt;存储分片和Twemproxy核心解读&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.wzxue.com/%E5%AD%98%E5%82%A8%E5%88%86%E7%89%87%E5%92%8Ctwemproxy%E6%A0%B8%E5%BF%83%E8%A7%A3%E8%AF%BB/"&gt;http://www.wzxue.com/%E5%AD%98%E5%82%A8%E5%88%86%E7%89%87%E5%92%8Ctwemproxy%E6%A0%B8%E5%BF%83%E8%A7%A3%E8%AF%BB/&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;antirez(Redis作者)写过一篇对twemproxy的介绍http://antirez.com/news/44, 他认为twemproxy是目前Redis 分片管理的最好方案，虽然antirez的Redis cluster正在实现并且对其给予厚望&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;涉及到三个重要的结构:server, connection, message。&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;每个server其实就是一个后端的缓存服务程序&lt;/li&gt;
+&lt;li&gt;connection在Twemproxy中非常重要，它分为三种类型的connection:proxy，client和server&lt;/li&gt;
+&lt;li&gt;struct msg是连接建立后的消息内容发送载体，这个复杂的msg结构很大程度是因为需要实现pipeline的效果，多个msg属于同一个conn，conn通过接收到内容解析来发现几个不同的msg。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;Twemproxy的架构比较清晰，对Twemproxy源码印象较深的是对logging的合理布局和错误处理的清晰，这是第一次看大公司开源出来的代码，非常重视logging和错误处理。&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;我的fork: 由于Twitter开源的Twemproxy直接使用epoll驱动，导致其他不支持epoll的系统无法使用，因此我fork了一个版本，加入了kqueue支持，让FreeBSD和Mac os x能够成功编译运行&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这位同学2013.10 还是一个大四学生.
+github 上人气挺高: &lt;a class="reference external" href="https://github.com/yuyuyu101"&gt;https://github.com/yuyuyu101&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="redis-twemproxy-benchmark"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id49"&gt;redis-twemproxy-benchmark&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://blog.jpush.cn/redis-twemproxy-benchmark/"&gt;http://blog.jpush.cn/redis-twemproxy-benchmark/&lt;/a&gt;&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;twemproxy 可以开http监控端口: &lt;a class="reference external" href="http://ip:22222"&gt;http://ip:22222&lt;/a&gt; json格式&lt;/li&gt;
+&lt;li&gt;性能基本和单台一样.&lt;/li&gt;
+&lt;li&gt;多个twemproxy 实例, 性能可以更好.&lt;/li&gt;
+&lt;li&gt;不支持除mget，del之外的redis批处理命令，如取多个集合交集等等&lt;/li&gt;
+&lt;li&gt;不支持脚本eval&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id50"&gt;这个文章总结不错&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://cloudaice.com/twemproxy-explore/"&gt;http://cloudaice.com/twemproxy-explore/&lt;/a&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;redis-proxy&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;使用node写的redis代理层。&lt;/li&gt;
+&lt;li&gt;支持主从节点的失败处理（可以仔细研究）&lt;/li&gt;
+&lt;li&gt;测试后发现性能为原生的1/3&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;twemproxy&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;p class="first"&gt;支持失败节点自动删除&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;可以设置重新连接该节点的时间&lt;/li&gt;
+&lt;li&gt;可以设置连接多少次之后删除该节点&lt;/li&gt;
+&lt;li&gt;该方式适合作为cache存储&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;支持设置HashTag&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;通过HashTag可以自己设定将两个KEYhash到同一个实例上去。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;减少与redis的直接连接数&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;保持与redis的长连接&lt;/li&gt;
+&lt;li&gt;可设置代理与后台每个redis连接的数目&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;自动分片到后端多个redis实例上&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;多种hash算法（部分还没有研究明白)&lt;/li&gt;
+&lt;li&gt;可以设置后端实例的权重&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;避免单点问题&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;可以平行部署多个代理层.client自动选择可用的一个&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;支持redis pipelining request&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;支持状态监控&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;可设置状态监控ip和端口，访问ip和端口可以得到一个json格式的状态信息串&lt;/li&gt;
+&lt;li&gt;可设置监控信息刷新间隔时间&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;高吞吐量&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;连接复用，内存复用。&lt;/li&gt;
+&lt;li&gt;将多个连接请求，组成reids pipelining统一向redis请求。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;配置部署建议: 编译时候打开logging模块。&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="hash"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id51"&gt;hash函数&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;hash:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;one_at_a_time&lt;/li&gt;
+&lt;li&gt;md5&lt;/li&gt;
+&lt;li&gt;crc16&lt;/li&gt;
+&lt;li&gt;crc32 (crc32 implementation compatible with libmemcached)&lt;/li&gt;
+&lt;li&gt;crc32a (correct crc32 implementation as per the spec)&lt;/li&gt;
+&lt;li&gt;fnv1_64&lt;/li&gt;
+&lt;li&gt;fnv1a_64&lt;/li&gt;
+&lt;li&gt;fnv1_32&lt;/li&gt;
+&lt;li&gt;fnv1a_32&lt;/li&gt;
+&lt;li&gt;hsieh&lt;/li&gt;
+&lt;li&gt;murmur&lt;/li&gt;
+&lt;li&gt;jenkins&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id52"&gt;配置&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+delta:
+  listen: 127.0.0.1:22124
+  hash: fnv1a_64
+  distribution: ketama
+  timeout: 100
+  auto_eject_hosts: true
+  server_retry_timeout: 2000
+  server_failure_limit: 1
+  servers:
+   - 127.0.0.1:11214:1
+   - 127.0.0.1:11215:1
+   - 127.0.0.1:11216:1
+   - 127.0.0.1:11217:1
+   - 127.0.0.1:11218:1
+   - 127.0.0.1:11219:1
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="user"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id53"&gt;user&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;Twitter&lt;/li&gt;
+&lt;li&gt;Pinterest&lt;/li&gt;
+&lt;li&gt;Tumblr&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id54"&gt;不支持&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;auth&lt;/li&gt;
+&lt;li&gt;mset&lt;/li&gt;
+&lt;li&gt;eval&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id7"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id55"&gt;代码分析&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id8"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id56"&gt;模块划分&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;核心是 &lt;tt class="docutils literal"&gt;event&lt;/tt&gt; , &lt;tt class="docutils literal"&gt;请求处理&lt;/tt&gt; 这两块&lt;/p&gt;
+&lt;div class="section" id="event"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id57"&gt;event&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+./event
+./event/Makefile.am
+./event/nc_epoll.c
+./event/nc_event.h
+./event/nc_evport.c
+./event/nc_kqueue.c
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id9"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id58"&gt;请求处理&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+./nc_proxy.c
+./nc_proxy.h
+
+./nc_connection.c
+./nc_connection.h
+./nc_client.c
+./nc_client.h
+./nc_server.c
+./nc_server.h
+
+./nc_message.c
+./nc_message.h
+./nc_request.c
+./nc_response.c
+
+./nc_mbuf.c
+./nc_mbuf.h
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="main"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id59"&gt;main&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;./nc.c, 处理daemon, pidfile, args, config, 最后:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+nc_run(struct instance *nci)
+{
+    ctx = core_start(nci);
+    for (;;) {
+        status = core_loop(ctx);
+        if (status != NC_OK) {
+            break;
+        }
+    }
+    core_stop(ctx);
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="os-utils"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id60"&gt;os utils&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+./nc_conf.c
+./nc_conf.h
+./nc_core.c
+./nc_core.h
+./nc_log.c
+./nc_log.h
+./nc_signal.c
+./nc_signal.h
+./nc_stats.c
+./nc_stats.h
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="ds-utils"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id61"&gt;ds utils&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+./nc_array.c
+./nc_array.h
+./nc_util.c
+./nc_util.h
+./nc_queue.h
+./nc_rbtree.c
+./nc_rbtree.h
+./nc_string.c
+./nc_string.h
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id10"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id62"&gt;协议&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+./proto/nc_proto.h
+./proto/nc_memcache.c
+./proto/nc_redis.c
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id11"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id63"&gt;hash&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+./hashkit/nc_crc16.c
+./hashkit/nc_crc32.c
+./hashkit/nc_fnv.c
+./hashkit/nc_hashkit.h
+./hashkit/nc_hsieh.c
+./hashkit/nc_jenkins.c
+./hashkit/nc_ketama.c
+./hashkit/nc_md5.c
+./hashkit/nc_modula.c
+./hashkit/nc_murmur.c
+./hashkit/nc_one_at_a_time.c
+./hashkit/nc_random.c
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id12"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id64"&gt;event 机制&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+struct event_base {
+    int                ep;      /* epoll descriptor */
+    struct epoll_event *event;  /* event[] - events that were triggered */
+    int                nevent;  /* # event */
+    event_cb_t         cb;      /* event callback */
+};
+
+
+struct event_base *event_base_create(int size, event_cb_t cb);
+void event_base_destroy(struct event_base *evb);
+
+int event_add_in(struct event_base *evb, struct conn *c);
+int event_del_in(struct event_base *evb, struct conn *c);
+int event_add_out(struct event_base *evb, struct conn *c);
+int event_del_out(struct event_base *evb, struct conn *c);
+int event_add_conn(struct event_base *evb, struct conn *c);
+int event_del_conn(struct event_base *evb, struct conn *c);
+int event_wait(struct event_base *evb, int timeout);
+void event_loop_stats(event_stats_cb_t cb, void *arg);
+&lt;/pre&gt;
+&lt;div class="section" id="epool"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id65"&gt;epool 实现&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;event_base_create:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct event_base *
+event_base_create(int nevent, event_cb_t cb)
+{
+    struct event_base *evb = nc_alloc(sizeof(*evb));
+    int ep = epoll_create(nevent);
+    struct epoll_event *event = nc_calloc(nevent, sizeof(*event));
+
+    evb-&amp;gt;ep = ep;
+    evb-&amp;gt;event = event;
+    evb-&amp;gt;nevent = nevent;
+    evb-&amp;gt;cb = cb;
+
+    return evb;
+}
+
+int
+event_add_in(struct event_base *evb, struct conn *c)
+{
+    struct epoll_event event;
+    event.events = (uint32_t)(EPOLLIN | EPOLLET);
+    event.data.ptr = c;
+
+    status = epoll_ctl(evb-&amp;gt;ep, EPOLL_CTL_MOD, c-&amp;gt;sd, &amp;amp;event);
+}
+
+int
+event_wait(struct event_base *evb, int timeout)
+{
+    int ep = evb-&amp;gt;ep;
+    struct epoll_event *event = evb-&amp;gt;event;
+    int nevent = evb-&amp;gt;nevent;
+
+    for (;;) {
+        int i, nsd;
+
+        nsd = epoll_wait(ep, event, nevent, timeout);
+        if (nsd &amp;gt; 0) {
+            for (i = 0; i &amp;lt; nsd; i++) {
+                struct epoll_event *ev = &amp;amp;evb-&amp;gt;event[i];
+                uint32_t events = 0;
+
+                log_debug(LOG_VVERB, &amp;quot;epoll %04&amp;quot;PRIX32&amp;quot; triggered on conn %p&amp;quot;,
+                          ev-&amp;gt;events, ev-&amp;gt;data.ptr);
+
+                if (ev-&amp;gt;events &amp;amp; EPOLLERR) {
+                    events |= EVENT_ERR;
+                }
+
+                if (ev-&amp;gt;events &amp;amp; (EPOLLIN | EPOLLHUP)) {
+                    events |= EVENT_READ;
+                }
+
+                if (ev-&amp;gt;events &amp;amp; EPOLLOUT) {
+                    events |= EVENT_WRITE;
+                }
+
+                if (evb-&amp;gt;cb != NULL) {
+                    evb-&amp;gt;cb(ev-&amp;gt;data.ptr, events);
+                }
+            }
+            return nsd;
+        }
+    }
+}
+&lt;/pre&gt;
+&lt;p&gt;每次调用event_wait, 如果没有事件则一直等, 如果有事件, 调用回调，并返回.&lt;/p&gt;
+&lt;p&gt;注意: 这里用的都是边缘触发 EPOLLET (redis本身用的是水平触发)&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="event-create"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id66"&gt;上层对event_create 的使用&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+core_ctx_create(){
+    /* initialize server pool from configuration */  pool 是一种隔离单位
+    status = server_pool_init(&amp;amp;ctx-&amp;gt;pool, &amp;amp;ctx-&amp;gt;cf-&amp;gt;pool, ctx);
+
+    ctx-&amp;gt;evb = event_base_create(EVENT_SIZE, &amp;amp;core_core); //这里有个EVENT_SIZE 是1024, core_core 是一个基础回调, 处理读写.
+    status = server_pool_preconnect(ctx);
+    status = proxy_init(ctx);
+}
+&lt;/pre&gt;
+&lt;pre class="literal-block"&gt;
+ctx-&amp;gt;evb = event_base_create(EVENT_SIZE, &amp;amp;core_core); //这里有个EVENT_SIZE 是1024, 在epool里面没用, 设置的回调 core_core 是一个基础回调, 处理读写.
+&lt;/pre&gt;
+&lt;p&gt;event_add_in里面, &lt;tt class="docutils literal"&gt;data.ptr&lt;/tt&gt; 是一个conn数据结构,&lt;/p&gt;
+&lt;p&gt;所以，有事件的时候, 调用  &lt;tt class="docutils literal"&gt;core_core(conn, events)&lt;/tt&gt;, 这里events 说明是读还是写事件.&lt;/p&gt;
+&lt;p&gt;接下来的 &lt;tt class="docutils literal"&gt;proxy_init&lt;/tt&gt;:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+rstatus_t
+proxy_each_init(void *elem, void *data) {
+    struct server_pool *pool = elem;
+    struct conn *p;
+
+    p = conn_get_proxy(pool); //获得一个proxy类型的 conn, 它的回调设置: conn-&amp;gt;recv = proxy_recv;
+    status = proxy_listen(pool-&amp;gt;ctx, p); //做bind/listen/set noblocking/加到epool
+}
+&lt;/pre&gt;
+&lt;p&gt;这里设置的回调 proxy_recv, 就是做accept, 建立与客户端的连接:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+rstatus_t
+proxy_recv(struct context *ctx, struct conn *conn)
+{
+    conn-&amp;gt;recv_ready = 1;
+    do {
+        status = proxy_accept(ctx, conn);
+        if (status != NC_OK) {
+            return status;
+        }
+    } while (conn-&amp;gt;recv_ready);
+    return NC_OK;
+}
+&lt;/pre&gt;
+&lt;p&gt;用proxy_accept 与客户端建立连接, 获得client 类型的conn, 并且加入到事件队列:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static rstatus_t
+proxy_accept(struct context *ctx, struct conn *p) {
+    rstatus_t status;
+    struct conn *c;
+    int sd;
+
+    for (;;) {//死循环去做. 不带sleep!!
+        sd = accept(p-&amp;gt;sd, NULL, NULL);
+        if (sd &amp;lt; 0) {
+            ...
+            return NC_ERROR;
+        }
+        break;
+    }
+
+    c = conn_get(p-&amp;gt;owner, true, p-&amp;gt;redis); //获得一个client类型的连接
+    c-&amp;gt;sd = sd;
+
+    status = nc_set_nonblocking(c-&amp;gt;sd);
+    status = event_add_conn(ctx-&amp;gt;evb, c);
+
+    return NC_OK;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="event-wait"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id67"&gt;上层对event_wait的使用&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+rstatus_t
+core_loop(struct context *ctx)
+{
+    nsd = event_wait(ctx-&amp;gt;evb, ctx-&amp;gt;timeout);
+    ...
+}
+&lt;/pre&gt;
+&lt;p&gt;超清晰的主循环:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void
+nc_run(struct instance *nci)
+{
+    rstatus_t status;
+    struct context *ctx;
+
+    ctx = core_start(nci);
+    if (ctx == NULL) {
+        return;
+    }
+
+    /* run rabbit run */
+    for (;;) {
+        status = core_loop(ctx);
+        if (status != NC_OK) {
+            break;
+        }
+    }
+
+    core_stop(ctx);
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="libevent"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id68"&gt;和libevent 对比&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;从数据结构, 函数命令来看, 受到libevnet和nginx的强烈影响.&lt;/p&gt;
+&lt;p&gt;(redis是自己的事件框架, memcached 就是用libevent作为事件框架)&lt;/p&gt;
+&lt;p&gt;libevent 的结构大概是这样的(不准确)&lt;/p&gt;
+&lt;p&gt;event, 类似连接的概念:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct event {
+    TAILQ_ENTRY (event) ev_next;
+    TAILQ_ENTRY (event) ev_active_next;
+    TAILQ_ENTRY (event) ev_signal_next;
+    unsigned int min_heap_idx;  /* for managing timeouts */
+
+    struct event_base *ev_base;
+
+    int ev_fd;
+    short ev_events;
+&lt;/pre&gt;
+&lt;p&gt;event_base是暴露给外面的统一接口:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct event_base {
+    const struct eventop *evsel;
+    void *evbase;
+    int event_count;        /* counts number of total events */
+    int event_count_active; /* counts number of active events */
+    ...
+}
+&lt;/pre&gt;
+&lt;p&gt;用法:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+//获得listen_fd
+listen_fd = network_server_socket(cfg-&amp;gt;listen_host, cfg-&amp;gt;listen_port);
+
+struct event *ev_accept;
+ev_accept = event_new(g_server.event_base, listen_fd, EV_READ | EV_PERSIST, on_accept, NULL);
+event_add(ev_accept, NULL);
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id13"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id69"&gt;重要结构&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="server-poolserver"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id70"&gt;server_pool和server.&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;在 &lt;tt class="docutils literal"&gt;server_pool.h&lt;/tt&gt; 中注释写的非常清楚, 还有示意图:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+*  +-------------+
+*  |             |&amp;lt;---------------------+
+*  |             |&amp;lt;------------+        |
+*  |             |     +-------+--+-----+----+--------------+
+*  |   pool 0    |+---&amp;gt;|          |          |              |
+*  |             |     | server 0 | server 1 | ...     ...  |
+*  |             |     |          |          |              |--+
+*  |             |     +----------+----------+--------------+  |
+*  +-------------+                                             //
+*  |             |
+*  |             |
+*  |             |
+*  |   pool 1    |
+*  |             |
+*  |             |
+*  |             |
+*  +-------------+
+*  |             |
+*  |             |
+*  .             .
+*  .    ...      .
+*  .             .
+*  |             |
+*  |             |
+*  +-------------+
+*            |
+*            |
+*            //
+&lt;/pre&gt;
+&lt;p&gt;看看twemproxy的配置:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+s1:
+  listen: 127.0.0.1:22124
+  servers:
+   - 127.0.0.1:11214:1
+   - 127.0.0.1:11215:1
+   - 127.0.0.1:11216:1
+   - 127.0.0.1:11217:1
+s2:
+  listen: 127.0.0.1:22125
+   - 127.0.0.1:11218:1
+   - 127.0.0.1:11219:1
+&lt;/pre&gt;
+&lt;p&gt;这样的配置就对应着类似这样的结构:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-server_pool.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="conn-msg-mbuf"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id71"&gt;conn, msg, mbuf&lt;/a&gt;&lt;/h4&gt;
+&lt;div class="section" id="conn"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id72"&gt;conn&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;前面event机制提供的事件注册接口, 注册的事件都是在conn上的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+int event_add_in(struct event_base *evb, struct conn *c);
+&lt;/pre&gt;
+&lt;pre class="literal-block"&gt;
+struct conn {
+    TAILQ_ENTRY(conn)  conn_tqe;      /* link in server_pool / server / free q */
+    void               *owner;        /* connection owner - server_pool / server */
+                                     //对于client和proxy, conn-&amp;gt;owner 是server_pool 对象
+                                     //对于server, conn-&amp;gt;owner 是一个server 对象
+    ..
+    struct msg_tqh     imsg_q;        /* incoming request Q */
+    struct msg_tqh     omsg_q;        /* outstanding request Q */
+
+    conn_recv_t        recv;          /* recv (read) handler */
+    conn_recv_next_t   recv_next;     /* recv next message handler */
+    conn_recv_done_t   recv_done;     /* read done handler */
+    conn_send_t        send;          /* send (write) handler */
+    conn_send_next_t   send_next;     /* write next message handler */
+    conn_send_done_t   send_done;     /* write done handler */
+    conn_close_t       close;         /* close handler */
+    conn_active_t      active;        /* active? handler */
+    ...
+};
+&lt;/pre&gt;
+&lt;p&gt;conn有三种:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;proxy : 代表proxy监听的端口&lt;/li&gt;
+&lt;li&gt;client: 代表一个client连接.&lt;/li&gt;
+&lt;li&gt;server: 代表一个后端连接&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;三种conn的获取方式和事件处理钩子不一样:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;strong&gt;listen&lt;/strong&gt;: 通过 &lt;tt class="docutils literal"&gt;conn_get_proxy(void *owner)&lt;/tt&gt; 获取, 只指定了这几个函数:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+conn-&amp;gt;recv = proxy_recv;
+conn-&amp;gt;close = proxy_close;
+conn-&amp;gt;ref = proxy_ref;
+conn-&amp;gt;unref = proxy_unref;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;strong&gt;client&lt;/strong&gt;: 通过 &lt;tt class="docutils literal"&gt;conn_get(void *owner, bool client=true, bool redis)&lt;/tt&gt; 获取:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+conn-&amp;gt;recv = msg_recv;
+conn-&amp;gt;recv_next = req_recv_next;    //分配下一个读缓冲区.
+conn-&amp;gt;recv_done = req_recv_done;
+
+conn-&amp;gt;send = msg_send;
+conn-&amp;gt;send_next = rsp_send_next;
+conn-&amp;gt;send_done = rsp_send_done;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;strong&gt;server&lt;/strong&gt;: , 通过 &lt;tt class="docutils literal"&gt;conn_get(void *owner, bool client=false, bool redis)&lt;/tt&gt; 获取:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+conn-&amp;gt;recv = msg_recv;
+conn-&amp;gt;recv_next = rsp_recv_next;
+conn-&amp;gt;recv_done = rsp_recv_done;
+
+conn-&amp;gt;send = msg_send;
+conn-&amp;gt;send_next = req_send_next;
+conn-&amp;gt;send_done = req_send_done;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="msg"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id73"&gt;msg&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;msg代表一个请求体, 或者一个response, 对于mget之类, 它还会代表原request解析后的一个子request:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct msg {
+    TAILQ_ENTRY(msg)     c_tqe;           /* link in client q */
+    TAILQ_ENTRY(msg)     s_tqe;           /* link in server q */
+    TAILQ_ENTRY(msg)     m_tqe;           /* link in send q / free q */
+
+    uint64_t             id;              /* message id */
+    struct msg           *peer;           /* message peer */
+    struct conn          *owner;          /* message owner - client | server */
+
+    struct rbnode        tmo_rbe;         /* entry in rbtree */
+
+    struct mhdr          mhdr;            /* message mbuf header */
+    uint32_t             mlen;            /* message length */
+    ...
+};
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mbuf"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id74"&gt;mbuf&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;msg中用来保存请求/响应 内容的链表, 每个mbuf大小默认是16K, 可以配置, 范围在 &lt;tt class="docutils literal"&gt;512B - 64K&lt;/tt&gt; 之间&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id14"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id75"&gt;小结&lt;/a&gt;&lt;/h5&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;server_pool里面保存该pool上面所有client_conn的链表,&lt;/li&gt;
+&lt;li&gt;server里面保存该server上所有server_conn的链表.&lt;/li&gt;
+&lt;li&gt;conn里面的msg会分为in_q, 和out_q 两个msg链表&lt;/li&gt;
+&lt;li&gt;每个msg会同时存在与一个client_conn的out_q 和server_conn的in_q里面&lt;/li&gt;
+&lt;li&gt;msg中消息保存在mbuf链表中&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;conn和msg的结构:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-conn-msg-struct.png" /&gt;
+&lt;p&gt;他们的关系:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-conn-msg.png" /&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id15"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id76"&gt;请求处理&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+./nc_connection.h
+./nc_connection.c       //三种连接类型, 对象池处理(conn_get, conn_put), 底层读写(conn_recv, conn_sendv)
+
+./nc_proxy.h
+./nc_proxy.c            //建立listen socket(proxy_init), 对新连接做accetp (proxy_recv)
+
+./nc_client.h
+./nc_client.c           //判断是否有东西要写给client
+
+./nc_server.h
+./nc_server.c           //server, server_pool, 连接后端(server_connect), 后端的连接管理(server_pool_conn)
+
+./nc_message.h
+./nc_message.c          //msg 结构.
+
+./nc_request.c
+./nc_response.c         //对应的forward, filter 函数
+
+./nc_mbuf.h
+./nc_mbuf.c             //msg使用的buf.
+&lt;/pre&gt;
+&lt;div class="section" id="core-core"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id77"&gt;读写总控函数 core_core&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+rstatus_t
+core_core(void *arg, uint32_t events)
+{
+    conn-&amp;gt;events = events;
+    if (events &amp;amp; EVENT_ERR) {
+        core_error(ctx, conn);
+        return NC_ERROR;
+    }
+
+    /* read takes precedence over write */
+    if (events &amp;amp; EVENT_READ) {
+        status = core_recv(ctx, conn); // //简单直接调用 conn-&amp;gt;recv
+    }
+    if (events &amp;amp; EVENT_WRITE) {
+        status = core_send(ctx, conn); // //简单直接调用 conn-&amp;gt;send
+    }
+
+    return NC_OK;
+}
+&lt;/pre&gt;
+&lt;p&gt;核心就是 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;recv&lt;/span&gt;&lt;/tt&gt; , &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;send&lt;/span&gt;&lt;/tt&gt;, 以及它们的变化.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="accept"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id78"&gt;accept连接&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;前面讲到proxy_init通过:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+p = conn_get_proxy(pool); 获得一个proxy类型的 conn, 它的回调设置: conn-&amp;gt;recv = proxy_recv;
+&lt;/pre&gt;
+&lt;p&gt;在 proxy_accept 中 accetp到一个连接后, 又通过:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+c = conn_get(p-&amp;gt;owner, true, p-&amp;gt;redis);
+&lt;/pre&gt;
+&lt;p&gt;获得一个client类型的conn, 这里会把conn-&amp;gt;recv设置为 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;recv&lt;/span&gt; = msg_recv&lt;/tt&gt;, 有数据发来时，就会调用 msg_recv&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="nc-connection-c"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id79"&gt;nc_connection.c&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;很赞的注释:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+*                   nc_connection.[ch]
+*                Connection (struct conn)
+*                 +         +          +
+*                 |         |          |
+*                 |       Proxy        |
+*                 |     nc_proxy.[ch]  |
+*                 /                    \
+*              Client                Server
+*           nc_client.[ch]         nc_server.[ch]
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="messsage-c"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id80"&gt;messsage.c&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+*            nc_message.[ch]
+*        _message (struct msg)
+*            +        +            .
+*            |        |            .
+*            /        \            .
+*         Request    Response      .../ nc_mbuf.[ch]  (mesage buffers)
+*      nc_request.c  nc_response.c .../ nc_memcache.c; nc_redis.c (_message parser)
+
+* Messages in nutcracker are manipulated by a chain of processing handlers,
+* where each handler is responsible for taking the input and producing an
+* output for the next handler in the chain. This mechanism of processing
+* loosely conforms to the standard chain-of-responsibility design pattern
+
+*             Client+             Proxy           Server+
+*                              (nutcracker)
+*                                   .
+*       msg_recv {read event}       .       msg_recv {read event}
+*         +                         .                         +
+*         |                         .                         |
+*         \                         .                         /
+*         req_recv_next             .             rsp_recv_next
+*           +                       .                       +
+*           |                       .                       |       Rsp
+*           req_recv_done           .           rsp_recv_done      &amp;lt;===
+*             +                     .                     +
+*             |                     .                     |
+*    Req      \                     .                     /
+*    ===&amp;gt;     req_filter*           .           *rsp_filter
+*               +                   .                   +
+*               |                   .                   |
+*               \                   .                   /
+*               req_forward-//  (1) . (3)  \\-rsp_forward
+*                                   .
+*                                   .
+*       msg_send {write event}      .      msg_send {write event}
+*         +                         .                         +
+*         |                         .                         |
+*    Rsp' \                         .                         /     Req'
+*   &amp;lt;===  rsp_send_next             .             req_send_next     ===&amp;gt;
+*           +                       .                       +
+*           |                       .                       |
+*           \                       .                       /
+*           rsp_send_done-//    (4) . (2)    //-req_send_done
+*
+*
+* (1) -&amp;gt; (2) -&amp;gt; (3) -&amp;gt; (4) is the normal flow of transaction consisting
+* of a single request response, where (1) and (2) handle request from
+* client, while (3) and (4) handle the corresponding response from the
+* server.
+&lt;/pre&gt;
+&lt;p&gt;好有爱的注释!!&lt;/p&gt;
+&lt;p&gt;对应这段注释的代码:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct conn *
+conn_get(void *owner, bool client, bool redis)
+{
+    struct conn *conn;
+
+    conn = _conn_get();
+
+    conn-&amp;gt;client = client ? 1 : 0;
+
+    if (conn-&amp;gt;client) {
+        /*
+         * client receives a request, possibly parsing it, and sends a
+         * response downstream.
+         */
+        conn-&amp;gt;recv = msg_recv;
+        conn-&amp;gt;recv_next = req_recv_next;
+        conn-&amp;gt;recv_done = req_recv_done;
+
+        conn-&amp;gt;send = msg_send;
+        conn-&amp;gt;send_next = rsp_send_next;
+        conn-&amp;gt;send_done = rsp_send_done;
+
+        conn-&amp;gt;close = client_close;
+        conn-&amp;gt;active = client_active;
+
+        conn-&amp;gt;ref = client_ref;
+        conn-&amp;gt;unref = client_unref;
+
+        conn-&amp;gt;enqueue_inq = NULL;
+        conn-&amp;gt;dequeue_inq = NULL;
+        conn-&amp;gt;enqueue_outq = req_client_enqueue_omsgq;
+        conn-&amp;gt;dequeue_outq = req_client_dequeue_omsgq;
+    } else {
+        /*
+         * server receives a response, possibly parsing it, and sends a
+         * request upstream.
+         */
+        conn-&amp;gt;recv = msg_recv;
+        conn-&amp;gt;recv_next = rsp_recv_next;
+        conn-&amp;gt;recv_done = rsp_recv_done;
+
+        conn-&amp;gt;send = msg_send;
+        conn-&amp;gt;send_next = req_send_next;
+        conn-&amp;gt;send_done = req_send_done;
+
+        conn-&amp;gt;close = server_close;
+        conn-&amp;gt;active = server_active;
+
+        conn-&amp;gt;ref = server_ref;
+        conn-&amp;gt;unref = server_unref;
+
+        conn-&amp;gt;enqueue_inq = req_server_enqueue_imsgq;
+        conn-&amp;gt;dequeue_inq = req_server_dequeue_imsgq;
+        conn-&amp;gt;enqueue_outq = req_server_enqueue_omsgq;
+        conn-&amp;gt;dequeue_outq = req_server_dequeue_omsgq;
+    }
+
+    conn-&amp;gt;ref(conn, owner);
+
+    return conn;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id16"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id81"&gt;一个请求被处理的流程&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;我们按照 messsage.c 里面的4个步骤&lt;/p&gt;
+&lt;p&gt;后面的图都采用这样的表示方法:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-step-desc.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id17"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id82"&gt;初始状态&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;考察只有一个后端的情况, 假设有2个client要发送3个请求过来&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-state-0.png" /&gt;
+&lt;div class="section" id="id18"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id83"&gt;1.读取请求&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;此时回调函数:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+conn-&amp;gt;recv = msg_recv;
+conn-&amp;gt;recv_next = req_recv_next;
+conn-&amp;gt;recv_done = req_recv_done;
+&lt;/pre&gt;
+&lt;p&gt;函数调用栈:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-step-1.png" /&gt;
+&lt;p&gt;每次发生 &lt;tt class="docutils literal"&gt;req_recv_done(req_forward)&lt;/tt&gt;, 就会调用 &lt;tt class="docutils literal"&gt;req_forward()&lt;/tt&gt;&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
+{
+    if (!msg-&amp;gt;noreply) {
+        c_conn-&amp;gt;enqueue_outq(ctx, c_conn, msg);
+    }
+
+    //获得到后端的连接. (可能是新建, 或者从pool里面获取)
+    s_conn = server_pool_conn(ctx, c_conn-&amp;gt;owner, key, keylen);
+
+    s_conn-&amp;gt;enqueue_inq(ctx, s_conn, msg);
+    event_add_out(ctx-&amp;gt;evb, s_conn);
+}
+&lt;/pre&gt;
+&lt;p&gt;就有一个msg就出现在client_conn-&amp;gt;out_q, 同时出现在server_conn-&amp;gt;in_q&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-state-1.png" /&gt;
+&lt;p&gt;req_forward用server_pool_conn获得一个server_conn.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id19"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id84"&gt;2.转发到后端&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;对于server_conn来说, 因为挂了epoll_out事件, 很快就会调用 conn-&amp;gt;send，也就是msg_send.&lt;/p&gt;
+&lt;p&gt;此时:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+conn-&amp;gt;send = msg_send;
+conn-&amp;gt;send_next = req_send_next;
+conn-&amp;gt;send_done = req_send_done;
+&lt;/pre&gt;
+&lt;p&gt;调用栈:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-step-2.png" /&gt;
+&lt;p&gt;#这时, 每次发生 req_send_done, 这个msg就被放到server_conn-&amp;gt;out_q&lt;/p&gt;
+&lt;p&gt;注意,  此时两个msg依然在client_conn-&amp;gt;in_q里面&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-state-2.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id20"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id85"&gt;3.接收后端响应&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;因为server_conn的 epoll_in是一直开着的, 响应很快回来后, 就到了server_conn的 msg_recv
+这个过程和调用栈1类似,不过两个函数钩子不一样(图中灰色框)&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+conn-&amp;gt;recv = msg_recv;(和&amp;lt;1&amp;gt;一样)
+conn-&amp;gt;recv_next = rsp_recv_next;
+conn-&amp;gt;recv_done = rsp_recv_done;
+&lt;/pre&gt;
+&lt;img alt="" src="/imgs/twemproxy-step-3.png" /&gt;
+&lt;p&gt;这里 &lt;tt class="docutils literal"&gt;rsp_recv_next&lt;/tt&gt; 的作用是, 拿到下一个要接收的msg&lt;/p&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;rsp_forward&lt;/tt&gt; 会把 msg从 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;server_conn-&amp;gt;outq&lt;/span&gt;&lt;/tt&gt; 里面摘掉, 同时设置req和resp之间的一一对应关系&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+//establish msg &amp;lt;-&amp;gt; pmsg (response &amp;lt;-&amp;gt; request) link
+pmsg-&amp;gt;peer = msg;
+msg-&amp;gt;peer = pmsg;
+&lt;/pre&gt;
+&lt;p&gt;&lt;strong&gt;上面这个代码是整个过程的精华所在&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;这时候, client的q_out上排队的req, 就有了对应的response&lt;/p&gt;
+&lt;p&gt;这时也会设置:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+event_add_out(ctx-&amp;gt;evb, c_conn);
+&lt;/pre&gt;
+&lt;p&gt;每收到一个rsp, 就从server_conn的out_q摘掉, 并设置一一对应关系, 如下:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-state-3.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="client"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id86"&gt;4.把响应回给client&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;现在每个请求的msg都有了一个对应的response msg, client_conn的out事件也挂上了, 下面这个调用栈:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-step-4.png" /&gt;
+&lt;p&gt;最终, 一切归于沉寂, 后端连接依然在:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-state-4.png" /&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="buf"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id87"&gt;buf处理上的特点&lt;/a&gt;&lt;/h3&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;输入是通过mbuf &lt;strong&gt;链表&lt;/strong&gt; 来保存, 不会做realloc()&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;mbuf大小默认是16K, 可以配置, 范围在 &lt;tt class="docutils literal"&gt;512B - 64K&lt;/tt&gt; 之间&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;mbuf, msg, conn等都有对象池, 减少对象分配:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct context *
+core_start(struct instance *nci)
+{
+    mbuf_init(nci);     //mbuf内存池
+    msg_init();         //msg池
+    conn_init();        //连接对象池
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;请求是会被pipeline到后端的
+就是说, 不必等proxy接收完整的请求, 再传给后端, 解析出一个msg, 就传給后端(如果msg比较大, 比如set 一个10M的对象, 效率就会比较低)
+得到一个request_msg, 就转给后端, 在后端响应之前, 请求的msg 是不会销毁的.
+得到后端response_msg后, request_msg 和response_msg 一起回到内存池.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id21"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id88"&gt;后端如何处理&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;后端连接池的处理:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct conn *
+server_conn(struct server *server)
+{
+    struct server_pool *pool;
+    struct conn *conn;
+
+    pool = server-&amp;gt;owner;
+
+    if (server-&amp;gt;ns_conn_q &amp;lt; pool-&amp;gt;server_connections) {
+        return conn_get(server, false, pool-&amp;gt;redis);
+    }
+    ASSERT(server-&amp;gt;ns_conn_q == pool-&amp;gt;server_connections);
+
+    /*
+     * 这里只是简单的转了一下, 如果一个conn正在使用, 那么它也会返回, 也就是说一个server conn会同时被 两个client conn使用.
+     */
+    conn = TAILQ_FIRST(&amp;amp;server-&amp;gt;s_conn_q);
+    ASSERT(!conn-&amp;gt;client &amp;amp;&amp;amp; !conn-&amp;gt;proxy);
+
+    TAILQ_REMOVE(&amp;amp;server-&amp;gt;s_conn_q, conn, conn_tqe);
+    TAILQ_INSERT_TAIL(&amp;amp;server-&amp;gt;s_conn_q, conn, conn_tqe);
+
+    return conn;
+}
+&lt;/pre&gt;
+&lt;p&gt;这个连接池会受到每个server多少个后端连接这样一个限制, 如果没达到限制, 那么一定是创建连接.
+如果达到限制了, 一定是返回其中一个连接.&lt;/p&gt;
+&lt;p&gt;所以&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;proxy 刚起来的时候, 性能会比较差. 可以用server_each_preconnect解决.&lt;/li&gt;
+&lt;li&gt;这个 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;pool-&amp;gt;server_connections&lt;/span&gt;&lt;/tt&gt; 一般都没有配置(默认值是1. 虽然一个连接可能可以应付绝大多数场景, 个人感觉这必须配置啊!!!)
+也就是说 不管前端多少个client, 到后端redis, 就只有1个连接. -- 这是这种proxy的特色&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id22"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id89"&gt;协议&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;因为需要从mbuf链表里面解析, 解析器是手工打造的..
+这里暂时不去分析它.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id23"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id90"&gt;hash&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;twemproxy支持的hash方法:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;one_at_a_time&lt;/li&gt;
+&lt;li&gt;md5&lt;/li&gt;
+&lt;li&gt;crc16&lt;/li&gt;
+&lt;li&gt;crc32 (crc32 implementation compatible with libmemcached)&lt;/li&gt;
+&lt;li&gt;crc32a (correct crc32 implementation as per the spec)&lt;/li&gt;
+&lt;li&gt;fnv1_64&lt;/li&gt;
+&lt;li&gt;fnv1a_64&lt;/li&gt;
+&lt;li&gt;fnv1_32&lt;/li&gt;
+&lt;li&gt;fnv1a_32&lt;/li&gt;
+&lt;li&gt;hsieh&lt;/li&gt;
+&lt;li&gt;murmur&lt;/li&gt;
+&lt;li&gt;jenkins&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;我们看hashkit/nc_hashkit.h 中的这个定义:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#define HASH_CODEC(ACTION)                      \
+    ACTION( HASH_ONE_AT_A_TIME, one_at_a_time ) \
+    ACTION( HASH_MD5,           md5           ) \
+    ACTION( HASH_CRC16,         crc16         ) \
+    ACTION( HASH_CRC32,         crc32         ) \
+    ACTION( HASH_CRC32A,        crc32a        ) \
+    ACTION( HASH_FNV1_64,       fnv1_64       ) \
+    ACTION( HASH_FNV1A_64,      fnv1a_64      ) \
+    ACTION( HASH_FNV1_32,       fnv1_32       ) \
+    ACTION( HASH_FNV1A_32,      fnv1a_32      ) \
+    ACTION( HASH_HSIEH,         hsieh         ) \
+    ACTION( HASH_MURMUR,        murmur        ) \
+    ACTION( HASH_JENKINS,       jenkins       ) \
+
+#define DEFINE_ACTION(_hash, _name) _hash,
+typedef enum hash_type {
+    HASH_CODEC( DEFINE_ACTION )
+    HASH_SENTINEL
+} hash_type_t;
+#undef DEFINE_ACTION
+&lt;/pre&gt;
+&lt;p&gt;这个宏显得有些复杂, 我们用 &lt;tt class="docutils literal"&gt;gcc &lt;span class="pre"&gt;-E&lt;/span&gt;&lt;/tt&gt; 展开来看看:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ gcc -E hashkit/nc_hashkit.h
+...
+typedef enum hash_type {
+    HASH_ONE_AT_A_TIME, HASH_MD5, HASH_CRC16, HASH_CRC32, HASH_CRC32A, HASH_FNV1_64, HASH_FNV1A_64, HASH_FNV1_32, HASH_FNV1A_32, HASH_HSIEH, HASH_MURMUR, HASH_JENKINS,
+    HASH_SENTINEL
+} hash_type_t;
+&lt;/pre&gt;
+&lt;p&gt;在这个 enum定义之后, 是这些函数定义:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+uint32_t hash_one_at_a_time(const char *key, size_t key_length);
+void md5_signature(const unsigned char *key, unsigned int length, unsigned char *result);
+uint32_t hash_md5(const char *key, size_t key_length);
+uint32_t hash_crc16(const char *key, size_t key_length);
+uint32_t hash_crc32(const char *key, size_t key_length);
+uint32_t hash_crc32a(const char *key, size_t key_length);
+uint32_t hash_fnv1_64(const char *key, size_t key_length);
+uint32_t hash_fnv1a_64(const char *key, size_t key_length);
+uint32_t hash_fnv1_32(const char *key, size_t key_length);
+uint32_t hash_fnv1a_32(const char *key, size_t key_length);
+uint32_t hash_hsieh(const char *key, size_t key_length);
+uint32_t hash_jenkins(const char *key, size_t length);
+uint32_t hash_murmur(const char *key, size_t length);
+&lt;/pre&gt;
+&lt;p&gt;在配置文件解析的时候, 用户指定一个hash函数名字, 需要解析为conf_pool.hash:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct conf_pool {
+    struct string      name;                  /* pool name (root node) */
+    struct conf_listen listen;                /* listen: */
+    hash_type_t        hash;                  /* hash: */
+}
+
+char *
+conf_set_hash(struct conf *cf, struct command *cmd, void *conf)
+{
+    struct string *value, *hash;
+    for (hash = hash_strings; hash-&amp;gt;len != 0; hash++) {
+        if (string_compare(value, hash) != 0) {
+            continue;
+        }
+
+        *hp = hash - hash_strings;
+        return CONF_OK;
+    }
+    return &amp;quot;is not a valid hash&amp;quot;;
+}
+&lt;/pre&gt;
+&lt;p&gt;这里的hash_strings是在 nc_conf.c里定义的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#define string(_str)   { sizeof(_str) - 1, (uint8_t *)(_str) }
+#define DEFINE_ACTION(_hash, _name) string(#_name),
+static struct string hash_strings[] = {
+    HASH_CODEC( DEFINE_ACTION )
+    null_string
+};
+#undef DEFINE_ACTION
+&lt;/pre&gt;
+&lt;p&gt;展开得到的是:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+gcc -E nc_conf.c  -I ./ | vim -
+static struct string hash_strings[] = {
+    { sizeof(&amp;quot;one_at_a_time&amp;quot;) - 1, (uint8_t *)(&amp;quot;one_at_a_time&amp;quot;) }, { sizeof(&amp;quot;md5&amp;quot;) - 1, (uint8_t *)(&amp;quot;md5&amp;quot;) }, { sizeof(&amp;quot;crc16&amp;quot;) - 1, (uint8_t *)(&amp;quot;crc16&amp;quot;) }, { sizeof(&amp;quot;crc32&amp;quot;) - 1, (uint8_t *)(&amp;quot;crc32&amp;quot;) }, { sizeof(&amp;quot;crc32a&amp;quot;) - 1, (uint8_t *)(&amp;quot;crc32a&amp;quot;) }, { sizeof(&amp;quot;fnv1_64&amp;quot;) - 1, (uint8_t *)(&amp;quot;fnv1_64&amp;quot;) }, { sizeof(&amp;quot;fnv1a_64&amp;quot;) - 1, (uint8_t *)(&amp;quot;fnv1a_64&amp;quot;) }, { sizeof(&amp;quot;fnv1_32&amp;quot;) - 1, (uint8_t *)(&amp;quot;fnv1_32&amp;quot;) }, { sizeof(&amp;quot;fnv1a_32&amp;quot;) - 1, (uint8_t *)(&amp;quot;fnv1a_32&amp;quot;) }, { sizeof(&amp;quot;hsieh&amp;quot;) - 1, (uint8_t *)(&amp;quot;hsieh&amp;quot;) }, { sizeof(&amp;quot;murmur&amp;quot;) - 1, (uint8_t *)(&amp;quot;murmur&amp;quot;) }, { sizeof(&amp;quot;jenkins&amp;quot;) - 1, (uint8_t *)(&amp;quot;jenkins&amp;quot;) },
+    { 0, ((void *)0) }
+};
+&lt;/pre&gt;
+&lt;p&gt;配置文件解析后, 被加载到server_pool里面:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+typedef uint32_t (*hash_t)(const char *, size_t);
+struct server_pool {
+    int                dist_type;            /* distribution type (dist_type_t) */
+    int                key_hash_type;        /* key hash type (hash_type_t) */
+    hash_t             key_hash;             /* key hasher */
+}
+
+#这个宏定义一个函数列表
+#define DEFINE_ACTION(_hash, _name) hash_##_name,
+static hash_t hash_algos[] = {
+    HASH_CODEC( DEFINE_ACTION )
+    NULL
+};
+#undef DEFINE_ACTION
+&lt;/pre&gt;
+&lt;p&gt;展开后:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static hash_t hash_algos[] = {
+    hash_one_at_a_time, hash_md5, hash_crc16, hash_crc32, hash_crc32a, hash_fnv1_64, hash_fnv1a_64, hash_fnv1_32, hash_fnv1a_32, hash_hsieh, hash_murmur, hash_jenkins,
+    ((void *)0)
+};
+&lt;/pre&gt;
+&lt;p&gt;最后, 利用conf中解析出来的 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;cp-&amp;gt;hash&lt;/span&gt;&lt;/tt&gt; 为下标, 直接去这个数组的函数指针即可:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+sp-&amp;gt;key_hash = hash_algos[cp-&amp;gt;hash];
+&lt;/pre&gt;
+&lt;div class="section" id="id24"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id91"&gt;具体hash函数&lt;/a&gt;&lt;/h4&gt;
+&lt;div class="section" id="crc32"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id92"&gt;crc32&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;crc32是设计来计算校验码的, 并不适合算hash.&lt;/p&gt;
+&lt;p&gt;twemproxy 0.2.4 里面包含的crc32算法 crc32使用的是 memcache 用的crc32.
+最新的版本里面包含了一个 crc32a, 才是原来含义上的crc32:&lt;/p&gt;
+&lt;p&gt;用 &lt;tt class="docutils literal"&gt;crc32a&lt;/tt&gt; , 我们才能用这段代码计算key被分布到哪里去了:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+import binascii
+word = 'hello'
+crc32 =  binascii.crc32(word) &amp;amp; 0xffffffff
+print '%08x' % crc32, crc32%4
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="hsieh"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id93"&gt;hsieh&lt;/a&gt;&lt;/h5&gt;
+&lt;/div&gt;
+&lt;div class="section" id="jenkins-lookup3"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id94"&gt;Jenkins lookup3&lt;/a&gt;&lt;/h5&gt;
+&lt;/div&gt;
+&lt;div class="section" id="jenkins-one-at-a-time"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id95"&gt;Jenkins one_at_a_time&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;The Jenkins hash functions are a collection of (non-cryptographic) hash functions for multi-byte keys designed by Bob Jenkins. They can be used also as checksums&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+uint32_t jenkins_one_at_a_time_hash(char *key, size_t len)
+{
+    uint32_t hash, i;
+    for(hash = i = 0; i &amp;lt; len; ++i)
+    {
+        hash += key[i];
+        hash += (hash &amp;lt;&amp;lt; 10);
+        hash ^= (hash &amp;gt;&amp;gt; 6);
+    }
+    hash += (hash &amp;lt;&amp;lt; 3);
+    hash ^= (hash &amp;gt;&amp;gt; 11);
+    hash += (hash &amp;lt;&amp;lt; 15);
+    return hash;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="fnv-xxx"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id96"&gt;FNV-XXX&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;Fowler–Noll–Vo is a non-cryptographic hash function created by Glenn Fowler, Landon Curt Noll, and Phong Vo.&lt;/p&gt;
+&lt;p&gt;FNV-1实现简单:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+hash = FNV_offset_basis
+for each octet_of_data to be hashed
+     hash = hash × FNV_prime
+     hash = hash XOR octet_of_data
+return hash
+&lt;/pre&gt;
+&lt;p&gt;FNV-1a, reverses the multiply and XOR steps.&lt;/p&gt;
+&lt;p&gt;designed primarily for hashtable and checksum use(不适合作为加密用的hash函数)&lt;/p&gt;
+&lt;p&gt;特点:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;速度快&lt;/li&gt;
+&lt;li&gt;对0敏感, 只要x和xor, 步骤里面 出现一个0, 后面就都是0(可以加个固定常数, 但是这样会破坏随机性)
+(好在字符串没有这个问题)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="murmur"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id97"&gt;murmur&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;MurmurHash performed well in a random distribution of regular keys.[7]&lt;/p&gt;
+&lt;p&gt;这些都用了:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+libstdc++ (ver 4.6), Perl,[24] nginx (ver 1.0.1),[25] Rubinius,[26] libmemcached (the C driver for Memcached),[27] maatkit,[28] Hadoop,[1] Kyoto Cabinet,[29], RaptorDB[30], and Cassandra.[31]
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id25"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id98"&gt;小结&lt;/a&gt;&lt;/h5&gt;
+&lt;p&gt;hash函数的几个要求:
+1. 均匀性(排除crc32)
+2. 速度
+3. 如果能用python/php计算 hash更好.&lt;/p&gt;
+&lt;p&gt;时间消耗上, 大致是:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Murmur/Jenkins(2s) &amp;lt; FNV(4s) &amp;lt; CRC32(5s)
+&lt;/pre&gt;
+&lt;p&gt;应该选择Murmur或者FNV-1&lt;/p&gt;
+&lt;p&gt;参考:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://www.azillionmonkeys.com/qed/hash.html"&gt;http://www.azillionmonkeys.com/qed/hash.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://programmers.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed"&gt;http://programmers.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed&lt;/a&gt;  (这个文章对随机性和速度做了详细考察)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;twemproxy 的github上一般都是用 &lt;tt class="docutils literal"&gt;fnv1a_64&lt;/tt&gt;:&lt;/p&gt;
+&lt;p&gt;我们可以用下面这段python实现:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#/home/ning/idning/langtest/python/fnv
+def hash_fnv1a_64(s):
+    UINT32_MAX=2**32
+    FNV_64_INIT = 0xcbf29ce484222325 % UINT32_MAX
+    FNV_64_PRIME = 0x100000001b3 % UINT32_MAX
+
+    hval = FNV_64_INIT
+    for c in s:
+        hval = hval ^ ord(c)
+        hval = (hval * FNV_64_PRIME) % UINT32_MAX
+    return hval
+&lt;/pre&gt;
+&lt;p&gt;相比起来, 对应的murmur要复杂些, 所以我们选择  &lt;tt class="docutils literal"&gt;fnv1a_64&lt;/tt&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="dispatch"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id99"&gt;dispatch方法&lt;/a&gt;&lt;/h4&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;ketama&lt;/li&gt;
+&lt;li&gt;modula&lt;/li&gt;
+&lt;li&gt;random&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="rbtree"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id100"&gt;rbtree&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;一个proxy为什么需要rbtree?? 用来做某种超时:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static struct rbtree tmo_rbt;    /* timeout rbtree */
+
+void
+msg_tmo_insert(struct msg *msg, struct conn *conn)
+{
+    struct rbnode *node;
+    int timeout;
+
+    timeout = server_timeout(conn);
+    if (timeout &amp;lt;= 0) {
+        return;
+    }
+
+    node = &amp;amp;msg-&amp;gt;tmo_rbe;
+    node-&amp;gt;key = nc_msec_now() + timeout;
+    node-&amp;gt;data = conn;
+
+    rbtree_insert(&amp;amp;tmo_rbt, node);
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mget"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id101"&gt;如何处理mget&lt;/a&gt;&lt;/h3&gt;
+&lt;/div&gt;
+&lt;div class="section" id="nginx"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id102"&gt;代码严重受nginx影响&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;active 和ready变量&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ngx_int_t
+ngx_handle_read_event(ngx_event_t *rev, ngx_uint_t flags)
+{
+    if (ngx_event_flags &amp;amp; NGX_USE_CLEAR_EVENT) {
+
+        /* kqueue, epoll */
+
+        if (!rev-&amp;gt;active &amp;amp;&amp;amp; !rev-&amp;gt;ready) {
+            if (ngx_add_event(rev, NGX_READ_EVENT, NGX_CLEAR_EVENT)
+                == NGX_ERROR)
+            {
+                return NGX_ERROR;
+            }
+        }
+
+        return NGX_OK;
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id26"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id103"&gt;(代码)小结&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;代码质量非常好, 举例&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;函数开始写ASSERT:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+int
+event_wait(struct event_base *evb, int timeout)
+{
+    int ep = evb-&amp;gt;ep;
+    struct epoll_event *event = evb-&amp;gt;event;
+    int nevent = evb-&amp;gt;nevent;
+
+    ASSERT(ep &amp;gt; 0);
+    ASSERT(event != NULL);
+    ASSERT(nevent &amp;gt; 0);
+&lt;/pre&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;类名, 函数名, 注释都很赞.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;状态变迁: 因为逻辑相对简单, 不需要保存状态, 所以只是有一个conn.client 标志表示状态,  &lt;strong&gt;不需要一个状态机, 机制不同&lt;/strong&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;从这个配置看, 完全的nginx风格:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static struct command conf_commands[] = {
+    { string(&amp;quot;listen&amp;quot;),
+      conf_set_listen,
+      offsetof(struct conf_pool, listen) },
+
+    { string(&amp;quot;hash&amp;quot;),
+      conf_set_hash,
+      offsetof(struct conf_pool, hash) },
+
+    { string(&amp;quot;hash_tag&amp;quot;),
+      conf_set_hashtag,
+      offsetof(struct conf_pool, hash_tag) },
+
+    { string(&amp;quot;server_connections&amp;quot;),
+      conf_set_num,
+      offsetof(struct conf_pool, server_connections) },
+
+    null_command
+};
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="id27"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id104"&gt;注意&lt;/a&gt;&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;这个 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;pool-&amp;gt;server_connections&lt;/span&gt;&lt;/tt&gt; 一般都没有配置(默认值是1. 虽然一个连接可能可以应付绝大多数场景, 个人感觉这必须配置啊!!!)&lt;/p&gt;
+&lt;p&gt;也就是说 不管前端多少个client, 到后端redis, 就只有1个连接. -- 这是这种proxy的特色&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;通过msg-&amp;gt;peer 和msg-&amp;gt;owner 耦合client_conn与server_conn&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;非常巧妙的设计, 多个前端, 可以同时复用后端的 &lt;strong&gt;一个连接&lt;/strong&gt;&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+//下面这里建立的link是保证客户端收到的请求和响应一一对应的关键.
+//client_conn-&amp;gt;out_q 里面还保存着按照发送顺序的请求msg. 这里收到了response 的msg之后.
+//一一对应起来, 向客户端返回response的时候, 按照 client_conn-&amp;gt;out_q的顺序, 看相应的
+//msg 的peer是否被设置了, 如果设置了, 就可以返回.  //
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;这也是与一般的proxy不一样的地方,
+一般的proxy, 收到client_conn_1消息, 处理后找个后端连接发过去, 此时这个后端连接是不会被其它客户端连接复用的, 而这时收到的response也就必然是client_conn_1对应的response, 直接放到client_conn1的输出队列即可.:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+//
+/* establish msg &amp;lt;-&amp;gt; pmsg (response &amp;lt;-&amp;gt; request) link */
+pmsg-&amp;gt;peer = msg;
+msg-&amp;gt;peer = pmsg;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;这里proxy必须保存req msg的body和resp msg的body, 如果后端网络/响应慢, 则req msg撑爆内存, 如果前端不读取, 则rsp msg撑爆内存.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;能用这种后端只开一个连接的proxy, 要求:&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic simple"&gt;
+&lt;li&gt;后端交互包不会被打散, 即一个连接上, 包一定是连续的发出, 或者连续的收到.&lt;/li&gt;
+&lt;li&gt;单连接上, 后端返回顺序和请求顺序一致.
+如果服务器在一个连接上起多个线程来服务, 哪个线程先处理完，就 &lt;strong&gt;从这个连接&lt;/strong&gt; 返回, 那proxy层就乱套了(不过这时候如果有个req/resp id, 也是可以的)&lt;/li&gt;
+&lt;li&gt;小包(req/resp都很小, 这样才容易满足1)&lt;/li&gt;
+&lt;li&gt;后端处理很快(否则都堆在proxy了)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id28"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id105"&gt;使用&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;一般运行的时候需要指定一个pid文件, 如果这个命令连续运行两次, 则pid文件被清除:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 16K
+928376 -rw-r--r-- 1 ning ning 12K 2013-12-20 15:36 nutcracker-22000.log
+928377 -rw-r--r-- 1 ning ning   5 2013-12-20 15:36 nutcracker-22000.pid
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ bin/nutcracker -d -c /tmp/r/nutcracker-22000/conf/nutcracker-22000.conf -o /tmp/r/nutcracker-22000/log/nutcracker-22000.log -p /tmp/r/nutcracker-22000/log/nutcracker-22000.pid -s 23000
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 12K
+928376 -rw-r--r-- 1 ning ning 12K 2013-12-20 15:36 nutcracker-22000.log
+&lt;/pre&gt;
+&lt;p&gt;因为第二个进程会启动后 先写pid文件, 发现listen失败, 就退出, 同时清空pid文件.
+应该修改一下, 如果pid文件已经存在, 拒绝启动&lt;/p&gt;
+&lt;p&gt;同时, 我们的部署脚本, 也需要一个kill任务. 强制kill&lt;/p&gt;
+&lt;p&gt;redis 本身就是先listen, 后写pid文件.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;listen:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+cluster0:
+    listen: 127.0.0.5:22000
+&lt;/pre&gt;
+&lt;p&gt;这是进程只会监听127.0.0.5 上的端口:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+tcp        0      0 127.0.0.5:22000         0.0.0.0:*               LISTEN      8581/nutcracker
+&lt;/pre&gt;
+&lt;p&gt;需要改成:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+cluster0:
+    listen: 0.0.0.0:22000
+
+    tcp        0      0 0.0.0.0:22000           0.0.0.0:*               LISTEN      19902/nutcracker
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class="section" id="id29"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id106"&gt;配置参数&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+alpha:
+  listen: 127.0.0.1:22121
+  hash: fnv1a_64
+  distribution: ketama
+  auto_eject_hosts: true
+  redis: true
+  server_retry_timeout: 2000
+  server_failure_limit: 1
+  servers:
+   - 127.0.0.1:6379:1
+&lt;/pre&gt;
+&lt;div class="section" id="hashdistribution"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id107"&gt;hash和distribution见前面分析&lt;/a&gt;&lt;/h4&gt;
+&lt;/div&gt;
+&lt;div class="section" id="auto-eject-hosts"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id108"&gt;auto_eject_hosts相关&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;下面选项只在auto_eject_hosts时有用&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;server_failure_limit(多少次开始弹出)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;The number of conseutive failures on a server that would leads to it being temporarily ejected when auto_eject_host is set to true&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;server_retry_timeout(每次弹出多长时间)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;是说在这段时间内, 这个host是被eject的(不在hash环中)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;这一块的代码 &lt;tt class="docutils literal"&gt;modula_update&lt;/tt&gt; 还没仔细看&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="timeout"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id109"&gt;timeout&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;默认情况下, twemproxy一直等着把请求传给后端, 但是如果等了timeout时间, proxy 就不会把这个请求传给后端, 而是向客户端回复一个&lt;/p&gt;
+&lt;p&gt;SERVER_ERROR Connection timed outrn is sent back to the client.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="log"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id110"&gt;log&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;编译时加上log选项, 设为 LOG_INFO&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mbuf-size"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id111"&gt;mbuf size&lt;/a&gt;&lt;/h4&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;default mbuf-size of 16K&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;可以在启动时指定:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./bin/nutcracker -h
+This is nutcracker-0.2.4
+
+Usage: nutcracker [-?hVdDt] [-v verbosity level] [-o output file]
+                  [-c conf file] [-s stats port] [-a stats addr]
+                  [-i stats interval] [-p pid file] [-m mbuf size]
+
+Options:
+  -h, --help             : this help
+  -V, --version          : show version and exit
+  -t, --test-conf        : test configuration for syntax errors and exit
+  -d, --daemonize        : run as a daemon
+  -D, --describe-stats   : print stats description and exit
+  -v, --verbosity=N      : set logging level (default: 5, min: 0, max: 11)
+  -o, --output=S         : set logging file (default: stderr)
+  -c, --conf-file=S      : set configuration file (default: conf/nutcracker.yml)
+  -s, --stats-port=N     : set stats monitoring port (default: 22222)
+  -a, --stats-addr=S     : set stats monitoring ip (default: 0.0.0.0)
+  -i, --stats-interval=N : set stats aggregation interval in msec (default: 30000 msec)
+  -p, --pid-file=S       : set pid file (default: off)
+  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="max-key-lenght"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id112"&gt;max key lenght&lt;/a&gt;&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;对memcache: ascii protocol key最多 250 characters. The key should not include whitespace, or 'r' or 'n' character.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;redis 没有这个限制&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;nutcracker requires the key to be stored in a contiguous memory region.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;也就是说key必须小于mbuf size&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="server-connections-1"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id113"&gt;server_connections: &amp;gt; 1&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;如果client想要在一个pipeline里面读到最新的写, 就要设置server_connections:1,
+如果我们设置 &lt;tt class="docutils literal"&gt;server_connections:2&lt;/tt&gt;&lt;/p&gt;
+&lt;p&gt;那么:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+set foo bar
+get foo
+&lt;/pre&gt;
+&lt;p&gt;后面这个get可能在另一个连接里面发过去, 所以不一定能读到 &lt;tt class="docutils literal"&gt;set foo bar&lt;/tt&gt; 的结果&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id30"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id114"&gt;监控&lt;/a&gt;&lt;/h4&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;server_err&lt;/li&gt;
+&lt;li&gt;server_timedout&lt;/li&gt;
+&lt;li&gt;server_eof&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="redis-mgr"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id115"&gt;使用redis-mgr部署&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+cluster0 = {
+    'cluster_name': 'cluster0',
+    'user': 'ning',
+    'sentinel':[
+        ('127.0.0.5:21001', '/tmp/r/sentinel-21001'),
+        ('127.0.0.5:21002', '/tmp/r/sentinel-21002'),
+        ('127.0.0.5:21003', '/tmp/r/sentinel-21003'),
+    ],
+    'redis': [
+        # master(host:port, install path)       ,  slave(host:port, install path)
+        ('127.0.0.5:20000', '/tmp/r/redis-20000'), ('127.0.0.5:30000', '/tmp/r/redis-30000'),
+        ('127.0.0.5:20001', '/tmp/r/redis-20001'), ('127.0.0.5:30001', '/tmp/r/redis-30001'),
+        ('127.0.0.5:20002', '/tmp/r/redis-20002'), ('127.0.0.5:30002', '/tmp/r/redis-30002'),
+        ('127.0.0.5:20003', '/tmp/r/redis-20003'), ('127.0.0.5:30003', '/tmp/r/redis-30003'),
+    ],
+    'nutcracker': [
+        ('127.0.0.5:22000', '/tmp/r/nutcracker-22000'),
+        ('127.0.0.5:22001', '/tmp/r/nutcracker-22001'),
+        ('127.0.0.5:22002', '/tmp/r/nutcracker-22002'),
+    ],
+}
+&lt;/pre&gt;
+&lt;p&gt;对redis的benchmark(在我自己机器上):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ redis-benchmark -h 127.0.0.5 -p 20000 -t get,set -n 1000000
+====== SET ======
+  1000000 requests completed in 18.65 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+86.50% &amp;lt;= 1 milliseconds
+99.66% &amp;lt;= 2 milliseconds
+53613.55 requests per second
+
+====== GET ======
+  1000000 requests completed in 16.25 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+99.25% &amp;lt;= 1 milliseconds
+99.89% &amp;lt;= 2 milliseconds
+61557.40 requests per second
+&lt;/pre&gt;
+&lt;p&gt;对proxy 的benchmark:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ redis-benchmark -h 127.0.0.5 -p 22000 -t get,set -n 1000000
+====== SET ======
+  1000000 requests completed in 21.45 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+86.42% &amp;lt;= 1 milliseconds
+99.76% &amp;lt;= 2 milliseconds
+46628.74 requests per second
+
+====== GET ======
+  1000000 requests completed in 48.91 seconds
+  50 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+30.70% &amp;lt;= 1 milliseconds
+44.95% &amp;lt;= 2 milliseconds
+20445.30 requests per second
+&lt;/pre&gt;
+&lt;p&gt;高并发先, 直连redis性能差, cpu都起不来.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id31"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id116"&gt;日志级别&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;我们如果编译debug版本:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+cd nutcracker-0.2.4/ &amp;amp;&amp;amp; ./configure CFLAGS=&amp;quot;-O1&amp;quot; --enable-debug=full --prefix=`pwd`/../output &amp;amp;&amp;amp; make -j 8 &amp;amp;&amp;amp; make install
+&lt;/pre&gt;
+&lt;p&gt;默认的日志级别是5, 就会有很多连接日志:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+[Mon Jan 20 09:44:01 2014] nc_core.c:207 close c 12 '127.0.0.5:52020' on event 0001 eof 1 done 1 rb 26714 sb 13301
+[Mon Jan 20 09:44:01 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52021'
+[Mon Jan 20 09:44:02 2014] nc_core.c:207 close c 12 '127.0.0.5:52021' on event 0001 eof 1 done 1 rb 26741 sb 13315
+[Mon Jan 20 09:44:02 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52022'
+[Mon Jan 20 09:44:04 2014] nc_core.c:207 close c 12 '127.0.0.5:52022' on event 0001 eof 1 done 1 rb 26768 sb 13329
+[Mon Jan 20 09:44:04 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52024'
+[Mon Jan 20 09:44:05 2014] nc_core.c:207 close c 12 '127.0.0.5:52024' on event 0001 eof 1 done 1 rb 26795 sb 13343
+[Mon Jan 20 09:44:05 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52025'
+[Mon Jan 20 09:44:06 2014] nc_core.c:207 close c 12 '127.0.0.5:52025' on event 0001 eof 1 done 1 rb 26822 sb 13357
+[Mon Jan 20 09:44:06 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52026'
+[Mon Jan 20 09:44:07 2014] nc_core.c:207 close c 12 '127.0.0.5:52026' on event 0001 eof 1 done 1 rb 26849 sb 13371
+[Mon Jan 20 09:44:07 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52027'
+[Mon Jan 20 09:44:08 2014] nc_core.c:207 close c 12 '127.0.0.5:52027' on event 0001 eof 1 done 1 rb 26876 sb 13385
+[Mon Jan 20 09:44:08 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52028'
+&lt;/pre&gt;
+&lt;p&gt;处理方法:&lt;/p&gt;
+&lt;div class="section" id="id32"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id117"&gt;修改日志级别:&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+$ ./bin/nutcracker -h
+This is nutcracker-0.2.4
+
+Usage: nutcracker [-?hVdDt] [-v verbosity level] [-o output file]
+                  [-c conf file] [-s stats port] [-a stats addr]
+                  [-i stats interval] [-p pid file] [-m mbuf size]
+
+Options:
+  -h, --help             : this help
+  -V, --version          : show version and exit
+  -t, --test-conf        : test configuration for syntax errors and exit
+  -d, --daemonize        : run as a daemon
+  -D, --describe-stats   : print stats description and exit
+  -v, --verbosity=N      : set logging level (default: 5, min: 0, max: 11)
+  -o, --output=S         : set logging file (default: stderr)
+  -c, --conf-file=S      : set configuration file (default: conf/nutcracker.yml)
+  -s, --stats-port=N     : set stats monitoring port (default: 22222)
+  -a, --stats-addr=S     : set stats monitoring ip (default: 0.0.0.0)
+  -i, --stats-interval=N : set stats aggregation interval in msec (default: 30000 msec)
+  -p, --pid-file=S       : set pid file (default: off)
+  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+&lt;/pre&gt;
+&lt;p&gt;使用 &lt;tt class="docutils literal"&gt;nutcracker &lt;span class="pre"&gt;-v&lt;/span&gt; 0&lt;/tt&gt; 即可&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id33"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id118"&gt;2.动态调整日志级别:&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+case SIGTTIN:
+    actionstr = &amp;quot;, up logging level&amp;quot;;
+    action = log_level_up;
+    break;
+
+case SIGTTOU:
+    actionstr = &amp;quot;, down logging level&amp;quot;;
+    action = log_level_down;
+    break;
+
+case SIGHUP:
+    actionstr = &amp;quot;, reopening log file&amp;quot;;
+    action = log_reopen;
+    break;
+&lt;/pre&gt;
+&lt;p&gt;所以:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+kill -s TTOU  23787
+&lt;/pre&gt;
+&lt;p&gt;日志显示:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+[Mon Jan 20 09:44:09 2014] nc_signal.c:122 signal 22 (SIGTTOU) received, down logging level
+[Mon Jan 20 09:44:09 2014] nc_log.c:95 down log level to 4
+&lt;/pre&gt;
+&lt;p&gt;此时就没有连接日志了.&lt;/p&gt;
+&lt;p&gt;如果想要多看日志:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+kill -s TTIN 15797
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id34"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id119"&gt;3.切日志&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;如果我们需要用日志统计流量, 客户端信息, 可以切日志, 方法:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ mv log/nutcracker.log log/nutcracker.log.20140120
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 124K
+813654 -rw-r--r-- 1 ning ning 114K 2014-01-20 09:44 nutcracker.log.20140120
+813655 -rw-r--r-- 1 ning ning    5 2014-01-20 09:33 nutcracker.pid
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ cat log/nutcracker.pid
+23787
+
+#doit
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ cat log/nutcracker.pid | xargs kill -s HUP
+ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ ll log/
+total 124K
+813688 -rw-r--r-- 1 ning ning    0 2014-01-20 09:49 nutcracker.log
+813654 -rw-r--r-- 1 ning ning 114K 2014-01-20 09:49 nutcracker.log.20140120
+813655 -rw-r--r-- 1 ning ning    5 2014-01-20 09:33 nutcracker.pid
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id35"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id120"&gt;自己实现一个自动的主从切换?&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;0配置, 利用sentinel用的方式, 获知sentinel的位置.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="sentinel"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id121"&gt;sentinel验证&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;如果一主一丛, 主彻底挂了, 从应该是提升为主, 而給老主发的&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id36"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id122"&gt;配置和优化&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="m-512"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id123"&gt;-m 512&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;速度提高, 内存消耗减少(一般消息都小于512字节)&lt;/p&gt;
+&lt;p&gt;注意: 不能滥用, twemproxy实现里面, 一个key必须放在一个mbuf里面(解析器, 为了防止拷贝数据做的限制), 所以, 如果key长度大于mbuf大小, 会打印错误:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+if (r-&amp;gt;rlen &amp;gt;= mbuf_data_size()) {
+    log_error(&amp;quot;parsed bad req %&amp;quot;PRIu64&amp;quot; of type %d with key &amp;quot;
+              &amp;quot;length %d that greater than or equal to maximum&amp;quot;
+              &amp;quot; redis key length of %d&amp;quot;, r-&amp;gt;id, r-&amp;gt;type,
+              r-&amp;gt;rlen, mbuf_data_size());
+    goto error;
+}
+&lt;/pre&gt;
+&lt;pre class="literal-block"&gt;
+Mbuf enables zero copy for requests and responses flowing through the proxy. By default an mbuf is 16K
+
+nutcracker requires the key to be stored in a contiguous memory region. Since all requests and responses in nutcracker are stored in mbuf, the maximum length of the redis key is limited by the size of the maximum available space for data in mbuf (mbuf_data_size()).
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id37"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id124"&gt;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="preconnect-true-redis-core"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id125"&gt;preconnect: true 的时候, 如果后端redis挂掉, 会core&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [0] /lib64/tls/libpthread.so.0 [0x302b80c420]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [1] bin/nutcracker(server_unref+0x5a) [0x405f7a]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [2] bin/nutcracker(server_close+0x1ae) [0x40681e]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [3] bin/nutcracker(core_loop+0x89) [0x4054d9]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [4] bin/nutcracker(main+0x4b5) [0x40f1c5]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [5] /lib64/tls/libc.so.6(__libc_start_main+0xdb) [0x302af1c4bb]
+[Tue Dec 24 21:10:20 2013] nc_util.c:291 [6] bin/nutcracker [0x40507a]
+[Tue Dec 24 21:10:20 2013] nc_signal.c:122 signal 11 (SIGSEGV) received, core dumping
+
+
+似乎是这个问题: https://github.com/twitter/twemproxy/issues/146
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="pipeline-replay"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id126"&gt;pipeline/replay时消耗大量内存:&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/203"&gt;https://github.com/twitter/twemproxy/issues/203&lt;/a&gt;&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop:~/idning-github/redis-mgr$ cat tests/a.py
+import socket
+import time
+
+HOST = '127.0.0.5'
+PORT = 24000
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect((HOST, PORT))
+
+data = '*3\r\n$3\r\nSET\r\n$13\r\nkkk-100001480\r\n$13\r\nvvv-100001480\r\n'
+for i in range(100*1000):
+    s.sendall(data)
+
+ning&amp;#64;ning-laptop:~/idning-github/redis-mgr$ time python tests/a.py
+
+real        0m0.797s
+user        0m0.280s
+sys 0m0.120s
+&lt;/pre&gt;
+&lt;p&gt;I found that twemproxy consume 1.6G of  memeory, and the memory will not free after the client shutdown:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop:/tmp/r/nutcracker-24000$ ps aux | grep nut
+ning      2017  0.5 14.8 1652068 1186692 ?     Sl   09:43   0:00 bin/nutcracker -d -c /tmp/r/nutcracker-24000/conf/nutcracker.conf -o /tmp/r/nutcracker-24000/log/nutcracker.log -p /tmp/r/nutcracker-24000/log/nutcracker.pid -s 25000 -v 4
+
+100*1000*52(msg length) = 5MB
+&lt;/pre&gt;
+&lt;p&gt;send 5MB to twemproxy, it will consume 1.6G memory...&lt;/p&gt;
+&lt;p&gt;if we deploy twemporxy and redis on the same machine. they will killed by OOMKiller.&lt;/p&gt;
+&lt;p&gt;原因:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./bin/nutcracker -h
+...
+-m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+&lt;/pre&gt;
+&lt;p&gt;default mbuf size is 16K, and twemproxy will alloc at least one mbuf for one msg, so 100*1000 msgs will use 1.6G memory.&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;twemproxy will not free the request mbuf until client read the response&lt;/li&gt;
+&lt;li&gt;twemproxy not reduce memory on mbuf pool.
+it only call &lt;tt class="docutils literal"&gt;mbuf_free&lt;/tt&gt; on &lt;tt class="docutils literal"&gt;mbuf_deinit&lt;/tt&gt;, which is called on server down&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;that is a big pipeline, got huge memory consumption&lt;/p&gt;
+&lt;p&gt;this:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+data = '*3\r\n$3\r\nSET\r\n$13\r\nkkk-100001480\r\n$13\r\nvvv-100001480\r\n'
+for i in range(1*1000):
+    s.sendall(data)
+
+#print s.recv(10*1000)
+&lt;/pre&gt;
+&lt;p&gt;endswith:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+==9226== 311,064 bytes in 997 blocks are possibly lost in loss record 38 of 38
+==9226==    at 0x4C274A8: malloc (vg_replace_malloc.c:236)
+==9226==    by 0x411C75: _nc_alloc (nc_util.c:224)
+==9226==    by 0x409B6B: _msg_get (nc_message.c:200)
+==9226==    by 0x409CC5: msg_get (nc_message.c:268)
+==9226==    by 0x40A1DC: msg_recv (nc_message.c:439)
+==9226==    by 0x406178: core_core (nc_core.c:158)
+==9226==    by 0x41BBB7: event_wait (nc_epoll.c:269)
+==9226==    by 0x405F88: core_loop (nc_core.c:316)
+==9226==
+==9226== LEAK SUMMARY:
+==9226==    definitely lost: 0 bytes in 0 blocks
+==9226==    indirectly lost: 0 bytes in 0 blocks
+==9226==      possibly lost: 352,937 bytes in 1,129 blocks
+==9226==    still reachable: 27,735 bytes in 50 blocks
+==9226==         suppressed: 0 bytes in 0 blocks
+==9226== Reachable blocks (those to which a pointer was found) are not shown.
+==9226== To see them, rerun with: --leak-check=full --show-reachable=yes
+&lt;/pre&gt;
+&lt;p&gt;this script:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+data = '*3\r\n$3\r\nSET\r\n$13\r\nkkk-100001480\r\n$13\r\nvvv-100001480\r\n'
+for i in range(1*1000):
+    s.sendall(data)
+
+#print s.recv(10*1000)
+&lt;/pre&gt;
+&lt;p&gt;ends with:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+==9255== 4,292,608 bytes in 262 blocks are possibly lost in loss record 40 of 40
+==9255==    at 0x4C274A8: malloc (vg_replace_malloc.c:236)
+==9255==    by 0x411C75: _nc_alloc (nc_util.c:224)
+==9255==    by 0x40BCF5: mbuf_get (nc_mbuf.c:46)
+==9255==    by 0x40BD4A: mbuf_split (nc_mbuf.c:241)
+==9255==    by 0x40A1AA: msg_recv (nc_message.c:434)
+==9255==    by 0x406178: core_core (nc_core.c:158)
+==9255==    by 0x41BBB7: event_wait (nc_epoll.c:269)
+==9255==    by 0x405F88: core_loop (nc_core.c:316)
+==9255==
+==9255== LEAK SUMMARY:
+==9255==    definitely lost: 0 bytes in 0 blocks
+==9255==    indirectly lost: 0 bytes in 0 blocks
+==9255==      possibly lost: 4,376,723 bytes in 535 blocks
+&lt;/pre&gt;
+&lt;p&gt;原因是太快的向proxy发送大量数据, proxy 不管三七二十一, 都把数据全部接收下来, 再慢慢处理, 这就造成大量msg对象堆在proxy的内存中,&lt;/p&gt;
+&lt;p&gt;nutcracker always try to receive at the client side:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+rstatus_t
+core_core(void *arg, uint32_t events)
+{
+    /* read takes precedence over write */
+    if (events &amp;amp; EVENT_READ) {
+        status = core_recv(ctx, conn);      //call conn-&amp;gt;recv (msg_recv)
+        if (status != NC_OK || conn-&amp;gt;done || conn-&amp;gt;err) {
+            core_close(ctx, conn);
+            return NC_ERROR;
+        }
+    }
+    ...
+}
+&lt;/pre&gt;
+&lt;p&gt;if the client write to the socket, it will always success, (something like &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;redis-cli&lt;/span&gt; &lt;span class="pre"&gt;--pipe&lt;/span&gt;&lt;/tt&gt; ) then message queued at nutcracker, and got timeouted,&lt;/p&gt;
+&lt;p&gt;the problem is client do not know when to stop sending request,&lt;/p&gt;
+&lt;p&gt;I think we can add a config like &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;max-queue&lt;/span&gt;&lt;/tt&gt;, if nutcracker got too much request queued, it stop read at the client side.&lt;/p&gt;
+&lt;p&gt;so the client will block on sending&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mgetcase"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id127"&gt;mget慢这个case&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;We are looking to use TwemProxy with Redis for sharding. We have use cases where we may need to fetch about 10k keys in one go from across multiple shards. However, when I try this with TwemProxy on a test setup (described below), it takes about 1.7 seconds to return. If I fired the same request on a single Redis instance directly, it returns in about 16ms.&lt;/p&gt;
+&lt;p&gt;-m 512, I got the best results. With this, multi-key get on 10k keys returned in about 750ms&lt;/p&gt;
+&lt;p&gt;For example, if my input buffer from read syscall contains 10 messages = [1, 2, 3, 4, 5, 6, ... 10], we leave existing message &amp;quot;1&amp;quot; in its current mbuf and copy messages from [2,3,4,5, ...10] to a new mbuf. Once message &amp;quot;1&amp;quot; is processed, we then we copy messages from [3,4,5,6,...10] to a new mbuf and so on and on. So, to split messages [1,2,3...10] across 10 mbufs we are doing quadratic instead of linear copies. This is really unfortunate,&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id38"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id128"&gt;应该允许释放mbuf&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;否则一旦分配，就不释放&lt;/p&gt;
+&lt;p&gt;大量并发mget, 就需要用小的mbuf size&lt;/p&gt;
+&lt;p&gt;This is the reason why for 'large number' of connections or for wide multi-get like requests, you want to choose a small value for mbuf-size like 512&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id39"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id129"&gt;#一轮完了再集中加事件, 不要多次加, 重复加&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;实际上, 已经做了这个优化, 只有第一次加事件的时候才真正加:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void
+req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
+
+    ...
+
+    /* enqueue the message (request) into server inq */
+    if (TAILQ_EMPTY(&amp;amp;s_conn-&amp;gt;imsg_q)) {
+        status = event_add_out(ctx-&amp;gt;evb, s_conn);
+        if (status != NC_OK) {
+            req_forward_error(ctx, c_conn, msg);
+            s_conn-&amp;gt;err = errno;
+            return;
+        }
+    }
+    s_conn-&amp;gt;enqueue_inq(ctx, s_conn, msg);
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id40"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id130"&gt;#可能的优化:mget&lt;/a&gt;&lt;/h3&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id41"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id131"&gt;改造&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;single 模式, 支持所有命令, 简单proxy.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="key"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id132"&gt;key过长回错误&lt;/a&gt;&lt;/h3&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id42"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id133"&gt;社区情况&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;pull-request:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;支持select db:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/217"&gt;https://github.com/twitter/twemproxy/pull/217&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/102"&gt;https://github.com/twitter/twemproxy/pull/102&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;支持ping:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/119/files"&gt;https://github.com/twitter/twemproxy/pull/119/files&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;支持auth:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/81"&gt;https://github.com/twitter/twemproxy/pull/81&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;issues 大家的呼声:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;配置热加载 &lt;tt class="docutils literal"&gt;TODO&lt;/tt&gt;&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/215"&gt;https://github.com/twitter/twemproxy/issues/215&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/6"&gt;https://github.com/twitter/twemproxy/issues/6&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;pubsub &lt;tt class="docutils literal"&gt;TODO&lt;/tt&gt;&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/130"&gt;https://github.com/twitter/twemproxy/issues/130&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;select/auth/ping 的支持&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/103"&gt;https://github.com/twitter/twemproxy/issues/103&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/102"&gt;https://github.com/twitter/twemproxy/pull/102&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/81"&gt;https://github.com/twitter/twemproxy/pull/81&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;pipeline 下内存消耗:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/158"&gt;https://github.com/twitter/twemproxy/issues/158&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/203"&gt;https://github.com/twitter/twemproxy/issues/203&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;支持sentinel 自动主从切换.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;其它人的一些改动:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;openbaas/aduong等同学支持了auth/ping/quit. 已经在twitter/twemproxy 里面的 auth_and_select 分支. 但是select 的支持没做.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/aduong/twemproxy/compare/0.2.4%2Bquit"&gt;https://github.com/aduong/twemproxy/compare/0.2.4%2Bquit&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/aduong/twemproxy/commit/871537d912f3036daeea883d7ed1ef6f642fa15e"&gt;https://github.com/aduong/twemproxy/commit/871537d912f3036daeea883d7ed1ef6f642fa15e&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/81"&gt;https://github.com/twitter/twemproxy/pull/81&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;另一个同学的后续改动: &lt;a class="reference external" href="https://github.com/jdi-tagged/twemproxy/commit/5ba615865fff547f997998bcc9634ab680d83645"&gt;https://github.com/jdi-tagged/twemproxy/commit/5ba615865fff547f997998bcc9634ab680d83645&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;auth 没什么用, 但是ping和quit, 因为php-redis 里面关连接之前都会quit, 所以有用.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;yuyuyu101/twemproxy 很久以前做了kqueue 的port, 不过没有merge 到主干&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;jbfavre/twemproxy 主要做一些打包工作, 比如debian包.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;shaofengniu/twemproxy 做了很多工作. 代码改动超过5000行.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id43"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id134"&gt;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;twemproxy 对pipeline型的读写, 性能不好.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="id44"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id135"&gt;期望&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;ping/auth/quit 的几个支持希望能尽快merge到主干&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>vimcasts笔记</title><link href="/vim-vimcasts.html" rel="alternate"></link><updated>2013-12-05T11:13:53+08:00</updated><author><name>ning</name></author><id>tag:,2013-12-05:vim-vimcasts.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
