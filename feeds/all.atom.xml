@@ -6374,6 +6374,356 @@ rl_getset key         (返回同rl_get, 当leveldb有值，redis无值时，会�
 &lt;/table&gt;
 &lt;/div&gt;
 &lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>tmux</title><link href="/tmux.html" rel="alternate"></link><updated>2014-05-08T09:52:32+08:00</updated><author><name>ning</name></author><id>tag:,2014-05-08:tmux.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#why" id="id9"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;why&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id10"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;安装&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id11"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;使用&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#session" id="id12"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;session&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#window" id="id13"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;window&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#pane" id="id14"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;pane&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#copy-paste" id="id15"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;copy-paste&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id16"&gt;3.5&amp;nbsp;&amp;nbsp;&amp;nbsp;交换两个window&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#kill-window" id="id17"&gt;3.6&amp;nbsp;&amp;nbsp;&amp;nbsp;kill-window&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id18"&gt;3.7&amp;nbsp;&amp;nbsp;&amp;nbsp;帮助&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id19"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id20"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;工具&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#tmuxp" id="id21"&gt;5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;tmuxp&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#workspace" id="id22"&gt;5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;workspace&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id23"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id24"&gt;7&amp;nbsp;&amp;nbsp;&amp;nbsp;参考&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="why"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id9"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;why&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;配置更可读, 比如状态栏:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#screen
+hardstatus alwayslastline '%{gk}[ %{G}%H %{g}][%= %{wk}%?%-Lw%?%{=b kR}(%{W}%n*%f%t%?(%u)%?%{=b kR})%{= kw}%?%+Lw%?%?%= %{y}][%{G} %l%{y}] %{y}[%{G} %m/%d %c %{y}]%{W}'
+
+#tmux
+set -g status-left ' #[fg=green,bold]#H#[default]'
+set -g status-right '#[fg=yellow,bold]#(cut -d &amp;quot; &amp;quot; -f 1-4 /proc/loadavg)#[default] #[fg=cyan,bold]%Y-%m-%d %H:%M:%S#[default] '
+
+screen的配置完全看不懂 颜色在哪, 看上去更像魔法.
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;可编程&lt;/p&gt;
+&lt;p&gt;nearly all commands can be invoked from the command line,&lt;/p&gt;
+&lt;p&gt;screen 也可以的.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;Window Splitting&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;和screen一样, 也支持 前缀.
+比如 tmux attach 可以简写为 tmux att&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;列出所有window, 在window很多的时候 有用:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Ctrl-b w (List all windows / window numbers)
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;动态修改配置(有些属性不能及时生效, 要杀掉所有session):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+By default tmux reads ~/.tmux.conf only if it was not already running. To have tmux load a configuration file afterwards, execute:
+tmux source-file &amp;lt;path&amp;gt;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;很多外部工具, 如tmuxp&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id10"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;安装&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;因为我的ubuntu tmux是1.1..  ubuntu 也太老,  只能自己编译了..  需要libevent 2.x and ncurses .&lt;/p&gt;
+&lt;p&gt;用这个脚本: &lt;a class="reference external" href="https://gist.github.com/ryin/3106801"&gt;https://gist.github.com/ryin/3106801&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id11"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;使用&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="session"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id12"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;session&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+#creates a new tmux session named session_name
+tmux new -s session_name
+
+#attaches to an existing tmux session named session_name
+tmux attach -t session_name
+
+#switches to an existing session named session_name
+tmux switch -t session_name
+
+#lists existing tmux sessions
+tmux list-sessions
+
+#detach the currently attached session
+tmux detach (prefix + d)
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="window"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id13"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;window&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+create a new window
+tmux new-window (prefix + c)
+
+move to the window based on index
+tmux select-window -t :0-9 (prefix + 0-9)
+
+rename the current window
+tmux rename-window (prefix + ,)
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="pane"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id14"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;pane&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+tmux split-window (prefix + &amp;quot;)
+splits the window into two vertical panes
+
+tmux split-window -h (prefix + %)
+splits the window into two horizontal panes
+
+tmux swap-pane -[UDLR] (prefix + { or })
+swaps pane with another in the specified direction
+
+tmux select-pane -[UDLR]
+selects the next pane in the specified direction
+
+tmux select-pane -t :.+
+selects the next pane in numerical order
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="copy-paste"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id15"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;copy-paste&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;空格开始选择, Enter确认copy
+1. enter copy mode using &lt;tt class="docutils literal"&gt;Control+b [&lt;/tt&gt;
+2. navigate to beginning of text, you want to select and hit &lt;tt class="docutils literal"&gt;Space&lt;/tt&gt;
+3. move around using arrow keys to select region
+4. when you reach end of region simply hit &lt;tt class="docutils literal"&gt;Enter&lt;/tt&gt; to copy the region
+5. now &lt;tt class="docutils literal"&gt;Control+b ]&lt;/tt&gt; will paste the selection&lt;/p&gt;
+&lt;p&gt;配置:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+# Setup 'v' to begin selection as in Vim
+bind-key -t vi-copy v begin-selection
+bind-key -t vi-copy y copy-selection
+#bind-key -t vi-copy y copy-pipe &amp;quot;reattach-to-user-namespace pbcopy&amp;quot;
+
+# Update default binding of `Enter` to also use copy-pipe
+unbind -t vi-copy Enter
+bind-key -t vi-copy Enter copy-pipe &amp;quot;reattach-to-user-namespace pbcopy&amp;quot;
+
+bind-key p paste-buffer
+&lt;/pre&gt;
+&lt;p&gt;这样就可以 &lt;tt class="docutils literal"&gt;^a[&lt;/tt&gt; 进入回滚模式, &lt;tt class="docutils literal"&gt;v&lt;/tt&gt; 开始选择, &lt;tt class="docutils literal"&gt;y&lt;/tt&gt; 拷贝, &lt;tt class="docutils literal"&gt;q&lt;/tt&gt; 退出,&lt;/p&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;^a p&lt;/tt&gt; 粘贴.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id16"&gt;3.5&amp;nbsp;&amp;nbsp;&amp;nbsp;交换两个window&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;当前window和1号window交换:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+swap-window -t 1
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="kill-window"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id17"&gt;3.6&amp;nbsp;&amp;nbsp;&amp;nbsp;kill-window&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+tmux kill-window -t ndb:7
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id18"&gt;3.7&amp;nbsp;&amp;nbsp;&amp;nbsp;帮助&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;列出命令:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop:~/idning/blog_and_notes$ tmux lscm
+attach-session [-d] [-t target-session]
+bind-key [-cnr] [-t key-table] key command [arguments]
+break-pane [-t target-pane] [-d]
+choose-client [-t target-window] [template]
+choose-session [-t target-window] [template]
+choose-window [-t target-window] [template]
+&lt;/pre&gt;
+&lt;p&gt;列出绑定:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+^A?
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id19"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;用^A ^A 来在最常用的两个window间切换:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#select last window
+bind-key C-a last-window
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;.bashrc/.profile is not loaded on new tmux session&lt;/p&gt;
+&lt;p&gt;tmux加载 &lt;tt class="docutils literal"&gt;.bash_profile&lt;/tt&gt; 需要在 &lt;tt class="docutils literal"&gt;.bash_profile&lt;/tt&gt; 中加入:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+. ~/.bashrc
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;new 和attatch 的标识不一样:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+tmux new -s
+tmux attach -t
+&lt;/pre&gt;
+&lt;p&gt;好在有这个alias:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+alias t=&amp;quot;if tmux has-session -t $USER; then tmux attach -t $USER; else tmux new -s $USER; fi&amp;quot;
+&lt;/pre&gt;
+&lt;p&gt;不过这个不能指定名字, 用函数:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+t(){
+    if [ $# -eq 0 ]
+      then
+        tmux ls
+      else
+        if tmux has-session -t $&amp;#64;; then tmux attach -t $&amp;#64;; else tmux new -s $&amp;#64;; fi
+    fi
+
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;ctrl-left&lt;/span&gt;&lt;/tt&gt; 不能用, 特别是在vim里面, 需要配置一下:&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;tmux.conf:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+set-window-option -g xterm-keys on
+&lt;/pre&gt;
+&lt;p&gt;.vimrc:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+&amp;quot;for tmux
+if &amp;amp;term =~ '^screen'
+    &amp;quot; tmux will send xterm-style keys when xterm-keys is on
+    execute &amp;quot;set &amp;lt;xUp&amp;gt;=\e[1;*A&amp;quot;
+    execute &amp;quot;set &amp;lt;xDown&amp;gt;=\e[1;*B&amp;quot;
+    execute &amp;quot;set &amp;lt;xRight&amp;gt;=\e[1;*C&amp;quot;
+    execute &amp;quot;set &amp;lt;xLeft&amp;gt;=\e[1;*D&amp;quot;
+endif
+&lt;/pre&gt;
+&lt;/blockquote&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;双层嵌套退出:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+tmux detach  -s tmp
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ol class="arabic" start="5"&gt;
+&lt;li&gt;&lt;p class="first"&gt;vim里面 &lt;tt class="docutils literal"&gt;shift+tab&lt;/tt&gt; 不能用, 至今无解.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;tagbar等乱掉:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://plus.google.com/u/0/+VysakhSreenivasan/posts/4heRzoxbM72"&gt;https://plus.google.com/u/0/+VysakhSreenivasan/posts/4heRzoxbM72&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;在tmux.conf里面加上:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+set-window-option -g utf8 on
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id20"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;工具&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="tmuxp"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id21"&gt;5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;tmuxp&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;pip install tmuxp&lt;/p&gt;
+&lt;p&gt;保存会话(我试用有问题, ):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+usage: tmuxp freeze [-h] [-L socket-name] [-S socket-path]
+                session_name [session_name ...]
+
+ning&amp;#64;ning-laptop ~/test$ tmuxp load a.yaml
+(E) [10:05:09] tmuxp.cli cli.main():952 [u'tmux: unknown option -- V', u'usage: tmux [-28lquv] [-c shell-command] [-f file] [-L socket-name]', u'            [-S socket-path] [command [flags]]']
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="workspace"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id22"&gt;5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;workspace&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;修改了我的workspace脚本, 老的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+&amp;#64;task
+def redissrc():
+    cmd('''
+gnome-terminal --geometry=120x40
+--tab --working-directory ~/idning/blog_and_notes
+--tab --working-directory ~/idning/blog_and_notes
+--tab --working-directory ~/idning-github/redis/src
+--tab --working-directory ~/idning-github/twemproxy/src
+--tab --working-directory ~/idning-github/twemproxy/src
+''')
+&lt;/pre&gt;
+&lt;p&gt;新的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+&amp;#64;task
+def redismgr():
+    startcmd = '''
+        tmux new -d      -s redismgr -n src  -c ~/idning-github/redis-mgr/
+        tmux new-window  -t redismgr -n src  -c ~/idning-github/redis-mgr/
+        tmux new-window  -t redismgr -n src  -c ~/idning-github/redis-mgr/
+        tmux new-window  -t redismgr -n note -c ~/idning/blog_and_notes/
+        tmux new-window  -t redismgr -n note -c ~/idning/blog_and_notes/
+        '''
+
+    if not _tmux_exists('redismgr'):
+        cmd2(startcmd)
+    cmd('tmux attach -t redismgr')
+&lt;/pre&gt;
+&lt;p&gt;类似的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+&amp;#64;task
+def work():
+    cmd('''
+gnome-terminal --geometry=120x40  --name=abc
+--tab --working-directory /home/ning/mywork/work-log
+--tab --working-directory /home/ning/mywork/work-log
+--tab --working-directory /home/ning/mywork/codebase-git/
+--tab --working-directory /home/ning/mywork/codebase
+''')
+
+    cmd('xdotool key alt+1')
+    cmd('xdotool type &amp;quot;vim M/201402.rst&amp;quot;')
+    cmd('xdotool key  Return F8')
+    #cmd('xdotool key  alt+Tab')
+&lt;/pre&gt;
+&lt;p&gt;换成了:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+&amp;#64;task
+def work():
+    startcmd = '''
+        tmux new -d      -s work -n worklog     -c /home/ning/mywork/work-log/
+        tmux new-window  -t work -n worklog     -c /home/ning/mywork/work-log/
+        tmux new-window  -t work -n git         -c /home/ning/mywork/codebase-git/
+        tmux new-window  -t work -n code        -c /home/ning/mywork/codebase/
+        '''
+
+    if not _tmux_exists('work'):
+        cmd2(startcmd)
+
+    cmd('tmux send-keys -t work:0 &amp;quot;vi M/201405.rst&amp;quot; Enter')
+    cmd('tmux select-window -t work:0')
+    cmd('tmux attach -t work')
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id7"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id23"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;比screen好(可定制性强)&lt;/li&gt;
+&lt;li&gt;自己写脚本管理, 比用tmuxp这样的工具好&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id8"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id24"&gt;7&amp;nbsp;&amp;nbsp;&amp;nbsp;参考&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://wiki.gentoo.org/wiki/Tmux"&gt;http://wiki.gentoo.org/wiki/Tmux&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://wiki.archlinux.org/index.php/tmux"&gt;https://wiki.archlinux.org/index.php/tmux&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/aziz/dotfiles/blob/master/tmux.conf"&gt;https://github.com/aziz/dotfiles/blob/master/tmux.conf&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://gist.github.com/kwbock/5161135"&gt;https://gist.github.com/kwbock/5161135&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/roylez/dotfiles/blob/master/.tmux.conf"&gt;https://github.com/roylez/dotfiles/blob/master/.tmux.conf&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>twemproxy-cfg-reload</title><link href="/twemproxy-cfg-reload.html" rel="alternate"></link><updated>2014-04-28T16:46:45+08:00</updated><author><name>ning</name></author><id>tag:,2014-04-28:twemproxy-cfg-reload.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
@@ -14087,5 +14437,794 @@ nnoremap Q 0yt=A&amp;lt;C-r&amp;gt;=&amp;lt;C-r&amp;gt;&amp;quot;&amp;lt;CR&amp;
 &lt;div class="section" id="id6"&gt;
 &lt;h2&gt;&lt;a class="toc-backref" href="#id76"&gt;总结&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;前30个非常好, 后面知识较少.&lt;/p&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>增大tcp init_cwnd</title><link href="/tcp_ip_increasing_init_cwnd.html" rel="alternate"></link><updated>2012-12-14T10:32:15+08:00</updated><author><name>ning</name></author><id>tag:,2012-12-14:tcp_ip_increasing_init_cwnd.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#an-argument-for-increasing-tcps-initial-congestion-window" id="id7"&gt;An Argument for Increasing TCP’s Initial Congestion Window&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id8"&gt;理论&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id9"&gt;效果&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id10"&gt;其它方法&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id11"&gt;负面影响&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#initcwnd-settings-of-major-cdn-providers" id="id12"&gt;Initcwnd settings of major CDN providers&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#tuning-initcwnd-for-optimum-performance" id="id13"&gt;Tuning initcwnd for optimum performance&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#zetatcp" id="id14"&gt;zetaTCP&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id15"&gt;工具&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#init-cwnd" id="id16"&gt;修改init_cwnd&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#initcwnd-check" id="id17"&gt;initcwnd_check&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#case" id="id18"&gt;case&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#case-win" id="id19"&gt;case win&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#case-tso" id="id20"&gt;case tso&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id21"&gt;参考&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="an-argument-for-increasing-tcps-initial-congestion-window"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;An Argument for Increasing TCP’s Initial Congestion Window&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://code.google.com/speed/articles/tcp_initcwnd_paper.pdf"&gt;http://code.google.com/speed/articles/tcp_initcwnd_paper.pdf&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;init_cwnd=10 =&amp;gt; 提升10%&lt;/p&gt;
+&lt;p&gt;慢启动阶段, 拥塞窗口一直增加, 直到丢包, 丢包通常是由于 路由器buffer overflow&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;平均网页大小384KB.&lt;/li&gt;
+&lt;li&gt;大多数连接，都是短连接.&lt;/li&gt;
+&lt;li&gt;使用iptables 命令可以修改init_cwnd.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;理论&lt;/a&gt;&lt;/h3&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;90%的网页在 网页 在16KB 以内.
+所以改为10, 90%的网页都可以在一个RTT内发出&lt;/li&gt;
+&lt;li&gt;init_cwnd 比较大, 如果拥塞, 能够尽快的快速重传, 而不是等待超时.
+一下发送10个包, 如果丢了5个, 发送方很可能收到dup ack, 所以出发 Fast Restransmit.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;img alt="" src="/imgs/google_init_cwnd1.png" /&gt;
+&lt;p&gt;注意 除了init_cwnd 之外, client 的通告窗口(rwnd)如果太小, 也不能一下发送很多包,&lt;/p&gt;
+&lt;img alt="" src="/imgs/google_init_cwnd_rwnd.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;效果&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;提升8%-16%&lt;/p&gt;
+&lt;img alt="" src="/imgs/google_init_cwnd_improve.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;其它方法&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;cached cwnd. (可能是记录每个client ip 的最佳cwnd)&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id11"&gt;负面影响&lt;/a&gt;&lt;/h3&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;重传增加 (增加很少)&lt;/li&gt;
+&lt;li&gt;浏览器本身会并发访问, 通常并发是3-6.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="initcwnd-settings-of-major-cdn-providers"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id12"&gt;Initcwnd settings of major CDN providers&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.cdnplanet.com/blog/initcwnd-settings-major-cdn-providers/"&gt;http://www.cdnplanet.com/blog/initcwnd-settings-major-cdn-providers/&lt;/a&gt;&lt;/p&gt;
+&lt;img alt="" src="/imgs/initcwnd-cdns-may2012_12.png" /&gt;
+&lt;p&gt;多数cdn 厂商的cwnd 都调高了.&lt;/p&gt;
+&lt;p&gt;测试脚本: &lt;a class="reference external" href="http://www.cdnplanet.com/static/uploads/probe.py"&gt;http://www.cdnplanet.com/static/uploads/probe.py&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="tuning-initcwnd-for-optimum-performance"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id13"&gt;Tuning initcwnd for optimum performance&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.cdnplanet.com/blog/tune-tcp-initcwnd-for-optimum-performance/"&gt;http://www.cdnplanet.com/blog/tune-tcp-initcwnd-for-optimum-performance/&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;图不错:&lt;/p&gt;
+&lt;img alt="" src="/imgs/init_cwnd_TCP1.png" /&gt;
+&lt;img alt="" src="/imgs/init_cwnd_TCP2.png" /&gt;
+&lt;/div&gt;
+&lt;div class="section" id="zetatcp"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id14"&gt;zetaTCP&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;对于小公司, 网页下载, 不需要这种技术, 直接调大init_cwnd 就行.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id15"&gt;工具&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="init-cwnd"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id16"&gt;修改init_cwnd&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;Step 1: check route settings.:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+sajal&amp;#64;sajal-desktop:~$ ip route show
+192.168.1.0/24 dev eth0  proto kernel  scope link  src 192.168.1.100  metric 1
+169.254.0.0/16 dev eth0  scope link  metric 1000
+default via 192.168.1.1 dev eth0  proto static
+sajal&amp;#64;sajal-desktop:~$
+Make a note of the line starting with default.
+&lt;/pre&gt;
+&lt;p&gt;Step 2: Change the default settings:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Paste the current settings for default and add initcwnd 10 to it.
+
+sajal&amp;#64;sajal-desktop:~$ sudo ip route change default via 192.168.1.1 dev eth0  proto static initcwnd 10
+&lt;/pre&gt;
+&lt;p&gt;Step 3: Verify:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+sajal&amp;#64;sajal-desktop:~$ ip route show
+192.168.1.0/24 dev eth0  proto kernel  scope link  src 192.168.1.100  metric 1
+169.254.0.0/16 dev eth0  scope link  metric 1000
+default via 192.168.1.1 dev eth0  proto static  initcwnd 10
+&lt;/pre&gt;
+&lt;p&gt;我试试:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+# ip route show
+10.26.140.0/24 dev eth1  proto kernel  scope link  src 10.26.140.32
+169.254.0.0/16 dev eth1  scope link  metric 1003
+192.168.0.0/16 via 10.26.140.1 dev eth1
+172.16.0.0/12 via 10.26.140.1 dev eth1  initcwnd 10
+10.0.0.0/8 via 10.26.140.1 dev eth1
+
+# ip route change 172.16.0.0/12 via 10.26.140.1 dev eth1 initcwnd 20
+
+# ip route show
+10.26.140.0/24 dev eth1  proto kernel  scope link  src 10.26.140.32
+169.254.0.0/16 dev eth1  scope link  metric 1003
+192.168.0.0/16 via 10.26.140.1 dev eth1
+172.16.0.0/12 via 10.26.140.1 dev eth1  initcwnd 20
+10.0.0.0/8 via 10.26.140.1 dev eth1
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="initcwnd-check"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id17"&gt;initcwnd_check&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;需要apt-get 安装&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+libnetpacket-perl, libnet-pcap-perl, libnet-rawip-perl
+&lt;/pre&gt;
+&lt;pre class="literal-block"&gt;
+(ENV)ning&amp;#64;ning-laptop ~/test/initcwnd_check$ sudo ./initcwnd_check.pl wlan0 http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js
++ connected from 172.22.146.48:6031 to 74.125.31.95:80
+* ajax.googleapis.com (74.125.31.95) - init_cwnd: 10 (13800 byte), init_rwnd: 10 (14300 byte)
+
+(ENV)ning&amp;#64;ning-laptop ~/test/initcwnd_check$ sudo ./initcwnd_check.pl wlan0 http://10.26.140.32:8080/500K.data
++ connected from 172.22.146.48:4648 to 10.26.140.32:8080
+* 10.26.140.32 (10.26.140.32) - init_cwnd: 10 (14280 byte), init_rwnd: 10 (14600 byte)
+
+(ENV)ning&amp;#64;ning-laptop ~/test/initcwnd_check$ sudo ./initcwnd_check.pl wlan0 http://10.26.138.25:8080/500K.data
++ connected from 172.22.146.48:6988 to 10.26.138.25:8080
+* 10.26.138.25 (10.26.138.25) - init_cwnd: 44 (62832 byte), init_rwnd: 44 (63443 byte)                                                  //44.
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="case"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id18"&gt;case&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="case-win"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id19"&gt;case win&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;虽然调大了，但是下面这个case 的还是只能发送4个, 因为接收放说win 5840:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+(ENV)ning&amp;#64;ning-laptop ~/test/initcwnd_check$ sudo tcpdump -i wlan0 -nn 'host 123.125.115.254'
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on wlan0, link-type EN10MB (Ethernet), capture size 96 bytes
+
+19:36:42.621338 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [S], seq 2478746345, win 5840, options [mss 1460,sackOK,TS val 19574584 ecr 0,nop,wscale 7], length 0
+19:36:42.638841 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [S.], seq 3088442681, ack 2478746346, win 5840, options [mss 1380,sackOK,nop,nop,nop,nop,nop,nop,nop,nop,nop,nop,nop,nop,nop,nop], length 0
+19:36:42.638883 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 1, win 5840, length 0
+19:36:42.639081 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [P.], seq 1:122, ack 1, win 5840, length 121
+19:36:42.642216 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [.], ack 122, win 14600, length 0
+19:36:42.642969 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [.], seq 1:1025, ack 122, win 14600, length 1024
+19:36:42.642999 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 1025, win 7168, length 0
+19:36:42.644692 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [.], seq 1025:2049, ack 122, win 14600, length 1024
+19:36:42.644720 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 2049, win 9216, length 0
+19:36:42.645531 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [.], seq 2049:3073, ack 122, win 14600, length 1024
+19:36:42.645548 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 3073, win 11264, length 0
+19:36:42.648202 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [P.], seq 3073:4097, ack 122, win 14600, length 1024
+19:36:42.648229 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 4097, win 13312, length 0
+
+19:36:42.654387 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [.], seq 4097:5121, ack 122, win 14600, length 1024
+19:36:42.654416 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 5121, win 15360, length 0
+19:36:42.659431 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [.], seq 5121:6145, ack 122, win 14600, length 1024
+19:36:42.659455 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 6145, win 17408, length 0
+19:36:42.660544 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [P.], seq 6145:7169, ack 122, win 14600, length 1024
+19:36:42.660558 IP 172.22.146.48.41102 &amp;gt; 123.125.115.254.80: Flags [.], ack 7169, win 19456, length 0
+19:36:42.677194 IP 123.125.115.254.80 &amp;gt; 172.22.146.48.41102: Flags [.], seq 7169:8193, ack 122, win 14600, length 1024
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="case-tso"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id20"&gt;case tso&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;我们在使用 x工具 之后, 关闭它之后. 用上面的initcwnd_check 工具查看，发现init_cwnd变成了6，很奇怪:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+(ENV)ning&amp;#64;ning-laptop ~/test/initcwnd_check$ sudo ./initcwnd_check.pl wlan0 http://10.26.138.25:8080/50K.data
++ connected from 172.22.146.48:3832 to 10.26.138.25:8080
+* 10.26.138.25 (10.26.138.25) - init_cwnd: 6 (8568 byte), init_rwnd: 10 (14600 byte)
+&lt;/pre&gt;
+&lt;p&gt;抓包看:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+# tcpdump -nn 'host 172.22.146.48'
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 65535 bytes
+
+17:28:32.410069 IP 172.22.146.48.2608 &amp;gt; 10.26.138.25.8080: Flags [S], seq 2380923257:2380923262, win 65535, options [mss 1460], length 5
+17:28:32.410108 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [S.], seq 1345408678, ack 2380923258, win 14600, options [mss 1460], length 0
+17:28:32.411585 IP 172.22.146.48.2608 &amp;gt; 10.26.138.25.8080: Flags [.], ack 1, win 65535, options [mss 1460], length 0
+17:28:32.412577 IP 172.22.146.48.2608 &amp;gt; 10.26.138.25.8080: Flags [P.], seq 1:218, ack 1, win 65535, options [mss 1460], length 217
+17:28:32.412611 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], ack 218, win 15544, length 0
+17:28:32.412969 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], seq 1:1461, ack 218, win 15544, length 1460
+17:28:32.412983 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], seq 1461:2921, ack 218, win 15544, length 1460
+17:28:32.412991 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], seq 2921:4381, ack 218, win 15544, length 1460
+17:28:32.412999 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], seq 4381:5841, ack 218, win 15544, length 1460
+17:28:32.413005 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], seq 5841:7301, ack 218, win 15544, length 1460
+17:28:32.413012 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], seq 7301:8761, ack 218, win 15544, length 1460
+17:28:32.614498 IP 10.26.138.25.8080 &amp;gt; 172.22.146.48.2608: Flags [.], seq 1:1461, ack 218, win 15544, length 1460
+17:28:32.622373 IP 172.22.146.48.2608 &amp;gt; 10.26.138.25.8080: Flags [R], seq 2380923475, win 65535, options [mss 1460], length 0
+&lt;/pre&gt;
+&lt;p&gt;和一台正常机器对比:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+# tcpdump -nn 'host 172.22.146.48'
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on eth1, link-type EN10MB (Ethernet), capture size 65535 bytes
+17:28:30.780922 IP 172.22.146.48.1634 &amp;gt; 10.26.140.32.8080: Flags [S], seq 1797559918:1797559923, win 65535, options [mss 1460], length 5
+17:28:30.780961 IP 10.26.140.32.8080 &amp;gt; 172.22.146.48.1634: Flags [S.], seq 1660446299, ack 1797559919, win 14600, options [mss 1460], length 0
+17:28:30.782374 IP 172.22.146.48.1634 &amp;gt; 10.26.140.32.8080: Flags [.], ack 1, win 65535, options [mss 1460], length 0
+17:28:30.783062 IP 172.22.146.48.1634 &amp;gt; 10.26.140.32.8080: Flags [P.], seq 1:219, ack 1, win 65535, options [mss 1460], length 218
+17:28:30.783096 IP 10.26.140.32.8080 &amp;gt; 172.22.146.48.1634: Flags [.], ack 219, win 15544, length 0
+17:28:30.783548 IP 10.26.140.32.8080 &amp;gt; 172.22.146.48.1634: Flags [.], seq 1:2921, ack 219, win 15544, length 2920
+17:28:30.783567 IP 10.26.140.32.8080 &amp;gt; 172.22.146.48.1634: Flags [.], seq 2921:7301, ack 219, win 15544, length 4380
+17:28:30.783576 IP 10.26.140.32.8080 &amp;gt; 172.22.146.48.1634: Flags [.], seq 7301:11681, ack 219, win 15544, length 4380
+17:28:30.783589 IP 10.26.140.32.8080 &amp;gt; 172.22.146.48.1634: Flags [.], seq 11681:14601, ack 219, win 15544, length 2920
+17:28:30.985323 IP 10.26.140.32.8080 &amp;gt; 172.22.146.48.1634: Flags [.], seq 1:1461, ack 219, win 15544, length 1460
+17:28:30.991513 IP 172.22.146.48.1634 &amp;gt; 10.26.140.32.8080: Flags [R], seq 1797560137, win 65535, options [mss 1460], length 0
+&lt;/pre&gt;
+&lt;p&gt;同样是发了6个包. 客户端认为一个是6, 一个是10.  正常机器有大包, 怀疑是tso, 果然是两台机器tso 都开启:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+# sudo ethtool -k eth0
+Offload parameters for eth0:
+rx-checksumming: on
+tx-checksumming: on
+scatter-gather: on
+tcp-segmentation-offload: on            *****
+udp-fragmentation-offload: off
+generic-segmentation-offload: on
+generic-receive-offload: on
+large-receive-offload: off
+&lt;/pre&gt;
+&lt;p&gt;怀疑是x工具把tso 状态搞坏了.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id21"&gt;参考&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://www.cdnplanet.com/blog/tune-tcp-initcwnd-for-optimum-performance/"&gt;http://www.cdnplanet.com/blog/tune-tcp-initcwnd-for-optimum-performance/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>tcp cwnd 作用</title><link href="/tcpip-cwnd.html" rel="alternate"></link><updated>2012-10-14T21:45:47+08:00</updated><author><name>ning</name></author><id>tag:,2012-10-14:tcpip-cwnd.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#cwnd" id="id9"&gt;关于cwnd 默认参数&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#s" id="id10"&gt;3s 延迟&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id11"&gt;5s 延迟&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#bdp" id="id12"&gt;高BDP(带宽时延积)网络&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id13"&gt;带宽时延积&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#rtt" id="id14"&gt;高rtt&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#rttbdp" id="id15"&gt;高rtt情况根据BDP计算带宽:&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#case" id="id16"&gt;case&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#case1" id="id17"&gt;case1 - 短连接&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id18"&gt;case1 分析&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id19"&gt;case1 注意&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#case2" id="id20"&gt;case2 - 长连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#xxxxxxxxxxxxxxx" id="id21"&gt;xxxxxxxxxxxxxxx&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id22"&gt;方法&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id23"&gt;增加发送方初始cwnd(对短连接有效)&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id24"&gt;使用长连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id25"&gt;增加接收方接收窗口.&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#vegas" id="id26"&gt;修改vegas 算法参数&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#reference" id="id27"&gt;Reference&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="cwnd"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id9"&gt;关于cwnd 默认参数&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;初始cwnd 为2:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop ~/idning-source/kernel/linux-2.6.6/net/ipv4$ ack cwnd
+tcp_ipv4.c
+2071:   tp-&amp;gt;snd_cwnd = 2;
+&lt;/pre&gt;
+&lt;p&gt;初始rto 为3s, 所以我们经常看见3s延迟  /home/ning/idning-source/kernel/linux-3.6.2/Documentation/networking/ip-sysctl.txt:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+rto_initial - INTEGER
+    The initial round trip timeout value in milliseconds that will be used
+    in calculating round trip times.  This is the initial time interval
+    for retransmissions.
+
+    Default: 3000
+
+#define TCP_TIMEOUT_INIT ((unsigned)(3*HZ)) /* RFC 1122 initial RTO value   */
+
+rto_max - INTEGER
+    The maximum value (in milliseconds) of the round trip timeout.  This
+    is the largest time interval that can elapse between retransmissions.
+
+    Default: 60000
+
+rto_min - INTEGER
+    The minimum value (in milliseconds) of the round trip timeout.  This
+    is the smallest time interval the can elapse between retransmissions.
+
+    Default: 1000
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="s"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id10"&gt;3s 延迟&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;看代码:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#重传时x2
+icsk-&amp;gt;icsk_rto = min(icsk-&amp;gt;icsk_rto &amp;lt;&amp;lt; 1, TCP_RTO_MAX);
+
+/* Calculate rto without backoff.  This is the second half of Van Jacobson's
+ * routine referred to above.
+ */
+static inline void tcp_set_rto(struct sock *sk)
+{
+    const struct tcp_sock *tp = tcp_sk(sk);
+    /* Old crap is replaced with new one. 8)
+     *
+     * More seriously:
+     * 1. If rtt variance happened to be less 50msec, it is hallucination.
+     *    It cannot be less due to utterly erratic ACK generation made
+     *    at least by solaris and freebsd. &amp;quot;Erratic ACKs&amp;quot; has _nothing_
+     *    to do with delayed acks, because at cwnd&amp;gt;2 true delack timeout
+     *    is invisible. Actually, Linux-2.4 also generates erratic
+     *    ACKs in some circumstances.
+     */
+    inet_csk(sk)-&amp;gt;icsk_rto = __tcp_set_rto(tp);
+
+    /* 2. Fixups made earlier cannot be right.
+     *    If we do not estimate RTO correctly without them,
+     *    all the algo is pure shit and should be replaced
+     *    with correct one. It is exactly, which we pretend to do.
+     */
+
+    /* NOTE: clamping at TCP_RTO_MIN is not required, current algo
+     * guarantees that rto is higher.
+     */
+    tcp_bound_rto(sk);
+}
+&lt;/pre&gt;
+&lt;p&gt;计算当前rto:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static inline u32 __tcp_set_rto(const struct tcp_sock *tp)
+{
+    return (tp-&amp;gt;srtt &amp;gt;&amp;gt; 3) + tp-&amp;gt;rttvar;
+}
+&lt;/pre&gt;
+&lt;p&gt;下面这里调用了tcp_set_rto:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void tcp_valid_rtt_meas(struct sock *sk, u32 seq_rtt)
+{
+    tcp_rtt_estimator(sk, seq_rtt);
+    tcp_set_rto(sk);
+    inet_csk(sk)-&amp;gt;icsk_backoff = 0;
+}
+
+/* Read draft-ietf-tcplw-high-performance before mucking
+ * with this code. (Supersedes RFC1323)
+ */
+static void tcp_ack_saw_tstamp(struct sock *sk, int flag)
+{
+    /* RTTM Rule: A TSecr value received in a segment is used to
+     * update the averaged RTT measurement only if the segment
+     * acknowledges some new data, i.e., only if it advances the
+     * left edge of the send window.
+     *
+     * See draft-ietf-tcplw-high-performance-00, section 3.3.
+     * 1998/04/10 Andrey V. Savochkin &amp;lt;saw&amp;#64;msu.ru&amp;gt;
+     *
+     * Changed: reset backoff as soon as we see the first valid sample.
+     * If we do not, we get strongly overestimated rto. With timestamps
+     * samples are accepted even from very old segments: f.e., when rtt=1
+     * increases to 8, we retransmit 5 times and after 8 seconds delayed
+     * answer arrives rto becomes 120 seconds! If at least one of segments
+     * in window is lost... Voila.                          --ANK (010210)
+     */
+    struct tcp_sock *tp = tcp_sk(sk);
+
+    tcp_valid_rtt_meas(sk, tcp_time_stamp - tp-&amp;gt;rx_opt.rcv_tsecr);
+}
+&lt;/pre&gt;
+&lt;p&gt;注意:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+/* RTTM Rule: A TSecr value received in a segment is used to
+ * update the averaged RTT measurement only if the segment
+ * acknowledges some new data, i.e., only if it advances the
+ * left edge of the send window.
+&lt;/pre&gt;
+&lt;p&gt;这就是说:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+A =SYN=&amp;gt; B
+B =SYN=&amp;gt; A
+A =PSH=&amp;gt; B
+B =ack=&amp;gt; A
+A =PSH=&amp;gt; B
+B =ack=&amp;gt; A
+
+这时候B第一次向A发数据, 如果这个包丢了, 此时的rtt也是3s::
+B =PSH=&amp;gt; A
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id11"&gt;5s 延迟&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Do the 5-second pauses correspond with Zero Window announcements from the client?&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="bdp"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id12"&gt;高BDP(带宽时延积)网络&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id13"&gt;带宽时延积&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;Bandwidth Delay Product（BDP）即带宽 x RTT&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="rtt"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id14"&gt;高rtt&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;通常，同机房内ping 命令输出:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ping 10.65.19.52
+PING 10.65.19.52 (10.65.19.52) 56(84) bytes of data.
+64 bytes from 10.65.19.52: icmp_seq=0 ttl=59 time=0.766 ms
+64 bytes from 10.65.19.52: icmp_seq=1 ttl=59 time=0.746 ms
+64 bytes from 10.65.19.52: icmp_seq=2 ttl=59 time=0.884 ms
+64 bytes from 10.65.19.52: icmp_seq=3 ttl=59 time=0.747 ms
+&lt;/pre&gt;
+&lt;p&gt;跨机房:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ping 10.220.109.45
+PING 10.220.109.45 (10.220.109.45) 56(84) bytes of data.
+64 bytes from 10.220.109.45: icmp_seq=0 ttl=58 time=28.8 ms
+64 bytes from 10.220.109.45: icmp_seq=1 ttl=58 time=28.7 ms
+64 bytes from 10.220.109.45: icmp_seq=2 ttl=58 time=28.6 ms
+64 bytes from 10.220.109.45: icmp_seq=3 ttl=58 time=28.6 ms
+&lt;/pre&gt;
+&lt;p&gt;跨机房场景，就是典型的高延迟.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="rttbdp"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id15"&gt;高rtt情况根据BDP计算带宽:&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;公式1:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+BDP = link_bandwidth * RTT
+&lt;/pre&gt;
+&lt;p&gt;tcp window_size 大小应该设置为BDP 或2 x BDP.  假设window_size = BDP, 则得到公式2:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+throughput = window_size / RTT
+&lt;/pre&gt;
+&lt;p&gt;对于上面case来说, 千兆网络, 带宽为125MB/s&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+BDP = 1000Mbps * 0.030 sec / 8 = 3.7MB (所以应该设置为3.7MB左右)
+
+Linux 2.6 上默认的 TCP 窗口大小是 110KB, 根据公式1, 得到 throughput = window_size/RTT = 110KB/0.03 = 3.6MB.
+如果设置为3.7MB                          根据公式1, 得到 throughput = window_size/RTT = 3.7MB/0.03 = 125MB.
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="case"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id16"&gt;case&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="case1"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id17"&gt;case1 - 短连接&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;短连接是指，传输数据量较小
+很多时候slow start还没有结束, 连接就关闭了.&lt;/p&gt;
+&lt;p&gt;在10.220.109.45.8080开启一个webserver, 从10.36.115.52下载一个256K的文件.&lt;/p&gt;
+&lt;p&gt;发送方 10.220.109.45.8080   (被动打开)
+接收放 10.36.115.52         (主动打开)&lt;/p&gt;
+&lt;p&gt;发送方抓包(被动打开, 第一个包是接收到的syn):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+11:12:08.045299 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: S 2126508121:2126508121(0) win 5840 &amp;lt;mss 1460,sackOK,timestamp 1890669490 0,nop,wscale 7&amp;gt;
+11:12:08.045376 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: S 2227406332:2227406332(0) ack 2126508122 win 5792 &amp;lt;mss 1460,sackOK,timestamp 1396920409 1890669490,nop,wscale 7&amp;gt;
+11:12:08.074157 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 1 win 46 &amp;lt;nop,nop,timestamp 1890669518 1396920409&amp;gt;
+11:12:08.074233 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: P 1:213(212) ack 1 win 46 &amp;lt;nop,nop,timestamp 1890669518 1396920409&amp;gt;             : 客户端发来请求GET xxx
+11:12:08.074239 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920438 1890669518&amp;gt;                      : server表示收到请求
+11:12:08.074647 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 1:1449(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920439 1890669518&amp;gt;
+11:12:08.074652 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 1449:2897(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920439 1890669518&amp;gt;
+11:12:08.074655 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 2897:4345(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920439 1890669518&amp;gt;      : 连发3个包, 因为init_cwnd=3, 此时等待
+
+11:12:08.103542 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 1449 win 69 &amp;lt;nop,nop,timestamp 1890669548 1396920439&amp;gt;                     : 等到了1个ack , cwnd+=1 =&amp;gt; 4
+11:12:08.103548 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 4345:5793(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.103550 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 5793:7241(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.103591 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 2897 win 91 &amp;lt;nop,nop,timestamp 1890669548 1396920439&amp;gt;                     : 等到了1个ack , cwnd+=1 =&amp;gt; 5
+11:12:08.103595 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 7241:8689(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.103598 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 8689:10137(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.103639 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 4345 win 114 &amp;lt;nop,nop,timestamp 1890669548 1396920439&amp;gt;                    : 等到了1个ack , cwnd+=1 =&amp;gt; 6
+11:12:08.103643 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 10137:11585(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.103645 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 11585:13033(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;     : 连发6个包
+
+11:12:08.132462 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 5793 win 137 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;                    : 等到了1个ack , cwnd+=1 =&amp;gt; 7
+11:12:08.132467 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 13033:14481(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132469 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 14481:15929(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132558 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 7241 win 159 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;                    : 等到了1个ack , cwnd+=1 =&amp;gt; 8
+11:12:08.132563 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 15929:17377(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132565 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 17377:18825(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132654 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 8689 win 182 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;                    : 等到了1个ack , cwnd+=1 =&amp;gt; 9
+11:12:08.132658 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 18825:20273(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132661 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 20273:21721(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132663 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 10137 win 204 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;                    : 等到了1个ack , cwnd+=1 =&amp;gt; 10
+11:12:08.132666 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 21721:23169(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132668 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 23169:24617(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132670 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 11585 win 227 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;                    : 等到了1个ack , cwnd+=1 =&amp;gt; 11
+11:12:08.132673 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 24617:26065(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132675 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 26065:27513(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132678 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 13033 win 250 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;                    : 等到了1个ack , cwnd+=1 =&amp;gt; 12
+11:12:08.132680 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 27513:28961(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.132683 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 28961:30409(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;     : 2ms内 连发12个包
+
+11:12:08.161358 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 14481 win 272 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161362 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 30409:31857(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920525 1890669606&amp;gt;
+11:12:08.161365 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 31857:33305(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920525 1890669606&amp;gt;
+11:12:08.161406 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 15929 win 295 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161409 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 33305:34753(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161412 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 34753:36201(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161502 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 17377 win 318 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161506 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 36201:37649(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161509 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 37649:39097(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161511 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 18825 win 340 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161514 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 39097:40545(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161516 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 40545:41993(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161597 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 20273 win 363 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161602 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 41993:43441(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161604 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 43441:44889(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161606 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 21721 win 385 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161609 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 44889:46337(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161611 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 46337:47785(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161693 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 23169 win 408 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161697 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 47785:49233(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161700 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 49233:50681(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161702 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 24617 win 431 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161705 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 50681:52129(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161708 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 52129:53577(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161710 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 26065 win 453 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161713 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 53577:55025(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161715 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 55025:56473(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161717 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 27513 win 476 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161720 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 56473:57921(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161722 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 57921:59369(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161725 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 28961 win 499 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161727 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 59369:60817(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161730 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 60817:62265(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161732 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 30409 win 521 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.161735 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 62265:63713(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.161737 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 63713:65161(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;    : 4ms内连发24个包.
+
+11:12:08.190703 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 31857 win 544 &amp;lt;nop,nop,timestamp 1890669635 1396920525&amp;gt;
+11:12:08.190708 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 65161:66609(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920555 1890669635&amp;gt;
+...
+&lt;/pre&gt;
+&lt;p&gt;接收端抓包(主动打开, 先发syn):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+11:12:08.060202 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: S 2126508121:2126508121(0) win 5840 &amp;lt;mss 1460,sackOK,timestamp 1890669490 0,nop,wscale 7&amp;gt;
+11:12:08.089056 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: S 2227406332:2227406332(0) ack 2126508122 win 5792 &amp;lt;mss 1460,sackOK,timestamp 1396920409 1890669490,nop,wscale 7&amp;gt;
+11:12:08.089069 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 1 win 46 &amp;lt;nop,nop,timestamp 1890669518 1396920409&amp;gt;
+11:12:08.089133 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: P 1:213(212) ack 1 win 46 &amp;lt;nop,nop,timestamp 1890669518 1396920409&amp;gt;         : 请求发过去了
+
+11:12:08.118014 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920438 1890669518&amp;gt;                  : 一个rtt后，收到ack
+11:12:08.118448 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 1:1449(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920439 1890669518&amp;gt;     : 同时收到响应.
+11:12:08.118452 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 1449 win 69 &amp;lt;nop,nop,timestamp 1890669548 1396920439&amp;gt;                 : 收到一个马上就回复ack, 但是对方需要15ms以后才能收到
+11:12:08.118493 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 1449:2897(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920439 1890669518&amp;gt;
+11:12:08.118497 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 2897 win 91 &amp;lt;nop,nop,timestamp 1890669548 1396920439&amp;gt;
+11:12:08.118529 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 2897:4345(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920439 1890669518&amp;gt;  :收3个包
+11:12:08.118532 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 4345 win 114 &amp;lt;nop,nop,timestamp 1890669548 1396920439&amp;gt;
+
+11:12:08.147370 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 4345:5793(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.147378 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 5793 win 137 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;
+11:12:08.147444 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 5793:7241(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.147446 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 7241 win 159 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;
+11:12:08.147499 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 7241:8689(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.147516 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 8689:10137(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.147520 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 8689 win 182 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;
+11:12:08.147522 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 10137 win 204 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;
+11:12:08.147563 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 10137:11585(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;
+11:12:08.147566 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 11585 win 227 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;
+11:12:08.147569 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 11585:13033(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920468 1890669548&amp;gt;    :收6个包
+11:12:08.147572 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 13033 win 250 &amp;lt;nop,nop,timestamp 1890669577 1396920468&amp;gt;
+
+11:12:08.176267 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 13033:14481(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176274 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 14481 win 272 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176308 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 14481:15929(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176311 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 15929 win 295 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176384 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 15929:17377(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176388 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 17377 win 318 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176391 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 17377:18825(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176393 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 18825 win 340 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176460 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 18825:20273(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176463 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 20273 win 363 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176493 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 20273:21721(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176496 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 21721 win 385 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176581 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 21721:23169(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176584 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 23169 win 408 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176587 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 23169:24617(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176589 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 24617 win 431 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176592 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 24617:26065(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176595 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 26065 win 453 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176597 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 26065:27513(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176599 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 27513 win 476 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176602 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 27513:28961(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;
+11:12:08.176604 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 28961 win 499 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+11:12:08.176607 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 28961:30409(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920497 1890669577&amp;gt;    : 收12个包
+11:12:08.176609 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 30409 win 521 &amp;lt;nop,nop,timestamp 1890669606 1396920497&amp;gt;
+
+11:12:08.205168 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 30409:31857(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920525 1890669606&amp;gt;
+11:12:08.205174 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 31857 win 544 &amp;lt;nop,nop,timestamp 1890669635 1396920525&amp;gt;
+11:12:08.205226 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 31857:33305(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920525 1890669606&amp;gt;
+11:12:08.205230 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 33305 win 566 &amp;lt;nop,nop,timestamp 1890669635 1396920525&amp;gt;
+11:12:08.205248 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 33305:34753(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205250 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 34753 win 589 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205293 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 34753:36201(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205296 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 36201 win 612 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205312 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 36201:37649(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205315 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 37649 win 634 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205367 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 37649:39097(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205369 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 39097 win 657 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205372 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 39097:40545(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205374 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 40545 win 680 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205376 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 40545:41993(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205378 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 41993 win 702 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205423 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 41993:43441(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205425 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 43441 win 725 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205433 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 43441:44889(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205436 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 44889 win 747 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205481 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 44889:46337(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205484 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 46337 win 770 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205542 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 46337:47785(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205545 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 47785 win 793 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205547 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 47785:49233(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205549 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 49233 win 815 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205569 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 49233:50681(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205572 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 50681 win 838 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205574 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 50681:52129(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205576 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 52129 win 861 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205579 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 52129:53577(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205581 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 53577 win 883 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205616 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 53577:55025(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205618 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 55025 win 906 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205661 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 55025:56473(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205664 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 56473 win 928 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205667 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 56473:57921(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205669 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 57921 win 951 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205671 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 57921:59369(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205674 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 59369 win 974 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205676 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 59369:60817(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205678 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 60817 win 996 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205680 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 60817:62265(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205683 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 62265 win 1019 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205685 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 62265:63713(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;
+11:12:08.205687 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 63713 win 1042 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+11:12:08.205723 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 63713:65161(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920526 1890669606&amp;gt;    : 收24个包
+11:12:08.205725 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 65161 win 1064 &amp;lt;nop,nop,timestamp 1890669635 1396920526&amp;gt;
+
+11:12:08.234511 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 65161:66609(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920555 1890669635&amp;gt;
+11:12:08.234517 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 66609 win 1087 &amp;lt;nop,nop,timestamp 1890669664 1396920555&amp;gt;
+11:12:08.234552 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: . 66609:68057(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920555 1890669635&amp;gt;
+11:12:08.234554 IP 10.36.115.52.55281 &amp;gt; 10.220.109.45.8080: . ack 68057 win 1109 &amp;lt;nop,nop,timestamp 1890669664 1396920555&amp;gt;
+11:12:08.234619 IP 10.220.109.45.8080 &amp;gt; 10.36.115.52.55281: P 68057:69505(1448) ack 213 win 54 &amp;lt;nop,nop,timestamp 1396920555 1890669635&amp;gt;
+&lt;/pre&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id18"&gt;case1 分析&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;平均1ms内发包6个, 假设拥塞窗口不受限的话, 30ms 可以发送:red:&lt;cite&gt;6*30=180个包&lt;/cite&gt;, 相当于`1448*180=260640(约260K)`&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id19"&gt;case1 注意&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;上面tcpdump输出中的win 都是54左右, 实际上这是因为wscale, 在第一个SYN包可以看见: wscale 7, 表示scale 为2^7 = 128
+即54*128 = 6912&lt;/p&gt;
+&lt;img alt="" src="/imgs/5M.pcap-win.png" /&gt;
+&lt;p&gt;我们发现图中的win值刚开始是5888,后面逐渐增大.&lt;/p&gt;
+&lt;p&gt;问题1: 这个win初始值和 tcp_rmem大小有啥关系?, 我们设的rmem默认值为2.5M.(程序可以通过setsockopt(SO_RCVBUF修改), 但是目前看curl 没有该设置)&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ cat /proc/sys/net/ipv4/tcp_rmem
+4096    2500000 5000000
+&lt;/pre&gt;
+&lt;p&gt;问题1.1  /proc/sys/net/ipv4/tcp_rmem /proc/sys/net/core/rmem_default 有啥关系?&lt;/p&gt;
+&lt;p&gt;看到说该值覆盖 net.core.rmem_default:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+tcp_rmem - vector of 3 INTEGERs: min, default, max
+    min: Minimal size of receive buffer used by TCP sockets.
+    It is guaranteed to each TCP socket, even under moderate memory
+    pressure.
+    Default: 1 page
+
+    default: initial size of receive buffer used by TCP sockets.
+    This value overrides net.core.rmem_default used by other protocols.
+    Default: 87380 bytes. This value results in window of 65535 with
+    default setting of tcp_adv_win_scale and tcp_app_win:0 and a bit
+    less for default tcp_app_win. See below about these variables.
+&lt;/pre&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop ~/idning-source/kernel/linux-2.6.9/net/ipv4$ ack tcp_rmem
+tcp_ipv4.c
+2086:   sk-&amp;gt;sk_rcvbuf = sysctl_tcp_rmem[1];
+2621:   .sysctl_rmem        = sysctl_tcp_rmem,
+
+tcp.c
+281:int sysctl_tcp_rmem[3] = { 4 * 1024, 87380, 87380 * 2 };
+284:EXPORT_SYMBOL(sysctl_tcp_rmem);
+2296:       sysctl_tcp_rmem[0] = PAGE_SIZE;
+2297:       sysctl_tcp_rmem[1] = 43689;
+2298:       sysctl_tcp_rmem[2] = 2 * 43689;
+
+sysctl_net_ipv4.c
+526:        .procname   = &amp;quot;tcp_rmem&amp;quot;,
+527:        .data       = &amp;amp;sysctl_tcp_rmem,
+528:        .maxlen     = sizeof(sysctl_tcp_rmem),
+&lt;/pre&gt;
+&lt;p&gt;问题2: 为什么它有逐渐增加的趋势.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="case2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id20"&gt;case2 - 长连接&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;我们发现256K 的时候, 平均速度远小于传输大文件的 平均速度:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ time wget  'http://10.220.109.45:8080/30M.data'
+real    0m1.228s
+user    0m0.008s
+sys     0m0.093s
+                speed = 30M/1.228 = 24MB/s
+
+$ time wget  'http://10.220.109.45:8080/256K.data'
+real    0m0.208s
+user    0m0.001s
+sys     0m0.004s
+                speed= 256K/0.2 = 1.28MB/s
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="xxxxxxxxxxxxxxx"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id21"&gt;xxxxxxxxxxxxxxx&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;短连接:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+时间  发送方              接收方
+00ms  发送syn
+15ms                      收到syn, 发回syn
+30ms  收到syn 发请求:
+45ms                      收到请求，发回数据 (初始3个包)
+60ms  收到3个包
+90ms  收到6个包
+120ms 收到12个包
+150ms 收到24个包
+180ms 收到48个包
+210ms 收到89个包
+
+182个包收完.
+&lt;/pre&gt;
+&lt;p&gt;长连接:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+时间  发送方              接收方
+00ms  收到syn 发请求:
+15ms                      收到请求，发回数据 (初始假设为96个包)
+30ms  收到96个包
+60ms  收到96个包
+
+接收完成.
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id22"&gt;方法&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id23"&gt;增加发送方初始cwnd(对短连接有效)&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;当cwnd 慢启动满了以后，速度又会稳定在某个值.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id7"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id24"&gt;使用长连接&lt;/a&gt;&lt;/h3&gt;
+&lt;blockquote&gt;
+(要注意如果发生超时重传，就进入慢启动了 ) (只有发生超时重传才会进入慢启动，连接上长时间没有传送数据也会重新开始慢启动)&lt;/blockquote&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id8"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id25"&gt;增加接收方接收窗口.&lt;/a&gt;&lt;/h3&gt;
+&lt;/div&gt;
+&lt;div class="section" id="vegas"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id26"&gt;修改vegas 算法参数&lt;/a&gt;&lt;/h3&gt;
+&lt;blockquote&gt;
+/proc/sys/net/ipv4/tcp_vegas_alpha
+/proc/sys/net/ipv4/tcp_vegas_beta
+/proc/sys/net/ipv4/tcp_vegas_cong_avoid
+/proc/sys/net/ipv4/tcp_vegas_gamma&lt;/blockquote&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="reference"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id27"&gt;Reference&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;soso 的一个&amp;lt;&amp;lt;linux tcp 优化案例详解&amp;gt;&amp;gt; &lt;a class="reference external" href="http://wenku.Baidu.com/view/f587d2e90975f46527d3e11d"&gt;http://wenku.Baidu.com/view/f587d2e90975f46527d3e11d&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[PDF] GSS：针对高带宽时延积网络的温和慢启动方法&lt;/li&gt;
+&lt;li&gt;google 的一个论文，论证对于http 来说，平均页面大小通常是300K , cwnd初始值最好定为10, (第一次发送 15K) &lt;a class="reference external" href="http://code.google.com/speed/articles/tcp_initcwnd_paper.pdf"&gt;http://code.google.com/speed/articles/tcp_initcwnd_paper.pdf&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry></feed>
