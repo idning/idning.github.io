@@ -2646,6 +2646,474 @@ if rsp_len &amp;gt; 4:
 &lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;MGET&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;用的比较少, 不能简单的从rsp_len来判断.&lt;/p&gt;
 &lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>redis-latancy问题</title><link href="/redis-latancy.html" rel="alternate"></link><updated>2014-07-09T10:04:00+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-09:redis-latancy.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-latency-problems-troubleshooting" id="id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;Redis latency problems troubleshooting&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;1.网络&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#slow-commands" id="id6"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;2.slow commands&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#fork" id="id7"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;3.fork&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#swapping" id="id8"&gt;1.4&amp;nbsp;&amp;nbsp;&amp;nbsp;4.swapping&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#aof-and-disk-i-o" id="id9"&gt;1.5&amp;nbsp;&amp;nbsp;&amp;nbsp;5.aof and disk I/O&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#expires" id="id10"&gt;1.6&amp;nbsp;&amp;nbsp;&amp;nbsp;6.expires&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id11"&gt;1.7&amp;nbsp;&amp;nbsp;&amp;nbsp;工具&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#watchdog" id="id12"&gt;1.7.1&amp;nbsp;&amp;nbsp;&amp;nbsp;watchdog&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#latancy" id="id13"&gt;1.7.2&amp;nbsp;&amp;nbsp;&amp;nbsp;最新的latancy监控&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id14"&gt;1.8&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="redis-latency-problems-troubleshooting"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;Redis latency problems troubleshooting&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;主要来自redis 作者的文章: &lt;a class="reference external" href="http://redis.io/topics/latency"&gt;http://redis.io/topics/latency&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;这篇文章介绍了很多工具, iostat, vmstat&lt;/p&gt;
+&lt;p&gt;测量:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+redis-cli --latency -h `host` -p `port`
+&lt;/pre&gt;
+&lt;p&gt;基准(不可能好于这个数):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./redis-cli --intrinsic-latency 100
+Max latency so far: 573 microseconds.
+Max latency so far: 695 microseconds.
+Max latency so far: 919 microseconds.
+Max latency so far: 1606 microseconds.
+Max latency so far: 3191 microseconds.
+Max latency so far: 9243 microseconds.
+Max latency so far: 9671 microseconds.
+Here we have an intrinsic latency of 9.7 milliseconds: this means that we can't ask better than that to Redis.
+&lt;/pre&gt;
+&lt;p&gt;可能的原因:&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id5"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;1.网络&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;The typical latency of a 1 GBits/s network is about 200 us, while the latency with a Unix domain socket can be as low as 30 us.&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;不要用虚拟机.&lt;/li&gt;
+&lt;li&gt;长连接&lt;/li&gt;
+&lt;li&gt;use Unix domain sockets&lt;/li&gt;
+&lt;li&gt;MSET/MGET/pipeline&lt;/li&gt;
+&lt;/ul&gt;
+&lt;dl class="docutils"&gt;
+&lt;dt&gt;On Linux, some people can achieve better latencies by playing with :&lt;/dt&gt;
+&lt;dd&gt;process placement (taskset), cgroups, real-time priorities (chrt), NUMA configuration (numactl), or by using a low-latency kernel.&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;p&gt;Please note vanilla Redis is not really suitable to be bound on a single CPU core. Redis can fork background tasks that can be extremely CPU consuming like bgsave or AOF rewrite. These tasks must never run on the same core as the main event loop.&lt;/p&gt;
+&lt;p&gt;from Redis 2.4 we use threads in Redis in order to perform some slow I/O operations in the background, mainly related to disk I/O,&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="slow-commands"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id6"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;2.slow commands&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;建议:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;避免keys, sort, lrem, sunion&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="fork"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id7"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;3.fork&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;内存page为4K,  24 GB Redis instance requires a page table of 24 GB / 4 KB * 8 = 48 MB&lt;/li&gt;
+&lt;li&gt;Xen 上更加糟糕.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;建议:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;使用较小的实例.(&amp;lt;10G)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="swapping"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;1.4&amp;nbsp;&amp;nbsp;&amp;nbsp;4.swapping&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;查看swap:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop ~/test$ cat /proc/18941/smaps  | grep Swap
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                156 kB
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="aof-and-disk-i-o"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;1.5&amp;nbsp;&amp;nbsp;&amp;nbsp;5.aof and disk I/O&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;write() + fdatasync()&lt;/p&gt;
+&lt;p&gt;Both the write(2) and fdatasync(2) calls can be source of latency. For instance write(2) can block both when there is a system wide sync in progress, or when the output buffers are full and the kernel requires to flush on disk in order to accept new writes.&lt;/p&gt;
+&lt;p&gt;close 也会导致flush.&lt;/p&gt;
+&lt;p&gt;fdatasync 可能从几个ms到几s. 所以redis2.4 尽可能在另一个线程里面做fdatasync.&lt;/p&gt;
+&lt;p&gt;When appendfsync is set to the value of no Redis performs no fsync. In this configuration the only source of latency can be write(2).&lt;/p&gt;
+&lt;p&gt;测量:&lt;/p&gt;
+&lt;blockquote&gt;
+sudo strace -p $(pidof redis-server) -T -e trace=fdatasync -f&lt;/blockquote&gt;
+&lt;p&gt;因为fdatasync 是在另一个线程, 所以需要加-f&lt;/p&gt;
+&lt;p&gt;However since write(2) is also used in order to write data to the client sockets this will likely show too many things unrelated to disk I/O. Apparently there is no way to tell strace to just show slow system calls so I use the following command:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+strace -f -p $(pidof redis-server) -T -e trace=fdatasync,write 2&amp;gt;&amp;amp;1 | grep -v '0.0' | grep -v unfinished
+&lt;/pre&gt;
+&lt;p&gt;建议:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;appendfsync no&lt;/li&gt;
+&lt;li&gt;Using an SSD disk can help as well,&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;用这个, 我们在做copy 的时候, 可以观察到:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+[pid 24734] write(42, &amp;quot;*4\r\n$5\r\nhmset\r\n$37\r\np-lc-d687791&amp;quot;..., 272475) = 272475 &amp;lt;0.036430&amp;gt;
+[pid 24738] &amp;lt;... fdatasync resumed&amp;gt; )   = 0 &amp;lt;2.030435&amp;gt;
+[pid 24738] &amp;lt;... fdatasync resumed&amp;gt; )   = 0 &amp;lt;0.012418&amp;gt;
+[pid 24734] write(42, &amp;quot;*4\r\n$5\r\nHMSET\r\n$37\r\np-lc-6787211&amp;quot;..., 73) = 73 &amp;lt;0.125906&amp;gt;
+[pid 24738] &amp;lt;... fdatasync resumed&amp;gt; )   = 0 &amp;lt;4.476948&amp;gt;
+[pid 24734] &amp;lt;... write resumed&amp;gt; )       = 294594 &amp;lt;2.477184&amp;gt;   (2.47s)
+&lt;/pre&gt;
+&lt;p&gt;此时输出:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./_binaries/redis-cli --latency-history -h 10.38.114.60 -p 2000
+min: 0, max: 223, avg: 1.24 (1329 samples) -- 15.01 seconds range
+min: 0, max: 2500, avg: 3.46 (1110 samples) -- 15.00 seconds range   (这里观察到2.5s)
+min: 0, max: 5, avg: 1.01 (1355 samples) -- 15.01 seconds range
+&lt;/pre&gt;
+&lt;p&gt;watchdog 输出:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+[24734] 07 Jul 10:54:41.006 * Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Redis.
+[24734 | signal handler] (1404701682)
+--- WATCHDOG TIMER EXPIRED ---
+bin/redis-server *:2000(logStackTrace+0x4b)[0x443bdb]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+/lib64/tls/libpthread.so.0[0x302b80c420]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+bin/redis-server *:2000(flushAppendOnlyFile+0x76)[0x43f616]
+bin/redis-server *:2000(serverCron+0x325)[0x41b5b5]
+bin/redis-server *:2000(aeProcessEvents+0x2b2)[0x416a22]
+bin/redis-server *:2000(aeMain+0x3f)[0x416bbf]
+bin/redis-server *:2000(main+0x1c8)[0x41dcd8]
+/lib64/tls/libc.so.6(__libc_start_main+0xdb)[0x302af1c4bb]
+bin/redis-server *:2000[0x415b1a]
+[24734 | signal handler] (1404701682) --------
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="expires"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;1.6&amp;nbsp;&amp;nbsp;&amp;nbsp;6.expires&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;if the database contains has many many keys expiring in the same second, and this keys are at least 25% of the current population of keys with an expire set,&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id11"&gt;1.7&amp;nbsp;&amp;nbsp;&amp;nbsp;工具&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="watchdog"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id12"&gt;1.7.1&amp;nbsp;&amp;nbsp;&amp;nbsp;watchdog&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;redis2.6 自带. 通过时钟中断定时触发检查:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+CONFIG SET watchdog-period 500
+&lt;/pre&gt;
+&lt;p&gt;会在发现有大延迟时, 打印日志.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="latancy"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id13"&gt;1.7.2&amp;nbsp;&amp;nbsp;&amp;nbsp;最新的latancy监控&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;配置:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+latency-monitor-threshold 100
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id14"&gt;1.8&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;2, 3, 5 我们都遇到了.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>redis-aof-latency</title><link href="/redis-aof-latency.html" rel="alternate"></link><updated>2014-07-09T08:36:06+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-09:redis-aof-latency.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id11"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;一些分析&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id12"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;为什么慢查询看不到?&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id13"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;观察&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#appendfsync-no" id="id14"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;为什么 appendfsync no 无效&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id15"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;一些想法&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#page-cache" id="id16"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;关于page cache&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id17"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;查看当前page cache 状态&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id18"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;参数&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#stable-page-write" id="id19"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Stable Page Write&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id20"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;查看线上&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#dirty-ratio" id="id21"&gt;3.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;调整dirty_ratio&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#dirty-expire-centisecs" id="id22"&gt;3.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;调整 dirty_expire_centisecs&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id23"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id24"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;相关&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;我的redis配置的aof如下:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+appendonly yes
+appendfsync everysec
+&lt;/pre&gt;
+&lt;p&gt;redis-mgr配置每天早上 6:00-8:00 做aof_rewrite 和 rdb, 所以每天早上这段时间, 我们就会收到twempxoy的forward_err报警, 大约每分钟会损失5000个请求.&lt;/p&gt;
+&lt;p&gt;失败率是 10/10000.&lt;/p&gt;
+&lt;p&gt;在线上测试, 做一个10G的文件写操作, 就会触发上面问题:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+dd if=/dev/zero of=xxxxx bs=1M count=10000 &amp;amp;
+&lt;/pre&gt;
+&lt;p&gt;我们修改了 &lt;tt class="docutils literal"&gt;appendfsync no&lt;/tt&gt;, 发现这个问题能缓解, 但是不能解决.&lt;/p&gt;
+&lt;p&gt;关于redis的各种延迟, 作者antirez的 &lt;a class="reference external" href="/redis-latancy.html"&gt;这篇文章&lt;/a&gt; 已经说的很清楚了.&lt;/p&gt;
+&lt;p&gt;我们这里遇到的就是有disk I/O 的时候aof受到影响.&lt;/p&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id11"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;一些分析&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id12"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;为什么慢查询看不到?&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;慢查询统计的时间只包括cpu计算的时间, 写aof这个过程不计入查询时间统计(也不应该计入)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id13"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;观察&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;用下面命令:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+strace -f -p $(pidof redis-server) -T -e trace=fdatasync,write 2&amp;gt;&amp;amp;1 | grep -v '0.0' | grep -v unfinished
+&lt;/pre&gt;
+&lt;p&gt;我们在做copy 的时候, 可以观察到:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+[pid 24734] write(42, &amp;quot;*4\r\n$5\r\nhmset\r\n$37\r\np-lc-d687791&amp;quot;..., 272475) = 272475 &amp;lt;0.036430&amp;gt;
+[pid 24738] &amp;lt;... fdatasync resumed&amp;gt; )   = 0 &amp;lt;2.030435&amp;gt;
+[pid 24738] &amp;lt;... fdatasync resumed&amp;gt; )   = 0 &amp;lt;0.012418&amp;gt;
+[pid 24734] write(42, &amp;quot;*4\r\n$5\r\nHMSET\r\n$37\r\np-lc-6787211&amp;quot;..., 73) = 73 &amp;lt;0.125906&amp;gt;
+[pid 24738] &amp;lt;... fdatasync resumed&amp;gt; )   = 0 &amp;lt;4.476948&amp;gt;
+[pid 24734] &amp;lt;... write resumed&amp;gt; )       = 294594 &amp;lt;2.477184&amp;gt;   (2.47s)
+&lt;/pre&gt;
+&lt;p&gt;此时输出:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./_binaries/redis-cli --latency-history -h 10.38.114.60 -p 2000
+min: 0, max: 223, avg: 1.24 (1329 samples) -- 15.01 seconds range
+min: 0, max: 2500, avg: 3.46 (1110 samples) -- 15.00 seconds range   (这里观察到2.5s)
+min: 0, max: 5, avg: 1.01 (1355 samples) -- 15.01 seconds range
+&lt;/pre&gt;
+&lt;p&gt;watchdog 输出:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+[24734] 07 Jul 10:54:41.006 * Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Redis.
+[24734 | signal handler] (1404701682)
+--- WATCHDOG TIMER EXPIRED ---
+bin/redis-server *:2000(logStackTrace+0x4b)[0x443bdb]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+/lib64/tls/libpthread.so.0[0x302b80c420]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+bin/redis-server *:2000(flushAppendOnlyFile+0x76)[0x43f616]
+bin/redis-server *:2000(serverCron+0x325)[0x41b5b5]
+bin/redis-server *:2000(aeProcessEvents+0x2b2)[0x416a22]
+bin/redis-server *:2000(aeMain+0x3f)[0x416bbf]
+bin/redis-server *:2000(main+0x1c8)[0x41dcd8]
+/lib64/tls/libc.so.6(__libc_start_main+0xdb)[0x302af1c4bb]
+bin/redis-server *:2000[0x415b1a]
+[24734 | signal handler] (1404701682) --------
+&lt;/pre&gt;
+&lt;p&gt;所以确定是write hang住&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="appendfsync-no"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id14"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;为什么 appendfsync no 无效&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;当磁盘写buf满的时候, write就会阻塞, 释放一些buf才会允许继续写入,&lt;/p&gt;
+&lt;p&gt;所以, 如果程序不调用sync, 系统就会在不确定的时候 做sync, 此时 &lt;tt class="docutils literal"&gt;wirte()&lt;/tt&gt; 就会hang住&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id15"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;一些想法&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;能否对rdb/aof_rewrite/cp等命令限速,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不可能针对每个进程(比如有其它写日志的进程) 都做限制. 所以最好不要这样.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;增加proxy timeout, 目前400ms, 增加到2000ms?&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;如果超时400ms, 想当于快速失败. 客户端重试效果一样, 所以还是不必改.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;master 关aof&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;这个方法不需要做任何改动, 代价较小, 效果最好, 缺点是提高运维复杂性和数据可靠性, redis-mgr可以做这个支持.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;write 时的阻塞貌似无法避免, 能否用一个新的线程来做write呢?&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;关于这个想法写了个patch提给作者: &lt;a class="reference external" href="https://github.com/antirez/redis/pull/1862"&gt;https://github.com/antirez/redis/pull/1862&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;不过作者貌似不太感冒.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="page-cache"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id16"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;关于page cache&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;IO调度一般是针对读优化的, 因为读的时候是同步的, 进程读取不到, 就会睡眠.
+写是异步的, 只是写到page cache.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id17"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;查看当前page cache 状态&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+grep ^Cached: /proc/meminfo # page cache size
+grep ^Dirty: /proc/meminfo # total size of all dirty pages
+grep ^Writeback: /proc/meminfo # total size of actively processed dirty pages
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id7"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id18"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;参数&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop ~/test$ sysctl -a | grep dirty
+vm.dirty_background_ratio = 10
+vm.dirty_background_bytes = 0
+vm.dirty_ratio = 20
+vm.dirty_bytes = 0
+vm.dirty_writeback_centisecs = 1500
+vm.dirty_expire_centisecs = 3000
+&lt;/pre&gt;
+&lt;p&gt;详细参考: &lt;a class="reference external" href="https://www.kernel.org/doc/Documentation/sysctl/vm.txt"&gt;https://www.kernel.org/doc/Documentation/sysctl/vm.txt&lt;/a&gt;&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+/proc/sys/vm/dirty_expire_centisecs         #3000, 表示3000*0.01s = 30s, 队列中超过30s的被刷盘.
+/proc/sys/vm/dirty_writeback_centisecs      #1500, 表示1500*0.01s = 15s, 内核pdflush wakeup 一次.
+
+/proc/sys/vm/dirty_background_ratio
+/proc/sys/vm/dirty_ratio
+Both values are expressed as a percentage of RAM. When the amount of dirty pages reaches the first threshold (dirty_background_ratio), write-outs begin in the background via the “flush” kernel threads. When the second threshold is reached, processes will block, flushing in the foreground.
+
+
+The problem with these variables is their minimum value: even 1% can be too much. This is why another two controls were introduced in 2.6.29:
+/proc/sys/vm/dirty_background_bytes
+/proc/sys/vm/dirty_bytes
+&lt;/pre&gt;
+&lt;p&gt;x_bytes 和 x_ratio是互斥的, 设置dirty_bytes 的时候, dirty_ratio 会被清0:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+root&amp;#64;ning-laptop:~# cat /proc/sys/vm/dirty_bytes
+0
+root&amp;#64;ning-laptop:~# cat /proc/sys/vm/dirty_ratio
+20
+root&amp;#64;ning-laptop:~# echo '5000000' &amp;gt; /proc/sys/vm/dirty_bytes
+root&amp;#64;ning-laptop:~# cat /proc/sys/vm/dirty_bytes
+5000000
+root&amp;#64;ning-laptop:~# cat /proc/sys/vm/dirty_ratio
+0
+&lt;/pre&gt;
+&lt;p&gt;Lower values generate more I/O requests (and more interrupts), significantly decrease sequential I/O bandwidth but also decrease random I/O latency
+数值小的时候, 会减小IO系统带宽, 同时减少 随机的IO延迟.&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://monolight.cc/2011/06/barriers-caches-filesystems/"&gt;http://monolight.cc/2011/06/barriers-caches-filesystems/&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="stable-page-write"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id19"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Stable Page Write&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://yoshinorimatsunobu.blogspot.com/2014/03/why-buffered-writes-are-sometimes.html"&gt;http://yoshinorimatsunobu.blogspot.com/2014/03/why-buffered-writes-are-sometimes.html&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;When a dirty page is written to disk, write() to the same dirty page is blocked until flushing to disk is done. This is called &lt;strong&gt;Stable Page Write&lt;/strong&gt;.&lt;/p&gt;
+&lt;p&gt;This may cause write() stalls, especially when using slower disks. Without write cache, flushing to disk takes ~10ms usually, ~100ms in bad cases.&lt;/p&gt;
+&lt;p&gt;有patch在较新的内核上能缓解这个问题, 原理是减少write调用 wait_on_page_writeback 的几率:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+http://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=1d1d1a767206fbe5d4c69493b7e6d2a8d08cc0a0
+Here's the result of using dbench to test latency on ext2:
+
+3.8.0-rc3:
+ Operation      Count    AvgLat    MaxLat
+ ----------------------------------------
+ WriteX        109347     0.028    59.817
+ ReadX         347180     0.004     3.391
+ Flush          15514    29.828   287.283
+
+Throughput 57.429 MB/sec  4 clients  4 procs  max_latency=287.290 ms
+
+3.8.0-rc3 + patches:
+ WriteX        105556     0.029     4.273
+ ReadX         335004     0.005     4.112
+ Flush          14982    30.540   298.634
+
+Throughput 55.4496 MB/sec  4 clients  4 procs  max_latency=298.650 ms
+
+As you can see, the maximum write latency drops considerably with this
+patch enabled.
+&lt;/pre&gt;
+&lt;p&gt;据说xfs 也能解决问题.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id8"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id20"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;查看线上&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+$ cat /proc/sys/vm/dirty_background_ratio
+10
+$ cat /proc/sys/vm/dirty_ratio
+20
+&lt;/pre&gt;
+&lt;p&gt;平时dirty:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ grep ^Dirty: /proc/meminfo
+Dirty:            104616 kB
+机器内存128G.
+&lt;/pre&gt;
+&lt;p&gt;早上做rdb/aof_rewrite时, dirty:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+500,000 kB (500M)
+&lt;/pre&gt;
+&lt;p&gt;都还没到达配置的 &lt;tt class="docutils literal"&gt;dirty_background_ratio&lt;/tt&gt; , &lt;tt class="docutils literal"&gt;dirty_ratio&lt;/tt&gt; 所以调这两个参数估计没用.&lt;/p&gt;
+&lt;p&gt;测试:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#1. 最常90s.
+vm.dirty_expire_centisecs = 9000
+echo '9000' &amp;gt; /proc/sys/vm/dirty_expire_centisecs
+
+#2. 改大dirty_ratio
+echo '80' &amp;gt; /proc/sys/vm/dirty_ratio
+&lt;/pre&gt;
+&lt;div class="section" id="dirty-ratio"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id21"&gt;3.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;调整dirty_ratio&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;在一个io较差的48G机器上,  设置 dirty_ratio = 80, dirty 会涨的很高, 但是redis延迟看不明显的改善:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ grep ^Dirty: /proc/meminfo
+Dirty:           8598180 kB  =&amp;gt;echo '80' &amp;gt; /proc/sys/vm/dirty_ratio
+$ grep ^Dirty: /proc/meminfo
+Dirty:          11887180 kB
+$ grep ^Dirty: /proc/meminfo
+Dirty:          21295624 kB
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="dirty-expire-centisecs"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id22"&gt;3.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;调整 dirty_expire_centisecs&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;看上去也没有效果, 有变差趋势.
+因为我在线下是通过长期dd来压测, 和线上还不太一样.&lt;/p&gt;
+&lt;p&gt;看来只能线上测试了.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id9"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id23"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;master关aof应该是目前最可以接受的方法&lt;/li&gt;
+&lt;li&gt;antirez在做一个latency采样的工作&lt;/li&gt;
+&lt;li&gt;XFS/Solaris 貌似没有这个问题.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id10"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id24"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;相关&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;a class="reference external" href="http://redis.io/topics/latency"&gt;http://redis.io/topics/latency&lt;/a&gt;&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;11 年就有的讨论 &lt;a class="reference external" href="https://groups.google.com/forum/#!msg/redis-db/jgGuGngDEb0/ZwnvUdx-gdAJ"&gt;https://groups.google.com/forum/#!msg/redis-db/jgGuGngDEb0/ZwnvUdx-gdAJ&lt;/a&gt;&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;作者本来想把write和fsync都移到另一个线程, 结论是把fsync移到一个线程了,&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Linkedin 的一个工程师做了这样一个实验, 测试用1/4的带宽来写的时候, 产生的延迟情况:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://blog.empathybox.com/post/35088300798/why-does-fwrite-sometimes-block"&gt;http://blog.empathybox.com/post/35088300798/why-does-fwrite-sometimes-block&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>redis-config-hz</title><link href="/redis-config-hz.html" rel="alternate"></link><updated>2014-06-24T10:19:32+08:00</updated><author><name>ning</name></author><id>tag:,2014-06-24:redis-config-hz.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;

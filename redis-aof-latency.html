@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>redis-aof-latency</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/redis-aof-latency.html">2014-07-09 08:36:06</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id2" id="id11">1&nbsp;&nbsp;&nbsp;一些分析</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id3" id="id12">1.1&nbsp;&nbsp;&nbsp;为什么慢查询看不到?</a></li>
+<li><a class="reference internal" href="#id4" id="id13">1.2&nbsp;&nbsp;&nbsp;观察</a></li>
+<li><a class="reference internal" href="#appendfsync-no" id="id14">1.3&nbsp;&nbsp;&nbsp;为什么 appendfsync no 无效</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id5" id="id15">2&nbsp;&nbsp;&nbsp;一些想法</a></li>
+<li><a class="reference internal" href="#page-cache" id="id16">3&nbsp;&nbsp;&nbsp;关于page cache</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id6" id="id17">3.1&nbsp;&nbsp;&nbsp;查看当前page cache 状态</a></li>
+<li><a class="reference internal" href="#id7" id="id18">3.2&nbsp;&nbsp;&nbsp;参数</a></li>
+<li><a class="reference internal" href="#stable-page-write" id="id19">3.3&nbsp;&nbsp;&nbsp;Stable Page Write</a></li>
+<li><a class="reference internal" href="#id8" id="id20">3.4&nbsp;&nbsp;&nbsp;查看线上</a><ul class="auto-toc">
+<li><a class="reference internal" href="#dirty-ratio" id="id21">3.4.1&nbsp;&nbsp;&nbsp;调整dirty_ratio</a></li>
+<li><a class="reference internal" href="#dirty-expire-centisecs" id="id22">3.4.2&nbsp;&nbsp;&nbsp;调整 dirty_expire_centisecs</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id9" id="id23">4&nbsp;&nbsp;&nbsp;小结</a></li>
+<li><a class="reference internal" href="#id10" id="id24">5&nbsp;&nbsp;&nbsp;相关</a></li>
+</ul>
+</div>
+<p>我的redis配置的aof如下:</p>
+<pre class="literal-block">
+appendonly yes
+appendfsync everysec
+</pre>
+<p>redis-mgr配置每天早上 6:00-8:00 做aof_rewrite 和 rdb, 所以每天早上这段时间, 我们就会收到twempxoy的forward_err报警, 大约每分钟会损失5000个请求.</p>
+<p>失败率是 10/10000.</p>
+<p>在线上测试, 做一个10G的文件写操作, 就会触发上面问题:</p>
+<pre class="literal-block">
+dd if=/dev/zero of=xxxxx bs=1M count=10000 &amp;
+</pre>
+<p>我们修改了 <tt class="docutils literal">appendfsync no</tt>, 发现这个问题能缓解, 但是不能解决.</p>
+<p>关于redis的各种延迟, 作者antirez的 <a class="reference external" href="/redis-latancy.html">这篇文章</a> 已经说的很清楚了.</p>
+<p>我们这里遇到的就是有disk I/O 的时候aof受到影响.</p>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id11">1&nbsp;&nbsp;&nbsp;一些分析</a></h2>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id12">1.1&nbsp;&nbsp;&nbsp;为什么慢查询看不到?</a></h3>
+<ul class="simple">
+<li>慢查询统计的时间只包括cpu计算的时间, 写aof这个过程不计入查询时间统计(也不应该计入)</li>
+</ul>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id13">1.2&nbsp;&nbsp;&nbsp;观察</a></h3>
+<p>用下面命令:</p>
+<pre class="literal-block">
+strace -f -p $(pidof redis-server) -T -e trace=fdatasync,write 2&gt;&amp;1 | grep -v '0.0' | grep -v unfinished
+</pre>
+<p>我们在做copy 的时候, 可以观察到:</p>
+<pre class="literal-block">
+[pid 24734] write(42, &quot;*4\r\n$5\r\nhmset\r\n$37\r\np-lc-d687791&quot;..., 272475) = 272475 &lt;0.036430&gt;
+[pid 24738] &lt;... fdatasync resumed&gt; )   = 0 &lt;2.030435&gt;
+[pid 24738] &lt;... fdatasync resumed&gt; )   = 0 &lt;0.012418&gt;
+[pid 24734] write(42, &quot;*4\r\n$5\r\nHMSET\r\n$37\r\np-lc-6787211&quot;..., 73) = 73 &lt;0.125906&gt;
+[pid 24738] &lt;... fdatasync resumed&gt; )   = 0 &lt;4.476948&gt;
+[pid 24734] &lt;... write resumed&gt; )       = 294594 &lt;2.477184&gt;   (2.47s)
+</pre>
+<p>此时输出:</p>
+<pre class="literal-block">
+$ ./_binaries/redis-cli --latency-history -h 10.38.114.60 -p 2000
+min: 0, max: 223, avg: 1.24 (1329 samples) -- 15.01 seconds range
+min: 0, max: 2500, avg: 3.46 (1110 samples) -- 15.00 seconds range   (这里观察到2.5s)
+min: 0, max: 5, avg: 1.01 (1355 samples) -- 15.01 seconds range
+</pre>
+<p>watchdog 输出:</p>
+<pre class="literal-block">
+[24734] 07 Jul 10:54:41.006 * Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Redis.
+[24734 | signal handler] (1404701682)
+--- WATCHDOG TIMER EXPIRED ---
+bin/redis-server *:2000(logStackTrace+0x4b)[0x443bdb]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+/lib64/tls/libpthread.so.0[0x302b80c420]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+bin/redis-server *:2000(flushAppendOnlyFile+0x76)[0x43f616]
+bin/redis-server *:2000(serverCron+0x325)[0x41b5b5]
+bin/redis-server *:2000(aeProcessEvents+0x2b2)[0x416a22]
+bin/redis-server *:2000(aeMain+0x3f)[0x416bbf]
+bin/redis-server *:2000(main+0x1c8)[0x41dcd8]
+/lib64/tls/libc.so.6(__libc_start_main+0xdb)[0x302af1c4bb]
+bin/redis-server *:2000[0x415b1a]
+[24734 | signal handler] (1404701682) --------
+</pre>
+<p>所以确定是write hang住</p>
+</div>
+<div class="section" id="appendfsync-no">
+<h3><a class="toc-backref" href="#id14">1.3&nbsp;&nbsp;&nbsp;为什么 appendfsync no 无效</a></h3>
+<p>当磁盘写buf满的时候, write就会阻塞, 释放一些buf才会允许继续写入,</p>
+<p>所以, 如果程序不调用sync, 系统就会在不确定的时候 做sync, 此时 <tt class="docutils literal">wirte()</tt> 就会hang住</p>
+</div>
+</div>
+<div class="section" id="id5">
+<h2><a class="toc-backref" href="#id15">2&nbsp;&nbsp;&nbsp;一些想法</a></h2>
+<ul>
+<li><dl class="first docutils">
+<dt>能否对rdb/aof_rewrite/cp等命令限速,</dt>
+<dd><ul class="first last simple">
+<li>不可能针对每个进程(比如有其它写日志的进程) 都做限制. 所以最好不要这样.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>增加proxy timeout, 目前400ms, 增加到2000ms?</dt>
+<dd><ul class="first last simple">
+<li>如果超时400ms, 想当于快速失败. 客户端重试效果一样, 所以还是不必改.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>master 关aof</dt>
+<dd><ul class="first last simple">
+<li>这个方法不需要做任何改动, 代价较小, 效果最好, 缺点是提高运维复杂性和数据可靠性, redis-mgr可以做这个支持.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>write 时的阻塞貌似无法避免, 能否用一个新的线程来做write呢?</dt>
+<dd><ul class="first last simple">
+<li>关于这个想法写了个patch提给作者: <a class="reference external" href="https://github.com/antirez/redis/pull/1862">https://github.com/antirez/redis/pull/1862</a></li>
+<li>不过作者貌似不太感冒.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="page-cache">
+<h2><a class="toc-backref" href="#id16">3&nbsp;&nbsp;&nbsp;关于page cache</a></h2>
+<ol class="arabic simple">
+<li>IO调度一般是针对读优化的, 因为读的时候是同步的, 进程读取不到, 就会睡眠.
+写是异步的, 只是写到page cache.</li>
+</ol>
+<div class="section" id="id6">
+<h3><a class="toc-backref" href="#id17">3.1&nbsp;&nbsp;&nbsp;查看当前page cache 状态</a></h3>
+<pre class="literal-block">
+grep ^Cached: /proc/meminfo # page cache size
+grep ^Dirty: /proc/meminfo # total size of all dirty pages
+grep ^Writeback: /proc/meminfo # total size of actively processed dirty pages
+</pre>
+</div>
+<div class="section" id="id7">
+<h3><a class="toc-backref" href="#id18">3.2&nbsp;&nbsp;&nbsp;参数</a></h3>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ sysctl -a | grep dirty
+vm.dirty_background_ratio = 10
+vm.dirty_background_bytes = 0
+vm.dirty_ratio = 20
+vm.dirty_bytes = 0
+vm.dirty_writeback_centisecs = 1500
+vm.dirty_expire_centisecs = 3000
+</pre>
+<p>详细参考: <a class="reference external" href="https://www.kernel.org/doc/Documentation/sysctl/vm.txt">https://www.kernel.org/doc/Documentation/sysctl/vm.txt</a></p>
+<pre class="literal-block">
+/proc/sys/vm/dirty_expire_centisecs         #3000, 表示3000*0.01s = 30s, 队列中超过30s的被刷盘.
+/proc/sys/vm/dirty_writeback_centisecs      #1500, 表示1500*0.01s = 15s, 内核pdflush wakeup 一次.
+
+/proc/sys/vm/dirty_background_ratio
+/proc/sys/vm/dirty_ratio
+Both values are expressed as a percentage of RAM. When the amount of dirty pages reaches the first threshold (dirty_background_ratio), write-outs begin in the background via the “flush” kernel threads. When the second threshold is reached, processes will block, flushing in the foreground.
+
+
+The problem with these variables is their minimum value: even 1% can be too much. This is why another two controls were introduced in 2.6.29:
+/proc/sys/vm/dirty_background_bytes
+/proc/sys/vm/dirty_bytes
+</pre>
+<p>x_bytes 和 x_ratio是互斥的, 设置dirty_bytes 的时候, dirty_ratio 会被清0:</p>
+<pre class="literal-block">
+root&#64;ning-laptop:~# cat /proc/sys/vm/dirty_bytes
+0
+root&#64;ning-laptop:~# cat /proc/sys/vm/dirty_ratio
+20
+root&#64;ning-laptop:~# echo '5000000' &gt; /proc/sys/vm/dirty_bytes
+root&#64;ning-laptop:~# cat /proc/sys/vm/dirty_bytes
+5000000
+root&#64;ning-laptop:~# cat /proc/sys/vm/dirty_ratio
+0
+</pre>
+<p>Lower values generate more I/O requests (and more interrupts), significantly decrease sequential I/O bandwidth but also decrease random I/O latency
+数值小的时候, 会减小IO系统带宽, 同时减少 随机的IO延迟.</p>
+<p><a class="reference external" href="http://monolight.cc/2011/06/barriers-caches-filesystems/">http://monolight.cc/2011/06/barriers-caches-filesystems/</a></p>
+</div>
+<div class="section" id="stable-page-write">
+<h3><a class="toc-backref" href="#id19">3.3&nbsp;&nbsp;&nbsp;Stable Page Write</a></h3>
+<p><a class="reference external" href="http://yoshinorimatsunobu.blogspot.com/2014/03/why-buffered-writes-are-sometimes.html">http://yoshinorimatsunobu.blogspot.com/2014/03/why-buffered-writes-are-sometimes.html</a></p>
+<p>When a dirty page is written to disk, write() to the same dirty page is blocked until flushing to disk is done. This is called <strong>Stable Page Write</strong>.</p>
+<p>This may cause write() stalls, especially when using slower disks. Without write cache, flushing to disk takes ~10ms usually, ~100ms in bad cases.</p>
+<p>有patch在较新的内核上能缓解这个问题, 原理是减少write调用 wait_on_page_writeback 的几率:</p>
+<pre class="literal-block">
+http://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/commit/?id=1d1d1a767206fbe5d4c69493b7e6d2a8d08cc0a0
+Here's the result of using dbench to test latency on ext2:
+
+3.8.0-rc3:
+ Operation      Count    AvgLat    MaxLat
+ ----------------------------------------
+ WriteX        109347     0.028    59.817
+ ReadX         347180     0.004     3.391
+ Flush          15514    29.828   287.283
+
+Throughput 57.429 MB/sec  4 clients  4 procs  max_latency=287.290 ms
+
+3.8.0-rc3 + patches:
+ WriteX        105556     0.029     4.273
+ ReadX         335004     0.005     4.112
+ Flush          14982    30.540   298.634
+
+Throughput 55.4496 MB/sec  4 clients  4 procs  max_latency=298.650 ms
+
+As you can see, the maximum write latency drops considerably with this
+patch enabled.
+</pre>
+<p>据说xfs 也能解决问题.</p>
+</div>
+<div class="section" id="id8">
+<h3><a class="toc-backref" href="#id20">3.4&nbsp;&nbsp;&nbsp;查看线上</a></h3>
+<pre class="literal-block">
+$ cat /proc/sys/vm/dirty_background_ratio
+10
+$ cat /proc/sys/vm/dirty_ratio
+20
+</pre>
+<p>平时dirty:</p>
+<pre class="literal-block">
+$ grep ^Dirty: /proc/meminfo
+Dirty:            104616 kB
+机器内存128G.
+</pre>
+<p>早上做rdb/aof_rewrite时, dirty:</p>
+<pre class="literal-block">
+500,000 kB (500M)
+</pre>
+<p>都还没到达配置的 <tt class="docutils literal">dirty_background_ratio</tt> , <tt class="docutils literal">dirty_ratio</tt> 所以调这两个参数估计没用.</p>
+<p>测试:</p>
+<pre class="literal-block">
+#1. 最常90s.
+vm.dirty_expire_centisecs = 9000
+echo '9000' &gt; /proc/sys/vm/dirty_expire_centisecs
+
+#2. 改大dirty_ratio
+echo '80' &gt; /proc/sys/vm/dirty_ratio
+</pre>
+<div class="section" id="dirty-ratio">
+<h4><a class="toc-backref" href="#id21">3.4.1&nbsp;&nbsp;&nbsp;调整dirty_ratio</a></h4>
+<p>在一个io较差的48G机器上,  设置 dirty_ratio = 80, dirty 会涨的很高, 但是redis延迟看不明显的改善:</p>
+<pre class="literal-block">
+$ grep ^Dirty: /proc/meminfo
+Dirty:           8598180 kB  =&gt;echo '80' &gt; /proc/sys/vm/dirty_ratio
+$ grep ^Dirty: /proc/meminfo
+Dirty:          11887180 kB
+$ grep ^Dirty: /proc/meminfo
+Dirty:          21295624 kB
+</pre>
+</div>
+<div class="section" id="dirty-expire-centisecs">
+<h4><a class="toc-backref" href="#id22">3.4.2&nbsp;&nbsp;&nbsp;调整 dirty_expire_centisecs</a></h4>
+<p>看上去也没有效果, 有变差趋势.
+因为我在线下是通过长期dd来压测, 和线上还不太一样.</p>
+<p>看来只能线上测试了.</p>
+</div>
+</div>
+</div>
+<div class="section" id="id9">
+<h2><a class="toc-backref" href="#id23">4&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ul class="simple">
+<li>master关aof应该是目前最可以接受的方法</li>
+<li>antirez在做一个latency采样的工作</li>
+<li>XFS/Solaris 貌似没有这个问题.</li>
+</ul>
+</div>
+<div class="section" id="id10">
+<h2><a class="toc-backref" href="#id24">5&nbsp;&nbsp;&nbsp;相关</a></h2>
+<ul>
+<li><p class="first"><a class="reference external" href="http://redis.io/topics/latency">http://redis.io/topics/latency</a></p>
+</li>
+<li><dl class="first docutils">
+<dt>11 年就有的讨论 <a class="reference external" href="https://groups.google.com/forum/#!msg/redis-db/jgGuGngDEb0/ZwnvUdx-gdAJ">https://groups.google.com/forum/#!msg/redis-db/jgGuGngDEb0/ZwnvUdx-gdAJ</a></dt>
+<dd><ul class="first last simple">
+<li>作者本来想把write和fsync都移到另一个线程, 结论是把fsync移到一个线程了,</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Linkedin 的一个工程师做了这样一个实验, 测试用1/4的带宽来写的时候, 产生的延迟情况:</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="http://blog.empathybox.com/post/35088300798/why-does-fwrite-sometimes-block">http://blog.empathybox.com/post/35088300798/why-does-fwrite-sometimes-block</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

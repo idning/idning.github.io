@@ -1,0 +1,2755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>Understanding the Linux Kernel(notes)</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/ulk.html">2014-01-05 11:54:31</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#c1" id="id48">1&nbsp;&nbsp;&nbsp;c1</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id1" id="id49">1.1&nbsp;&nbsp;&nbsp;微内核</a></li>
+<li><a class="reference internal" href="#user-mode-kernel-mode" id="id50">1.2&nbsp;&nbsp;&nbsp;user mode &amp; kernel mode</a></li>
+<li><a class="reference internal" href="#id2" id="id51">1.3&nbsp;&nbsp;&nbsp;内核可重入</a></li>
+<li><a class="reference internal" href="#id3" id="id52">1.4&nbsp;&nbsp;&nbsp;内核线程</a></li>
+<li><a class="reference internal" href="#id4" id="id53">1.5&nbsp;&nbsp;&nbsp;内核和用户内存</a></li>
+<li><a class="reference internal" href="#zombie" id="id54">1.6&nbsp;&nbsp;&nbsp;僵尸进程 (zombie)</a><ul class="auto-toc">
+<li><a class="reference internal" href="#init" id="id55">1.6.1&nbsp;&nbsp;&nbsp;如果父进程先结束, 子进程会继续, 并且挂到init上</a></li>
+<li><a class="reference internal" href="#id5" id="id56">1.6.2&nbsp;&nbsp;&nbsp;清除僵尸进程</a></li>
+<li><a class="reference internal" href="#id6" id="id57">1.6.3&nbsp;&nbsp;&nbsp;注意</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c2" id="id58">2&nbsp;&nbsp;&nbsp;c2 内存寻址(段页管理)</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id7" id="id59">2.1&nbsp;&nbsp;&nbsp;逻辑地址, 线性地址, 物理地址</a></li>
+<li><a class="reference internal" href="#id8" id="id60">2.2&nbsp;&nbsp;&nbsp;硬件中的分段</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id9" id="id61">2.2.1&nbsp;&nbsp;&nbsp;80286 后的实模式/保护模式</a></li>
+<li><a class="reference internal" href="#id10" id="id62">2.2.2&nbsp;&nbsp;&nbsp;保护模式中的地址</a></li>
+<li><a class="reference internal" href="#segment-selectors" id="id63">2.2.3&nbsp;&nbsp;&nbsp;段选择器(Segment Selectors)</a></li>
+<li><a class="reference internal" href="#id11" id="id64">2.2.4&nbsp;&nbsp;&nbsp;段寄存器</a></li>
+<li><a class="reference internal" href="#segment-descriptors" id="id65">2.2.5&nbsp;&nbsp;&nbsp;段描述符(Segment Descriptors)</a><ul class="auto-toc">
+<li><a class="reference internal" href="#gdt-ldt" id="id66">2.2.5.1&nbsp;&nbsp;&nbsp;GDT/LDT</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id12" id="id67">2.2.6&nbsp;&nbsp;&nbsp;段选择器, 段描述符的关系</a></li>
+<li><a class="reference internal" href="#id13" id="id68">2.2.7&nbsp;&nbsp;&nbsp;分段单元: 从逻辑地址到线性地址</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#linux" id="id69">2.3&nbsp;&nbsp;&nbsp;Linux 中的分段</a><ul class="auto-toc">
+<li><a class="reference internal" href="#linux-gdt" id="id70">2.3.1&nbsp;&nbsp;&nbsp;Linux 中的GDT</a></li>
+<li><a class="reference internal" href="#linuxldt" id="id71">2.3.2&nbsp;&nbsp;&nbsp;Linux中的LDT:</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id14" id="id72">2.4&nbsp;&nbsp;&nbsp;硬件中的分页</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id15" id="id73">2.4.1&nbsp;&nbsp;&nbsp;常规分页</a></li>
+<li><a class="reference internal" href="#id16" id="id74">2.4.2&nbsp;&nbsp;&nbsp;扩展分页</a></li>
+<li><a class="reference internal" href="#pae-324g" id="id75">2.4.3&nbsp;&nbsp;&nbsp;PAE: 允许在32位系统上访问大于4G内存</a></li>
+<li><a class="reference internal" href="#id17" id="id76">2.4.4&nbsp;&nbsp;&nbsp;64位架构</a></li>
+<li><a class="reference internal" href="#hardware-cache" id="id77">2.4.5&nbsp;&nbsp;&nbsp;Hardware Cache</a><ul class="auto-toc">
+<li><a class="reference internal" href="#cache-snooping" id="id78">2.4.5.1&nbsp;&nbsp;&nbsp;cache snooping:</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#tlb-translation-lookaside-buffers" id="id79">2.4.6&nbsp;&nbsp;&nbsp;TLB(Translation Lookaside Buffers)</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id18" id="id80">2.5&nbsp;&nbsp;&nbsp;Linux 中的分页</a><ul class="auto-toc">
+<li><a class="reference internal" href="#layout" id="id81">2.5.1&nbsp;&nbsp;&nbsp;物理内存Layout</a></li>
+<li><a class="reference internal" href="#process-page-table" id="id82">2.5.2&nbsp;&nbsp;&nbsp;Process Page Table</a></li>
+<li><a class="reference internal" href="#kernel-page-table" id="id83">2.5.3&nbsp;&nbsp;&nbsp;Kernel Page Table</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id19" id="id84">2.6&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c3-processes" id="id85">3&nbsp;&nbsp;&nbsp;c3 Processes</a><ul class="auto-toc">
+<li><a class="reference internal" href="#processes-lightweight-processes-and-threads" id="id86">3.1&nbsp;&nbsp;&nbsp;Processes, Lightweight Processes, and Threads</a><ul class="auto-toc">
+<li><a class="reference internal" href="#pthread" id="id87">3.1.1&nbsp;&nbsp;&nbsp;关于pthread</a></li>
+<li><a class="reference internal" href="#linuxthreads-nptl" id="id88">3.1.2&nbsp;&nbsp;&nbsp;LinuxThreads 和NPTL</a></li>
+<li><a class="reference internal" href="#id20" id="id89">3.1.3&nbsp;&nbsp;&nbsp;参考</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#process-descriptor" id="id90">3.2&nbsp;&nbsp;&nbsp;Process Descriptor</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id21" id="id91">3.2.1&nbsp;&nbsp;&nbsp;能有多少个进程</a></li>
+<li><a class="reference internal" href="#pidthread-group" id="id92">3.2.2&nbsp;&nbsp;&nbsp;pid在thread group中</a></li>
+<li><a class="reference internal" href="#process-list" id="id93">3.2.3&nbsp;&nbsp;&nbsp;process list</a></li>
+<li><a class="reference internal" href="#process" id="id94">3.2.4&nbsp;&nbsp;&nbsp;Process 资源限制</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#process-switch" id="id95">3.3&nbsp;&nbsp;&nbsp;Process Switch</a><ul class="auto-toc">
+<li><a class="reference internal" href="#hardware-context" id="id96">3.3.1&nbsp;&nbsp;&nbsp;Hardware Context 切换</a></li>
+<li><a class="reference internal" href="#schedule" id="id97">3.3.2&nbsp;&nbsp;&nbsp;schedule()  函数</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#create-processes" id="id98">3.4&nbsp;&nbsp;&nbsp;Create Processes</a><ul class="auto-toc">
+<li><a class="reference internal" href="#clone" id="id99">3.4.1&nbsp;&nbsp;&nbsp;内核底层的clone</a></li>
+<li><a class="reference internal" href="#clone-fork-and-vfork" id="id100">3.4.2&nbsp;&nbsp;&nbsp;clone( ), fork( ), and vfork( )</a><ul class="auto-toc">
+<li><a class="reference internal" href="#man-clone" id="id101">3.4.2.1&nbsp;&nbsp;&nbsp;man clone(库函数)</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#do-fork" id="id102">3.4.3&nbsp;&nbsp;&nbsp;do_fork() 函数</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id22" id="id103">3.5&nbsp;&nbsp;&nbsp;内核线程</a><ul class="auto-toc">
+<li><a class="reference internal" href="#pdflush" id="id104">3.5.1&nbsp;&nbsp;&nbsp;pdflush</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id23" id="id105">3.6&nbsp;&nbsp;&nbsp;进程0 &amp; 进程1</a></li>
+<li><a class="reference internal" href="#destorying-processes" id="id106">3.7&nbsp;&nbsp;&nbsp;Destorying Processes</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c4-interrupts-and-exceptions" id="id107">4&nbsp;&nbsp;&nbsp;c4 Interrupts and Exceptions</a><ul class="auto-toc">
+<li><a class="reference internal" href="#interrupts-and-exceptions" id="id108">4.1&nbsp;&nbsp;&nbsp;Interrupts and Exceptions</a><ul class="auto-toc">
+<li><a class="reference internal" href="#interrupt" id="id109">4.1.1&nbsp;&nbsp;&nbsp;Interrupt</a><ul class="auto-toc">
+<li><a class="reference internal" href="#interrupt-handling" id="id110">4.1.1.1&nbsp;&nbsp;&nbsp;Interrupt handling</a></li>
+<li><a class="reference internal" href="#irqs-interrupt-requests" id="id111">4.1.1.2&nbsp;&nbsp;&nbsp;IRQs (Interrupt ReQuests)</a><ul class="auto-toc">
+<li><a class="reference internal" href="#pic" id="id112">4.1.1.2.1&nbsp;&nbsp;&nbsp;老的PIC 的硬件结构</a></li>
+<li><a class="reference internal" href="#pic-the-advanced-programmable-interrupt-controller-apic" id="id113">4.1.1.2.2&nbsp;&nbsp;&nbsp;新的PIC 的硬件结构 The Advanced Programmable Interrupt Controller (APIC)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#exceptions" id="id114">4.1.2&nbsp;&nbsp;&nbsp;Exceptions</a></li>
+<li><a class="reference internal" href="#idt" id="id115">4.1.3&nbsp;&nbsp;&nbsp;中断描述符表IDT</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#nested-execution-of-exception-and-interrupt-handlers" id="id116">4.2&nbsp;&nbsp;&nbsp;Nested Execution of Exception and Interrupt Handlers</a></li>
+<li><a class="reference internal" href="#initializing-the-interrupt-descriptor-table" id="id117">4.3&nbsp;&nbsp;&nbsp;Initializing the Interrupt Descriptor Table</a></li>
+<li><a class="reference internal" href="#exception-handling" id="id118">4.4&nbsp;&nbsp;&nbsp;Exception Handling</a></li>
+<li><a class="reference internal" href="#id24" id="id119">4.5&nbsp;&nbsp;&nbsp;Interrupt Handling(硬件产生的)</a><ul class="auto-toc">
+<li><a class="reference internal" href="#irq" id="id120">4.5.1&nbsp;&nbsp;&nbsp;IRQ在多处理器系统上的分发</a><ul class="auto-toc">
+<li><a class="reference internal" href="#cpuirq" id="id121">4.5.1.1&nbsp;&nbsp;&nbsp;CPU的IRQ亲和力</a></li>
+<li><a class="reference internal" href="#id25" id="id122">4.5.1.2&nbsp;&nbsp;&nbsp;例子:网卡多队列的中断绑定</a></li>
+<li><a class="reference internal" href="#id26" id="id123">4.5.1.3&nbsp;&nbsp;&nbsp;把进程绑在核上</a></li>
+<li><a class="reference internal" href="#id27" id="id124">4.5.1.4&nbsp;&nbsp;&nbsp;网卡多队列</a></li>
+<li><a class="reference internal" href="#id28" id="id125">4.5.1.5&nbsp;&nbsp;&nbsp;千兆网卡多队列</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id29" id="id126">4.5.1.5.1&nbsp;&nbsp;&nbsp;是否支持</a></li>
+<li><a class="reference internal" href="#id30" id="id127">4.5.1.5.2&nbsp;&nbsp;&nbsp;开启多队列</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#proc-softirqs" id="id128">4.5.2&nbsp;&nbsp;&nbsp;/proc/softirqs</a><ul class="auto-toc">
+<li><a class="reference internal" href="#mpstat" id="id129">4.5.2.1&nbsp;&nbsp;&nbsp;mpstat</a></li>
+<li><a class="reference internal" href="#vmstat" id="id130">4.5.2.2&nbsp;&nbsp;&nbsp;vmstat</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#softirqs-and-tasklets" id="id131">4.6&nbsp;&nbsp;&nbsp;Softirqs and Tasklets</a></li>
+<li><a class="reference internal" href="#work-queues" id="id132">4.7&nbsp;&nbsp;&nbsp;Work Queues</a></li>
+<li><a class="reference internal" href="#returning-from-interrupts-and-exceptions" id="id133">4.8&nbsp;&nbsp;&nbsp;Returning from Interrupts and Exceptions</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c5-kernel-synchronization" id="id134">5&nbsp;&nbsp;&nbsp;c5 Kernel Synchronization</a><ul class="auto-toc">
+<li><a class="reference internal" href="#how-the-kernel-services-requests" id="id135">5.1&nbsp;&nbsp;&nbsp;How the Kernel Services Requests</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id31" id="id136">5.1.1&nbsp;&nbsp;&nbsp;内核抢占</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#synchronization-primitives" id="id137">5.2&nbsp;&nbsp;&nbsp;Synchronization Primitives(同步原语)</a><ul class="auto-toc">
+<li><a class="reference internal" href="#cpu" id="id138">5.2.1&nbsp;&nbsp;&nbsp;每CPU变量</a></li>
+<li><a class="reference internal" href="#id32" id="id139">5.2.2&nbsp;&nbsp;&nbsp;原子操作</a></li>
+<li><a class="reference internal" href="#id33" id="id140">5.2.3&nbsp;&nbsp;&nbsp;优化屏障&amp;内存屏障</a><ul class="auto-toc">
+<li><a class="reference internal" href="#optimization-barrier" id="id141">5.2.3.1&nbsp;&nbsp;&nbsp;优化屏障(optimization barrier) 原语保证编译程序不会混淆原语前后的汇编指令.</a></li>
+<li><a class="reference internal" href="#id34" id="id142">5.2.3.2&nbsp;&nbsp;&nbsp;内存屏障确保原语之后的操作开始执行之前, 原语之前的操作已完成.</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id35" id="id143">5.2.4&nbsp;&nbsp;&nbsp;自旋锁</a></li>
+<li><a class="reference internal" href="#id36" id="id144">5.2.5&nbsp;&nbsp;&nbsp;读/写自旋锁</a></li>
+<li><a class="reference internal" href="#id37" id="id145">5.2.6&nbsp;&nbsp;&nbsp;顺序锁</a></li>
+<li><a class="reference internal" href="#rcu" id="id146">5.2.7&nbsp;&nbsp;&nbsp;读-拷贝-更新 (RCU通过指针而不是锁)</a></li>
+<li><a class="reference internal" href="#id38" id="id147">5.2.8&nbsp;&nbsp;&nbsp;信号量</a><ul class="auto-toc">
+<li><a class="reference internal" href="#completion" id="id148">5.2.8.1&nbsp;&nbsp;&nbsp;补充原语(completion)</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id39" id="id149">5.2.9&nbsp;&nbsp;&nbsp;本地中断禁止</a></li>
+<li><a class="reference internal" href="#id40" id="id150">5.2.10&nbsp;&nbsp;&nbsp;本地软中断禁止</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#synchronizing-accesses-to-kernel-data-structures" id="id151">5.3&nbsp;&nbsp;&nbsp;Synchronizing Accesses to Kernel Data Structures</a></li>
+<li><a class="reference internal" href="#examples-of-race-condition-prevention" id="id152">5.4&nbsp;&nbsp;&nbsp;Examples of Race Condition Prevention</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c6-timing-measurements" id="id153">6&nbsp;&nbsp;&nbsp;c6 Timing Measurements</a><ul class="auto-toc">
+<li><a class="reference internal" href="#clock-and-timer-circuits" id="id154">6.1&nbsp;&nbsp;&nbsp;Clock and Timer Circuits (几种硬件计时器)</a></li>
+<li><a class="reference internal" href="#the-linux-timekeeping-architecture" id="id155">6.2&nbsp;&nbsp;&nbsp;The Linux Timekeeping Architecture</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id41" id="id156">6.2.1&nbsp;&nbsp;&nbsp;时钟中断时处理</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id42" id="id157">6.2.1.1&nbsp;&nbsp;&nbsp;系统负载</a></li>
+<li><a class="reference internal" href="#id43" id="id158">6.2.1.2&nbsp;&nbsp;&nbsp;监管内核代码</a><ul class="auto-toc">
+<li><a class="reference internal" href="#readprofiler-hot-spot" id="id159">6.2.1.2.1&nbsp;&nbsp;&nbsp;readprofiler, 用于确定内核热点(hot spot).</a></li>
+<li><a class="reference internal" href="#oprofile" id="id160">6.2.1.2.2&nbsp;&nbsp;&nbsp;oprofile</a></li>
+<li><a class="reference internal" href="#id44" id="id161">6.2.1.2.3&nbsp;&nbsp;&nbsp;检测死锁</a></li>
+<li><a class="reference internal" href="#id45" id="id162">6.2.1.2.4&nbsp;&nbsp;&nbsp;蒙特卡洛:</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#updating-the-time-and-date" id="id163">6.3&nbsp;&nbsp;&nbsp;Updating the Time and Date</a></li>
+<li><a class="reference internal" href="#updating-system-statistics" id="id164">6.4&nbsp;&nbsp;&nbsp;Updating System Statistics</a></li>
+<li><a class="reference internal" href="#software-timers-and-delay-functions" id="id165">6.5&nbsp;&nbsp;&nbsp;Software Timers and Delay Functions</a></li>
+<li><a class="reference internal" href="#system-calls-related-to-timing-measurements" id="id166">6.6&nbsp;&nbsp;&nbsp;System Calls Related to Timing Measurements</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c7-process-scheduling" id="id167">7&nbsp;&nbsp;&nbsp;c7 Process Scheduling</a><ul class="auto-toc">
+<li><a class="reference internal" href="#scheduling-policy" id="id168">7.1&nbsp;&nbsp;&nbsp;Scheduling Policy</a></li>
+<li><a class="reference internal" href="#the-scheduling-algorithm" id="id169">7.2&nbsp;&nbsp;&nbsp;The Scheduling Algorithm</a></li>
+<li><a class="reference internal" href="#data-structures-used-by-the-scheduler" id="id170">7.3&nbsp;&nbsp;&nbsp;Data Structures Used by the Scheduler</a></li>
+<li><a class="reference internal" href="#functions-used-by-the-scheduler-schedule" id="id171">7.4&nbsp;&nbsp;&nbsp;Functions Used by the Scheduler(schedule)</a></li>
+<li><a class="reference internal" href="#id46" id="id172">7.5&nbsp;&nbsp;&nbsp;多处理器系统中 执行队列的平衡</a></li>
+<li><a class="reference internal" href="#system-calls-related-to-scheduling" id="id173">7.6&nbsp;&nbsp;&nbsp;System Calls Related to Scheduling</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c8-memory-management" id="id174">8&nbsp;&nbsp;&nbsp;c8 Memory Management</a><ul class="auto-toc">
+<li><a class="reference internal" href="#page-frame-management" id="id175">8.1&nbsp;&nbsp;&nbsp;Page Frame Management</a><ul class="auto-toc">
+<li><a class="reference internal" href="#numa" id="id176">8.1.1&nbsp;&nbsp;&nbsp;非一致内存访问(NUMA)</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#memory-area-management" id="id177">8.2&nbsp;&nbsp;&nbsp;Memory Area Management</a></li>
+<li><a class="reference internal" href="#noncontiguous-memory-area-management" id="id178">8.3&nbsp;&nbsp;&nbsp;Noncontiguous Memory Area Management</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c9-process-address-space" id="id179">9&nbsp;&nbsp;&nbsp;c9. Process Address Space</a><ul class="auto-toc">
+<li><a class="reference internal" href="#the-processs-address-space" id="id180">9.1&nbsp;&nbsp;&nbsp;The Process’s Address Space</a></li>
+<li><a class="reference internal" href="#the-memory-descriptor" id="id181">9.2&nbsp;&nbsp;&nbsp;The Memory Descriptor</a></li>
+<li><a class="reference internal" href="#memory-regions" id="id182">9.3&nbsp;&nbsp;&nbsp;Memory Regions</a></li>
+<li><a class="reference internal" href="#page-fault-exception-handler" id="id183">9.4&nbsp;&nbsp;&nbsp;Page Fault Exception Handler</a></li>
+<li><a class="reference internal" href="#creating-and-deleting-a-process-address-space" id="id184">9.5&nbsp;&nbsp;&nbsp;Creating and Deleting a Process Address Space</a></li>
+<li><a class="reference internal" href="#managing-the-heap" id="id185">9.6&nbsp;&nbsp;&nbsp;Managing the Heap</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c10-system-calls" id="id186">10&nbsp;&nbsp;&nbsp;c10 System Calls</a><ul class="auto-toc">
+<li><a class="reference internal" href="#posix-apis-and-system-calls" id="id187">10.1&nbsp;&nbsp;&nbsp;POSIX APIs and System Calls</a></li>
+<li><a class="reference internal" href="#system-call-handler-and-service-routines" id="id188">10.2&nbsp;&nbsp;&nbsp;System Call Handler and Service Routines</a></li>
+<li><a class="reference internal" href="#entering-and-exiting-a-system-call" id="id189">10.3&nbsp;&nbsp;&nbsp;Entering and Exiting a System Call</a></li>
+<li><a class="reference internal" href="#parameter-passing" id="id190">10.4&nbsp;&nbsp;&nbsp;Parameter Passing</a></li>
+<li><a class="reference internal" href="#kernel-wrapper-routines" id="id191">10.5&nbsp;&nbsp;&nbsp;Kernel Wrapper Routines</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c11-signals" id="id192">11&nbsp;&nbsp;&nbsp;c11. Signals</a><ul class="auto-toc">
+<li><a class="reference internal" href="#the-role-of-signals" id="id193">11.1&nbsp;&nbsp;&nbsp;The Role of Signals</a></li>
+<li><a class="reference internal" href="#generating-a-signal" id="id194">11.2&nbsp;&nbsp;&nbsp;Generating a Signal</a></li>
+<li><a class="reference internal" href="#delivering-a-signal" id="id195">11.3&nbsp;&nbsp;&nbsp;Delivering a Signal</a></li>
+<li><a class="reference internal" href="#system-calls-related-to-signal-handling" id="id196">11.4&nbsp;&nbsp;&nbsp;System Calls Related to Signal Handling</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c12-the-virtual-filesystem" id="id197">12&nbsp;&nbsp;&nbsp;c12 The Virtual Filesystem</a><ul class="auto-toc">
+<li><a class="reference internal" href="#the-role-of-the-virtual-filesystem-vfs" id="id198">12.1&nbsp;&nbsp;&nbsp;The Role of the Virtual Filesystem (VFS)</a></li>
+<li><a class="reference internal" href="#vfs-data-structures" id="id199">12.2&nbsp;&nbsp;&nbsp;VFS Data Structures</a></li>
+<li><a class="reference internal" href="#filesystem-types" id="id200">12.3&nbsp;&nbsp;&nbsp;Filesystem Types</a></li>
+<li><a class="reference internal" href="#filesystem-handling" id="id201">12.4&nbsp;&nbsp;&nbsp;Filesystem Handling</a></li>
+<li><a class="reference internal" href="#pathname-lookup" id="id202">12.5&nbsp;&nbsp;&nbsp;Pathname Lookup</a></li>
+<li><a class="reference internal" href="#implementations-of-vfs-system-calls" id="id203">12.6&nbsp;&nbsp;&nbsp;Implementations of VFS System Calls</a></li>
+<li><a class="reference internal" href="#file-locking" id="id204">12.7&nbsp;&nbsp;&nbsp;File Locking</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c13-i-o-architecture-and-device-drivers" id="id205">13&nbsp;&nbsp;&nbsp;c13. I/O Architecture and Device Drivers</a><ul class="auto-toc">
+<li><a class="reference internal" href="#i-o-architecture" id="id206">13.1&nbsp;&nbsp;&nbsp;I/O Architecture</a></li>
+<li><a class="reference internal" href="#the-device-driver-model" id="id207">13.2&nbsp;&nbsp;&nbsp;The Device Driver Model</a></li>
+<li><a class="reference internal" href="#device-files" id="id208">13.3&nbsp;&nbsp;&nbsp;Device Files</a></li>
+<li><a class="reference internal" href="#device-drivers" id="id209">13.4&nbsp;&nbsp;&nbsp;Device Drivers</a></li>
+<li><a class="reference internal" href="#character-device-drivers" id="id210">13.5&nbsp;&nbsp;&nbsp;Character Device Drivers</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c14-block-device-drivers" id="id211">14&nbsp;&nbsp;&nbsp;c14. Block Device Drivers</a><ul class="auto-toc">
+<li><a class="reference internal" href="#block-devices-handling" id="id212">14.1&nbsp;&nbsp;&nbsp;Block Devices Handling</a></li>
+<li><a class="reference internal" href="#the-generic-block-layer" id="id213">14.2&nbsp;&nbsp;&nbsp;The Generic Block Layer</a></li>
+<li><a class="reference internal" href="#the-i-o-scheduler" id="id214">14.3&nbsp;&nbsp;&nbsp;The I/O Scheduler</a></li>
+<li><a class="reference internal" href="#block-device-drivers" id="id215">14.4&nbsp;&nbsp;&nbsp;Block Device Drivers</a></li>
+<li><a class="reference internal" href="#opening-a-block-device-file" id="id216">14.5&nbsp;&nbsp;&nbsp;Opening a Block Device File</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c15-the-page-cache" id="id217">15&nbsp;&nbsp;&nbsp;c15. The Page Cache</a><ul class="auto-toc">
+<li><a class="reference internal" href="#the-page-cache" id="id218">15.1&nbsp;&nbsp;&nbsp;The Page Cache</a></li>
+<li><a class="reference internal" href="#storing-blocks-in-the-page-cache" id="id219">15.2&nbsp;&nbsp;&nbsp;Storing Blocks in the Page Cache</a></li>
+<li><a class="reference internal" href="#writing-dirty-pages-to-disk" id="id220">15.3&nbsp;&nbsp;&nbsp;Writing Dirty Pages to Disk</a></li>
+<li><a class="reference internal" href="#the-sync-fsync-and-fdatasync-system-calls" id="id221">15.4&nbsp;&nbsp;&nbsp;The sync( ), fsync( ), and fdatasync() System Calls</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c16-accessing-files" id="id222">16&nbsp;&nbsp;&nbsp;c16. Accessing Files</a><ul class="auto-toc">
+<li><a class="reference internal" href="#reading-and-writing-a-file" id="id223">16.1&nbsp;&nbsp;&nbsp;Reading and Writing a File</a></li>
+<li><a class="reference internal" href="#memory-mapping" id="id224">16.2&nbsp;&nbsp;&nbsp;Memory Mapping</a></li>
+<li><a class="reference internal" href="#direct-i-o-transfers" id="id225">16.3&nbsp;&nbsp;&nbsp;Direct I/O Transfers</a></li>
+<li><a class="reference internal" href="#asynchronous-i-o" id="id226">16.4&nbsp;&nbsp;&nbsp;Asynchronous I/O</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c17-page-frame-reclaiming" id="id227">17&nbsp;&nbsp;&nbsp;c17. Page Frame Reclaiming</a><ul class="auto-toc">
+<li><a class="reference internal" href="#the-page-frame-reclaiming-algorithm" id="id228">17.1&nbsp;&nbsp;&nbsp;The Page Frame Reclaiming Algorithm</a></li>
+<li><a class="reference internal" href="#reverse-mapping" id="id229">17.2&nbsp;&nbsp;&nbsp;Reverse Mapping</a></li>
+<li><a class="reference internal" href="#implementing-the-pfra" id="id230">17.3&nbsp;&nbsp;&nbsp;Implementing the PFRA</a></li>
+<li><a class="reference internal" href="#swapping" id="id231">17.4&nbsp;&nbsp;&nbsp;Swapping</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c18-the-ext2-and-ext3-filesystems" id="id232">18&nbsp;&nbsp;&nbsp;c18. The Ext2 and Ext3 Filesystems</a><ul class="auto-toc">
+<li><a class="reference internal" href="#general-characteristics-of-ext2" id="id233">18.1&nbsp;&nbsp;&nbsp;General Characteristics of Ext2</a></li>
+<li><a class="reference internal" href="#ext2-disk-data-structures" id="id234">18.2&nbsp;&nbsp;&nbsp;Ext2 Disk Data Structures</a></li>
+<li><a class="reference internal" href="#ext2-memory-data-structures" id="id235">18.3&nbsp;&nbsp;&nbsp;Ext2 Memory Data Structures</a></li>
+<li><a class="reference internal" href="#creating-the-ext2-filesystem" id="id236">18.4&nbsp;&nbsp;&nbsp;Creating the Ext2 Filesystem</a></li>
+<li><a class="reference internal" href="#ext2-methods" id="id237">18.5&nbsp;&nbsp;&nbsp;Ext2 Methods</a></li>
+<li><a class="reference internal" href="#managing-ext2-disk-space" id="id238">18.6&nbsp;&nbsp;&nbsp;Managing Ext2 Disk Space</a></li>
+<li><a class="reference internal" href="#the-ext3-filesystem" id="id239">18.7&nbsp;&nbsp;&nbsp;The Ext3 Filesystem</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c19-process-communication" id="id240">19&nbsp;&nbsp;&nbsp;c19. Process Communication</a><ul class="auto-toc">
+<li><a class="reference internal" href="#pipes" id="id241">19.1&nbsp;&nbsp;&nbsp;Pipes</a></li>
+<li><a class="reference internal" href="#fifos" id="id242">19.2&nbsp;&nbsp;&nbsp;FIFOs</a></li>
+<li><a class="reference internal" href="#system-v-ipc" id="id243">19.3&nbsp;&nbsp;&nbsp;System V IPC</a></li>
+<li><a class="reference internal" href="#posix-message-queues" id="id244">19.4&nbsp;&nbsp;&nbsp;POSIX Message Queues</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c20-program-execution" id="id245">20&nbsp;&nbsp;&nbsp;c20. Program Execution</a><ul class="auto-toc">
+<li><a class="reference internal" href="#executable-files" id="id246">20.1&nbsp;&nbsp;&nbsp;Executable Files</a></li>
+<li><a class="reference internal" href="#executable-formats" id="id247">20.2&nbsp;&nbsp;&nbsp;Executable Formats</a></li>
+<li><a class="reference internal" href="#execution-domains" id="id248">20.3&nbsp;&nbsp;&nbsp;Execution Domains</a></li>
+<li><a class="reference internal" href="#the-exec-functions" id="id249">20.4&nbsp;&nbsp;&nbsp;The exec Functions</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id47" id="id250">21&nbsp;&nbsp;&nbsp;总结</a></li>
+</ul>
+</div>
+<pre class="literal-block">
+内存 c2, c8, c9
+进程 c3, c7
+中断 c4,
+IO: 12, 13, 14, 15, 16, 17, 18
+其它: 5, 6, 10, 11, 19, 20
+</pre>
+<p>内存和io是重点, 没有网络中, 如epoll的实现.</p>
+<p>c1-c9看的比较认真, 有笔记, 后面看的比较粗.</p>
+<div class="section" id="c1">
+<h2><a class="toc-backref" href="#id48">1&nbsp;&nbsp;&nbsp;c1</a></h2>
+<div class="section" id="id1">
+<h3><a class="toc-backref" href="#id49">1.1&nbsp;&nbsp;&nbsp;微内核</a></h3>
+<p>微内核vs巨内核 微内核慢，linux就是微内核</p>
+</div>
+<div class="section" id="user-mode-kernel-mode">
+<h3><a class="toc-backref" href="#id50">1.2&nbsp;&nbsp;&nbsp;user mode &amp; kernel mode</a></h3>
+<ul class="simple">
+<li>两个模式是cpu提供的功能。应该理解为在两个模式下cpu可以使用的指令是不同的。或者说可以访问的内存区是不同的。</li>
+<li>用户程序调用系统调用，然后系统调用的使用cpu的指令进行切换到内核模式。</li>
+<li><strong>注意</strong> : 这是同一个进程, 一个进程可以运行在用户模式也可以在内核模式。</li>
+</ul>
+<img alt="" src="/imgs/ulk_user_and_kernel_mode.png" />
+<img alt="" src="/imgs/ulk_user_and_kernel_mode_2.png" />
+<p>这个图很好的解释了什么情况下会从user mode 进入kernel mode:</p>
+<ol class="arabic">
+<li><p class="first">user mode 程序调用系统调用</p>
+</li>
+<li><p class="first">时钟中断(此时内核会调用scheduler, 找一个程序来run)</p>
+</li>
+<li><dl class="first docutils">
+<dt>设备中断(此时内核处理设备响应)</dt>
+<dd><ul class="first last simple">
+<li>如对读磁盘操作, 这里把磁盘缓冲区的内容读到内存</li>
+<li>对写磁盘操作, 这里检查写是否成功.</li>
+<li>接下来可以调用scheduler, 把那个Process 唤起就是 scheduler 的问题了</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">内存越界等(Excption)</p>
+</li>
+</ol>
+</div>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id51">1.3&nbsp;&nbsp;&nbsp;内核可重入</a></h3>
+<p>内核是可重入的, 意思就是说, 在中断中处理中, 可以再接受中断(某些中断当然是不可重入的)</p>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id52">1.4&nbsp;&nbsp;&nbsp;内核线程</a></h3>
+<p>如oom killer</p>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id53">1.5&nbsp;&nbsp;&nbsp;内核和用户内存</a></h3>
+<p>现在的理解是这样的:</p>
+<img alt="" src="/imgs/ulk_user_and_kernel_space.png" />
+</div>
+<div class="section" id="zombie">
+<h3><a class="toc-backref" href="#id54">1.6&nbsp;&nbsp;&nbsp;僵尸进程 (zombie)</a></h3>
+<p>这样产生的:</p>
+<ul class="simple">
+<li>父进程fork后, 不去wait它(比如父进程在做sleep() 或其它操作, 总之就是没有调用wait()). 这也就产生了僵尸进程</li>
+<li>如果父进程挂掉, 这个进程就会被挂到init(1), init总是会wait() 它, 所以不会产生僵尸进程</li>
+</ul>
+<p>代码, 子进程退出后, 父进程没去wait它:</p>
+<pre class="literal-block">
+int main(){
+    int pid = fork();
+    if(pid== 0) {
+        fprintf(stderr, &quot;child pid: %d\n&quot;, getpid());
+        sleep(1);
+        fprintf(stderr, &quot;child finish\n&quot;);
+    } else {                //Parent
+        fprintf(stderr, &quot;parent pid: %d\n&quot;, getpid());
+        sleep(100);
+        fprintf(stderr, &quot;parent finish\n&quot;);
+    }
+    return 0;
+}
+</pre>
+<pre class="literal-block">
+$ ./a.out
+parent pid: 1221
+child pid: 1222
+child finish
+</pre>
+<p>此时pstree看, 子进程挂到 父进程, 状态已经变成Z:</p>
+<pre class="literal-block">
+init(1)-+-NetworkManager(1022)-+-dhclient(28101)
+        |                      |-bash(31597)---a.out(1221)---a.out(1222)
+
+$ ps  -elF
+1 Z ning      1222  1221  0  80   0 -     0 exit       0   1 13:16 pts/1    00:00:00 [a.out] &lt;defunct&gt;
+</pre>
+<div class="section" id="init">
+<h4><a class="toc-backref" href="#id55">1.6.1&nbsp;&nbsp;&nbsp;如果父进程先结束, 子进程会继续, 并且挂到init上</a></h4>
+<p>代码:</p>
+<pre class="literal-block">
+int main(){
+    int pid = fork();
+    if(pid== 0) {
+        fprintf(stderr, &quot;child pid: %d\n&quot;, getpid());
+        sleep(2*100);
+        fprintf(stderr, &quot;child finish\n&quot;);
+    } else {                //Parent
+        fprintf(stderr, &quot;parent pid: %d\n&quot;, getpid());
+        sleep(1);
+        fprintf(stderr, &quot;parent finish\n&quot;);
+    }
+    return 0;
+}
+</pre>
+<p>父进程先退出, 子进程后退出:</p>
+<pre class="literal-block">
+$ ./a.out
+parent pid: 928
+child pid: 929
+parent finish
+</pre>
+<p>此时pstree看, 子进程已经挂到 init上了, 但是这时状态不是Z:</p>
+<pre class="literal-block">
+init(1)-+-NetworkManager(1022)-+-dhclient(28101)
+        |                      `-{NetworkManager}(1851)
+        |-a.out(929)
+
+$ ps  -elF
+F S UID        PID  PPID  C PRI  NI ADDR SZ WCHAN    RSS PSR STIME TTY          TIME CMD
+4 S root         1     0  0  80   0 -  5961 poll_s  1888   0 Jan03 ?        00:00:01 /sbin/init
+1 S ning       929     1  0  80   0 -  2936 hrtime   320   3 13:11 pts/1    00:00:00 ./a.out
+</pre>
+</div>
+<div class="section" id="id5">
+<h4><a class="toc-backref" href="#id56">1.6.2&nbsp;&nbsp;&nbsp;清除僵尸进程</a></h4>
+<p>僵尸进程本身是不能被kill的(因为本来就是死的):</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning/langtest/c/zombie-processes$ ps -elF | grep a.out
+0 S ning     20696 20023  0  80   0 -   969 hrtime   428   1 08:53 pts/16   00:00:00 ./a.out
+1 Z ning     20697 20696  0  80   0 -     0 exit       0   3 08:53 pts/16   00:00:00 [a.out] &lt;defunct&gt;
+ning&#64;ning-laptop:~/idning/langtest/c/zombie-processes$ kill 20697                                           (不能kill掉)
+ning&#64;ning-laptop:~/idning/langtest/c/zombie-processes$ ps -elF | grep a.out
+0 S ning     20696 20023  0  80   0 -   969 hrtime   428   1 08:53 pts/16   00:00:00 ./a.out
+1 Z ning     20697 20696  0  80   0 -     0 exit       0   3 08:53 pts/16   00:00:00 [a.out] &lt;defunct&gt;
+ning&#64;ning-laptop:~/idning/langtest/c/zombie-processes$ kill 20696                                           (解决方法是kill掉附进程)
+ning&#64;ning-laptop:~/idning/langtest/c/zombie-processes$ ps -elF | grep a.out
+nothing
+</pre>
+<p>解决方法是kill掉父进程, 这样子进程会挂到 init, 并被init wait()</p>
+</div>
+<div class="section" id="id6">
+<h4><a class="toc-backref" href="#id57">1.6.3&nbsp;&nbsp;&nbsp;注意</a></h4>
+<p>父进程不一定非要调用wait, 忽略 <tt class="docutils literal">SIGCHILD</tt> 也可以(wait就是等待 <tt class="docutils literal">SIGCHILD</tt> ) 参考:</p>
+<p>引用:</p>
+<pre class="literal-block">
+僵尸进程简而言之就是：子进程退出时，父进程并未对其发出的SIGCHILD信号进行适当处理，导致子进程停留在僵死状态等待其父进程为其收尸，这个状态下的子进程就是僵死进程。
+
+在fork()/execve()过程中，假设子进程结束时父进程仍存在，而父进程fork()之前既没安装SIGCHLD信号处理函数调用waitpid()等待子进程结束，又没有显式忽略该信号，则子进程成为僵死进程，无法正常结束，此时即使是root身份kill -9也不能杀死僵死进程。补救办法是杀死僵尸进程的父进程(僵死进程的父进程必然存在)，僵死进程成为&quot;孤儿进程&quot;，过继给1号进程init，init始终会负责清理僵死进程。
+
+在unix术语中，一个已经终止但是其父进程尚未对其进行善后处理（获取终止子进程的有关信息，释放它仍占用的资源）的进程称为僵尸进程(zombie)。
+</pre>
+</div>
+</div>
+</div>
+<div class="section" id="c2">
+<h2><a class="toc-backref" href="#id58">2&nbsp;&nbsp;&nbsp;c2 内存寻址(段页管理)</a></h2>
+<ul class="simple">
+<li>段主要是 隔离的作用!</li>
+<li>linux里面用的段主要是4个:
+用户代码段, 用户数据段, 内核代码段, 内核数据段</li>
+</ul>
+<div class="section" id="id7">
+<h3><a class="toc-backref" href="#id59">2.1&nbsp;&nbsp;&nbsp;逻辑地址, 线性地址, 物理地址</a></h3>
+<pre class="literal-block">
++-----------------+               +-----------------+            +-----------------+
+|                 |   分段单元    |                 |  分页单元  |                 |
+|  逻辑地址       |  ----------&gt;  |     线性地址    | ---------&gt; |    物理地址     |
+|                 |               |                 |            |                 |
++-----------------+               +-----------------+            +-----------------+
+</pre>
+</div>
+<div class="section" id="id8">
+<h3><a class="toc-backref" href="#id60">2.2&nbsp;&nbsp;&nbsp;硬件中的分段</a></h3>
+<div class="section" id="id9">
+<h4><a class="toc-backref" href="#id61">2.2.1&nbsp;&nbsp;&nbsp;80286 后的实模式/保护模式</a></h4>
+<p>一般系统刚启动的时候是在实模式,</p>
+<p>正常运行中, 是保护模式,</p>
+</div>
+<div class="section" id="id10">
+<h4><a class="toc-backref" href="#id62">2.2.2&nbsp;&nbsp;&nbsp;保护模式中的地址</a></h4>
+<p>逻辑地址是段选择器和offset的组合:</p>
+</div>
+<div class="section" id="segment-selectors">
+<h4><a class="toc-backref" href="#id63">2.2.3&nbsp;&nbsp;&nbsp;段选择器(Segment Selectors)</a></h4>
+<pre class="literal-block">
++------------------+                +----------------+
+|                  |                |                |
+|    段选择器      |       +        |   offset       |
+|                  |                |                |
++------------------+                +----------------+
+</pre>
+<p>段选择器有16 bit:</p>
+<pre class="literal-block">
+15                                        3   2   1  0
++-------------------------------------------+---+------+
+|                   index                   |TI | RPL  |
++-------------------------------------------+---+------+
+
+TI: Table Indicator
+RPL Requestor Privilege Level
+</pre>
+</div>
+<div class="section" id="id11">
+<h4><a class="toc-backref" href="#id64">2.2.4&nbsp;&nbsp;&nbsp;段寄存器</a></h4>
+<p>在cpu中有专门设置的段寄存器, 用于存放段选择器:</p>
+<pre class="literal-block">
+cs: 代码段 (code)
+    有两个bit表示 CPU Privilege Level(CPL)   &lt;Linux 只用了0和3 (内核态/用户态)&gt;
+ss: 栈段   (stack)
+ds: 数据段 (全局和static数据)
+es
+fs
+gs
+</pre>
+</div>
+<div class="section" id="segment-descriptors">
+<h4><a class="toc-backref" href="#id65">2.2.5&nbsp;&nbsp;&nbsp;段描述符(Segment Descriptors)</a></h4>
+<p>存放在 <tt class="docutils literal">GDT/LDT</tt> 中.</p>
+<p>8byte的段描述符:</p>
+<img alt="" src="/imgs/ulk-Segment-Descriptors.png" />
+<div class="section" id="gdt-ldt">
+<h5><a class="toc-backref" href="#id66">2.2.5.1&nbsp;&nbsp;&nbsp;GDT/LDT</a></h5>
+<pre class="literal-block">
+GDT: 通常一个系统只有一个
+LDT: 如果每个进程需要额外的段
+</pre>
+<p>gdtr寄存器: 指向内存中存放的GDT
+ldtr集群器: 指向内存中存放的LDT</p>
+</div>
+</div>
+<div class="section" id="id12">
+<h4><a class="toc-backref" href="#id67">2.2.6&nbsp;&nbsp;&nbsp;段选择器, 段描述符的关系</a></h4>
+<img alt="" src="/imgs/ulk-Segment-Descriptors-and-Segment-Selector.png" />
+<p>段选择器的字段:</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field"><th class="field-name">index:</th><td class="field-body">Identifies the Segment Descriptor entry contained in the GDT or in the LDT (described further in the text following this table).</td>
+</tr>
+<tr class="field"><th class="field-name">TI:</th><td class="field-body">Table Indicator: specifies whether the Segment Descriptor is included in the GDT (TI = 0) or in the LDT (TI = 1).</td>
+</tr>
+<tr class="field"><th class="field-name">RPL:</th><td class="field-body">Requestor Privilege Level: specifies the Current Privilege Level of the CPU when the corresponding Segment Selector is loaded into the cs register; it also may be used to selectively weaken the processor privilege level when accessing data segments (see Intel documentation for details).</td>
+</tr>
+</tbody>
+</table>
+<p>计算:</p>
+<pre class="literal-block">
+gdtr 中存放的地址 +  段选择器中index*8 = 段描述符的位置.
+</pre>
+</div>
+<div class="section" id="id13">
+<h4><a class="toc-backref" href="#id68">2.2.7&nbsp;&nbsp;&nbsp;分段单元: 从逻辑地址到线性地址</a></h4>
+<img alt="" src="/imgs/ulk-Translating-a-logical-address.png" />
+</div>
+</div>
+<div class="section" id="linux">
+<h3><a class="toc-backref" href="#id69">2.3&nbsp;&nbsp;&nbsp;Linux 中的分段</a></h3>
+<p>因为分段和分页功能上比较重复, Linux实现中对分段用的很少</p>
+<p>Linux 2.6 只在80x86架构下使用分段, 只使用4个段:</p>
+<img alt="" src="/imgs/ulk-linux-segment.png" />
+<p>这4个段的线性地址空间都是 <tt class="docutils literal">0 - <span class="pre">2^32-1</span></tt> , 意味着</p>
+<ol class="arabic simple">
+<li>所有的进程(不管用户模式还是内核模式) 都使用相同的线性地址空间.</li>
+<li>因为开始于0x0000000, 线性地址 = 逻辑地址是一样的</li>
+</ol>
+<div class="section" id="linux-gdt">
+<h4><a class="toc-backref" href="#id70">2.3.1&nbsp;&nbsp;&nbsp;Linux 中的GDT</a></h4>
+<ul class="simple">
+<li>单核系统只有一个GDT</li>
+<li>多核系统, 对每个核有一个GDT</li>
+</ul>
+<p>Each GDT includes 18 segment descriptors and 14 null, unused, or reserved entries</p>
+</div>
+<div class="section" id="linuxldt">
+<h4><a class="toc-backref" href="#id71">2.3.2&nbsp;&nbsp;&nbsp;Linux中的LDT:</a></h4>
+<p>User Application 不使用LDT, 大家共享一个 <tt class="docutils literal">default_ldt</tt>, 可以用 <tt class="docutils literal"><span class="pre">modify_ldt()系统调用</span></tt> 来修改ldt, (Wine使用, 模拟window)</p>
+<p>man modify_ldt:</p>
+<pre class="literal-block">
+#include &lt;sys/types.h&gt;
+int modify_ldt(int func, void *ptr, unsigned long bytecount);
+
+DESCRIPTION:
+modify_ldt()  reads or writes the local descriptor table (ldt) for a process.  The ldt is a per-process memory management table used by the i386 processor.
+For more information on this table, see an Intel 386 processor handbook.
+</pre>
+</div>
+</div>
+<div class="section" id="id14">
+<h3><a class="toc-backref" href="#id72">2.4&nbsp;&nbsp;&nbsp;硬件中的分页</a></h3>
+<p>检查对页的访问是否有权限, 如果没有, 产生PageFault exception</p>
+<p>page frame: 物理概念(physical page)</p>
+<p>80x86: 控制寄存器cr0中的PG标志控制是否使用硬件提供的分页机制:</p>
+<p>PG = 0: linear addresses 就是 physical addresses
+PG = 1: 使用页表分页.</p>
+<div class="section" id="id15">
+<h4><a class="toc-backref" href="#id73">2.4.1&nbsp;&nbsp;&nbsp;常规分页</a></h4>
+<p>4KB 的page, 两极页表:</p>
+<p>如果用一级页表, 当用户稀疏使用了4G线性地址空间，比如只用了0x00000000和0xFFFFFFFF, 就需要 2^20个页表项 (2^32/4k) 需要4M内存.
+如果用2级页表, 如果用户实际用的内存较少, 页表所需空间就较小</p>
+<p>当然, 如果一个进程使用全部4G空间, 那么一级页表和两极页表都需要占用相同的空间, (二级页表还更多些)</p>
+<p>分页机制示意图:</p>
+<img alt="" src="/imgs/ulk-paging.png" />
+<p>每个进程都必须有自己的 <tt class="docutils literal">Page Dirrectory</tt>, 但是只需要部分的 <tt class="docutils literal">Page Table</tt> .</p>
+<p><tt class="docutils literal">Page Dirrectory</tt> 和 <tt class="docutils literal">Page Table</tt> 都是大小都是1024个页表条目. 页表条目包含:</p>
+<ul>
+<li><p class="first"><tt class="docutils literal">Present flag</tt> : 是否在内存中</p>
+</li>
+<li><p class="first"><tt class="docutils literal">20bit物理地址</tt>.</p>
+</li>
+<li><p class="first">Dirty flag</p>
+</li>
+<li><p class="first">Read/Write flag</p>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal">User/Supervisor</tt> flag (注意, 只有两种权限级别, 不像段映射, 有4个权限级别)</dt>
+<dd><ul class="first last simple">
+<li>标志为0时, 只允许 CPL &lt; 3 的时候访问(在Linux里面就是内核态)</li>
+<li>标志为1时, 总是允许访问.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id16">
+<h4><a class="toc-backref" href="#id74">2.4.2&nbsp;&nbsp;&nbsp;扩展分页</a></h4>
+<p>允许4M的 <tt class="docutils literal">page frame</tt>:</p>
+<img alt="" src="/imgs/ulk-extended-paging.png" />
+<p>相当于省掉了 <tt class="docutils literal">Page Table</tt> 这一层.</p>
+</div>
+<div class="section" id="pae-324g">
+<h4><a class="toc-backref" href="#id75">2.4.3&nbsp;&nbsp;&nbsp;PAE: 允许在32位系统上访问大于4G内存</a></h4>
+<p>Physical Address Extension</p>
+<p>从 <tt class="docutils literal">Pentium Pro</tt> 开始, Intel 把地址总线宽度从 32 升级到36, 允许访问2^36=64G内存.</p>
+<pre class="literal-block">
+PAE is activated by setting the Physical Address Extension (PAE) flag in the cr4 con- trol register.
+增加了:
+A new level of Page Table called the Page Directory Pointer Table (PDPT)
+</pre>
+</div>
+<div class="section" id="id17">
+<h4><a class="toc-backref" href="#id76">2.4.4&nbsp;&nbsp;&nbsp;64位架构</a></h4>
+<p>64位是 256 TB 地址空间</p>
+<p>64位中, 一般使用48位, 如果依然使用4KB的页, 还剩下48-12=36 bit, 这放在两级页表中, <tt class="docutils literal">Page Directory</tt> 和 <tt class="docutils literal">Page Table</tt> 就分别要有2^18条目, 得占用1M空间.</p>
+<p>所以, 64位系统中, 一般使用多级页表:</p>
+<img alt="" src="/imgs/ulk-paging-level.png" />
+</div>
+<div class="section" id="hardware-cache">
+<h4><a class="toc-backref" href="#id77">2.4.5&nbsp;&nbsp;&nbsp;Hardware Cache</a></h4>
+<p>Today’s microprocessors have clock rates of several gigahertz, while dynamic RAM (DRAM) chips have access times in the range of hundreds of clock cycles.</p>
+<p>L1 cache, L2 cache 之类</p>
+<div class="section" id="cache-snooping">
+<h5><a class="toc-backref" href="#id78">2.4.5.1&nbsp;&nbsp;&nbsp;cache snooping:</a></h5>
+<p>在多核架构中, 每个核有自己的cache, 一个核在写数据到cache时, 需要确保另一个核没有对应着一块内存的cache.</p>
+</div>
+</div>
+<div class="section" id="tlb-translation-lookaside-buffers">
+<h4><a class="toc-backref" href="#id79">2.4.6&nbsp;&nbsp;&nbsp;TLB(Translation Lookaside Buffers)</a></h4>
+<p>80x86 中: to speed up linear address translation</p>
+</div>
+</div>
+<div class="section" id="id18">
+<h3><a class="toc-backref" href="#id80">2.5&nbsp;&nbsp;&nbsp;Linux 中的分页</a></h3>
+<p>对32位架构和64位架构使用同样的分页模型</p>
+<ul class="simple">
+<li>2.6.10: 3级页表</li>
+<li>2.6.11: 4级页表</li>
+</ul>
+<p>4级页表:</p>
+<img alt="" src="/imgs/ulk-paging-level-in-linux.png" />
+<ul class="simple">
+<li>对于32位系统: Linux直接把Upper Dirrectory 和Middle Directory 设为只有1个条目, 这样就可以变为2级页表.</li>
+<li>对于32位+PAE的系统: Linux使用3级页表,</li>
+<li>对于64位系统, 使用3或4级页表. (见前面的表格)</li>
+</ul>
+<div class="section" id="layout">
+<h4><a class="toc-backref" href="#id81">2.5.1&nbsp;&nbsp;&nbsp;物理内存Layout</a></h4>
+<p>Linux 内核通常在RAM的0x00100000(from the second megabyte)</p>
+<p>因为第一M通常是BIOS,</p>
+<p>启动时, 内核向BIOS查询可用物理内存大小:</p>
+<pre class="literal-block">
+In the early stage of the boot sequence (see Appendix A), the kernel queries the BIOS and learns the size of the physical memory.
+</pre>
+<p>之后内核调用 <tt class="docutils literal">machine_specific_memory_setup()</tt> 构造可用空间的一个列表, 例如</p>
+<pre class="literal-block">
+Start      End        Type
+0x00000000 0x0009ffff Usable
+0x000f0000 0x000fffff Reserved
+0x00100000 0x07feffff Usable
+0x07ff0000 0x07ff2fff ACPI data
+0x07ff3000 0x07ffffff ACPI NVS
+0xffff0000 0xffffffff Reserved
+</pre>
+<p>arch/i386/kernel/setup.c:</p>
+<pre class="literal-block">
+void __init setup_arch(char **cmdline_p)
+{
+
+    print_memory_map(machine_specific_memory_setup());
+    max_low_pfn = setup_memory();
+
+    paging_init();
+
+    register_memory();
+}
+</pre>
+<p>内核加载后, 一般占3M空间, 也分为代码段, 数据段.</p>
+</div>
+<div class="section" id="process-page-table">
+<h4><a class="toc-backref" href="#id82">2.5.2&nbsp;&nbsp;&nbsp;Process Page Table</a></h4>
+<p>注意这里说的是线性地址空间:</p>
+<ul class="simple">
+<li>Linear addresses from 0x00000000 to 0xbfffffff can be addressed when the process runs in either User or Kernel Mode.</li>
+<li>Linear addresses from 0xc0000000 to 0xffffffff can be addressed only when the process runs in Kernel Mode.</li>
+</ul>
+</div>
+<div class="section" id="kernel-page-table">
+<h4><a class="toc-backref" href="#id83">2.5.3&nbsp;&nbsp;&nbsp;Kernel Page Table</a></h4>
+<p>The kernel maintains a set of page tables for its own use, rooted at a so-called master kernel Page Global Directory.</p>
+</div>
+</div>
+<div class="section" id="id19">
+<h3><a class="toc-backref" href="#id84">2.6&nbsp;&nbsp;&nbsp;小结</a></h3>
+<p>Linux 中所有的进程(不管用户模式还是内核模式) 都使用相同的线性地址空间: <tt class="docutils literal">0 - <span class="pre">2^32-1</span></tt></p>
+</div>
+</div>
+<div class="section" id="c3-processes">
+<h2><a class="toc-backref" href="#id85">3&nbsp;&nbsp;&nbsp;c3 Processes</a></h2>
+<p>Processes are often called tasks or threads in the Linux source code.</p>
+<p>LWP: Lightweight Processes, Linux 的多线程就是用LWP实现的.</p>
+<div class="section" id="processes-lightweight-processes-and-threads">
+<h3><a class="toc-backref" href="#id86">3.1&nbsp;&nbsp;&nbsp;Processes, Lightweight Processes, and Threads</a></h3>
+<ul>
+<li><dl class="first docutils">
+<dt>老的Unix: 进程通过fork产生新进程, 共享代码段, 有不同的数据段(Copy on Write)</dt>
+<dd><ul class="first last simple">
+<li>不支持multithreaded, 内核看到的都是进程, 线程的概念是在用户态实现的(pthread)</li>
+<li>老的pthread库是用这种实现.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>新的Unix: 直接支持多线程,</dt>
+<dd><ul class="first last simple">
+<li>user programs having many relatively independent execution flows sharing a large portion of the application data structures</li>
+<li>In such systems, a process is composed of several user threads</li>
+<li>Linux 用 <tt class="docutils literal">Lightweight processes</tt> 支持multithreaded</li>
+<li>Examples of POSIX-compliant pthread libraries that use Linux’s lightweight processes are LinuxThreads, Native POSIX Thread Library (NPTL), and IBM’s Next Generation Posix Threading Package (NGPT).</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>In Linux a thread group is basically a set of lightweight processes that implement a multithreaded application and act as a whole with regards to some system calls such as getpid(), kill(), and _exit().</p>
+<div class="section" id="pthread">
+<h4><a class="toc-backref" href="#id87">3.1.1&nbsp;&nbsp;&nbsp;关于pthread</a></h4>
+<pre class="literal-block">
+The code below comes from &quot;Advanced Programing in Unix Environment&quot;, it creates a new thread, and prints the process id and thread id for main and new threads.
+
+In the book, it said that in linux, the output of this code would show that two threads have different process ids, because pthread uses lightweight process to emulate thread. But when I ran this code in Ubuntu 12.04, it has kernel 3.2, printed the same pid.
+
+so, does the new linux kernel change the internal implementation of pthread?
+
+#include &quot;apue.h&quot;
+#include &lt;pthread.h&gt;
+
+pthread_t ntid;
+
+void printids(const char *s) {
+  pid_t     pid;
+  pthread_t tid;
+  pid = getpid();
+  tid = pthread_self();
+  printf(&quot;%s pid %u tid %u (0x%x)\n&quot;,
+         s, (unsigned int)pid, (unsigned int)tid, (unsigned int)tid);
+}
+
+void *thread_fn(void* arg) {
+  printids(&quot;new thread: &quot;);
+  return (void *)0;
+}
+
+int main(void) {
+  int err;
+  err = pthread_create(&amp;ntid, NULL, thread_fn, NULL);
+  if (err != 0)
+    err_quit(&quot;can't create thread: %s\n&quot;, strerror(err));
+  printids(&quot;main thread: &quot;);
+  sleep(1);
+  return 0;
+}
+</pre>
+<p>On Linux pthread uses the clone syscall with a special flag CLONE_THREAD.</p>
+<p>See the documentation of clone syscall:</p>
+<p>CLONE_THREAD (since Linux 2.4.0-test8):</p>
+<pre class="literal-block">
+If CLONE_THREAD is set, the child is placed in the same thread group as the calling process. To make the remainder of the discussion of CLONE_THREAD more readable, the term &quot;thread&quot; is used to refer to the processes within a thread group.
+
+Thread groups were a feature added in Linux 2.4 to support the POSIX threads notion of a set of threads that share a single PID. Internally, this shared PID is the so-called thread group identifier (TGID) for the thread group. Since Linux 2.4, calls to getpid(2) return the TGID of the caller.
+</pre>
+</div>
+<div class="section" id="linuxthreads-nptl">
+<h4><a class="toc-backref" href="#id88">3.1.2&nbsp;&nbsp;&nbsp;LinuxThreads 和NPTL</a></h4>
+<p>一个系统里面的pthread实现只会是两种之一, 可以用下面这个命令查询本系统使用的pthread版本:</p>
+<pre class="literal-block">
+getconf GNU_LIBPTHREAD_VERSION
+</pre>
+</div>
+<div class="section" id="id20">
+<h4><a class="toc-backref" href="#id89">3.1.3&nbsp;&nbsp;&nbsp;参考</a></h4>
+<p>TODO:</p>
+<ul class="simple">
+<li><a class="reference external" href="https://computing.llnl.gov/tutorials/pthreads/">https://computing.llnl.gov/tutorials/pthreads/</a></li>
+<li>可以参考这本书: <a class="reference external" href="http://maxim.int.ru/bookshelf/PthreadsProgram/htm/r_47.html">http://maxim.int.ru/bookshelf/PthreadsProgram/htm/r_47.html</a></li>
+</ul>
+</div>
+</div>
+<div class="section" id="process-descriptor">
+<h3><a class="toc-backref" href="#id90">3.2&nbsp;&nbsp;&nbsp;Process Descriptor</a></h3>
+<p>进程描述符</p>
+<img alt="" src="/imgs/ulk-process-descriptor.png" />
+<p>注意内核里面 没有thread 的概念.</p>
+<p>进程到Process Descriptor 的一一对应关系, 是通过 Process Descriptor结构的地址值确定的.</p>
+<div class="section" id="id21">
+<h4><a class="toc-backref" href="#id91">3.2.1&nbsp;&nbsp;&nbsp;能有多少个进程</a></h4>
+<p>by default, the maximum PID number is 32,767 (PID_MAX_DEFAULT - 1) , 32位系统最多3w个进程.</p>
+<p>the system administrator may reduce this limit by writing a smaller value into the /proc/sys/kernel/pid_max file</p>
+<p>In 64-bit architectures, the system administrator can enlarge the maximum PID number up to 4,194,303</p>
+<p>因为内核分配一个pid的时候, 需要确保这个pid没有被用过, 所以需要一个bitmap, 32767个bit, 正好是4k(一个page).
+在64位系统中, 如果pid_max设置为 4,194,303, 就可能需要0.5M内存做bitmap, 这些内存一旦用了就不会被释放的.</p>
+<p>我们的机器一般都是默认的32767</p>
+</div>
+<div class="section" id="pidthread-group">
+<h4><a class="toc-backref" href="#id92">3.2.2&nbsp;&nbsp;&nbsp;pid在thread group中</a></h4>
+<p>在一个thread group 中的进程, 从用户看来pid相等, 实际上, 内核中它们的pid不相等, 是因为getpid 返回的是 <tt class="docutils literal">tgid</tt> .</p>
+<p>To comply with this standard, Linux makes use of thread groups. The identifier shared by the threads is the PID of the thread group leader, that is, the PID of the first lightweight process in the group;</p>
+<p>it is stored in the tgid field of the process descriptors. The getpid() system call returns the value of <tt class="docutils literal">tgid</tt> relative to the current process instead of the value of pid, so all the threads of a multithreaded application share the same identifier</p>
+<p>注意: 但是 <tt class="docutils literal">kill()</tt> 的时候用的是pid.</p>
+<p>因为内核中 内核栈后面有意个指向 <tt class="docutils literal">Process Descriptor</tt> 的指针, 所以:</p>
+<p>the kernel can easily obtain the address of the thread_info Structure of the process currently running on a CPU from the value of the esp register:</p>
+<pre class="literal-block">
+current_thread_info()  这个函数用的非常多
+</pre>
+</div>
+<div class="section" id="process-list">
+<h4><a class="toc-backref" href="#id93">3.2.3&nbsp;&nbsp;&nbsp;process list</a></h4>
+<p>用内核的双链表结构</p>
+<p>不同优先级:</p>
+<pre class="literal-block">
+truct list_head [140];  #queue The 140 heads of the priority lists
+</pre>
+<p>四个hash表用于从id到 Process Descriptor 的映射:</p>
+<pre class="literal-block">
+Hash table type     Field name  Description
+PIDTYPE_PID         pid         PID of the process
+PIDTYPE_TGID        tgid        PID of thread group leader process
+PIDTYPE_PGID        pgrp        PID of the group leader process
+PIDTYPE_SID         session     PID of the session leader process
+</pre>
+<p>用于pid的hash函数:</p>
+<pre class="literal-block">
+unsigned long hash_long(unsigned long val, unsigned int bits)
+{
+    unsigned long hash = val * 0x9e370001UL;
+    return hash &gt;&gt; (32 - bits);
+}
+</pre>
+<p>这个数字0x9e370001UL, 是一个质数. 而且比较容易算(二进制中1的位数较少)</p>
+<p>A process wishing to wait for a specific condition can invoke any of the functions shown in the following list.:</p>
+<pre class="literal-block">
+The sleep_on() function operates on the current process:
+void sleep_on(wait_queue_head_t *wq)
+{
+    wait_queue_t wait;
+    init_waitqueue_entry(&amp;wait, current);
+    current-&gt;state = TASK_UNINTERRUPTIBLE;
+    add_wait_queue(wq,&amp;wait); /* wq points to the wait queue head */
+    schedule();
+    remove_wait_queue(wq, &amp;wait);
+}
+</pre>
+</div>
+<div class="section" id="process">
+<h4><a class="toc-backref" href="#id94">3.2.4&nbsp;&nbsp;&nbsp;Process 资源限制</a></h4>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field"><th class="field-name">RLIMIT_AS:</th><td class="field-body">The maximum size of process address space, in bytes. The kernel checks this value when the
+process uses malloc( ) or a related function to enlarge its address space (see the section
+The Process’s Address Space” in Chapter 9).</td>
+</tr>
+<tr class="field"><th class="field-name">RLIMIT_CORE:</th><td class="field-body">The maximum core dump file size, in bytes. The kernel checks this value when a process is
+aborted, before creating a core file in the current directory of the process (see the section
+Actions Performed upon Delivering a Signal” in Chapter 11). If the limit is 0, the kernel
+won’t create the file.</td>
+</tr>
+<tr class="field"><th class="field-name">RLIMIT_CPU:</th><td class="field-body">The maximum CPU time for the process, in seconds. If the process exceeds the limit, the ker-
+nel sends it a SIGXCPU signal, and then, if the process doesn’t terminate, a SIGKILL sig-
+nal (see Chapter 11).</td>
+</tr>
+<tr class="field"><th class="field-name">RLIMIT_DATA:</th><td class="field-body">The maximum <tt class="docutils literal">heap size</tt> , in bytes. The kernel checks this value before expanding the heap of
+the process (see the section “Managing the Heap” in Chapter 9).</td>
+</tr>
+<tr class="field"><th class="field-name">RLIMIT_FSIZE:</th><td class="field-body">The maximum file size allowed, in bytes. If the process tries to enlarge a file to a size greater
+than this value, the kernel sends it a SIGXFSZ signal.</td>
+</tr>
+<tr class="field"><th class="field-name">RLIMIT_LOCKS:</th><td class="field-body">Maximum number of file locks (currently, not enforced).</td>
+</tr>
+<tr class="field"><th class="field-name">RLIMIT_NOFILE:</th><td class="field-body"></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<hr class="docutils" />
+<div class="section" id="process-switch">
+<h3><a class="toc-backref" href="#id95">3.3&nbsp;&nbsp;&nbsp;Process Switch</a></h3>
+<div class="section" id="hardware-context">
+<h4><a class="toc-backref" href="#id96">3.3.1&nbsp;&nbsp;&nbsp;Hardware Context 切换</a></h4>
+<p>2.6以前, 使用 <tt class="docutils literal">far jmp</tt> 来实现硬件层次的切换, 自动保存寄存器的值.
+But Linux 2.6 uses software to perform a process switch for the following reasons:</p>
+<p>总之就是保存各种寄存器. MMX&lt; FPU, SSE之类.</p>
+</div>
+<div class="section" id="schedule">
+<h4><a class="toc-backref" href="#id97">3.3.2&nbsp;&nbsp;&nbsp;schedule()  函数</a></h4>
+<p>every process switch consists of two steps:
+1. Switching the Page Global Directory to install a new address space; we’ll describe this step in Chapter 9.
+2. Switching the Kernel Mode stack and the hardware context, which provides all the information needed by the kernel to execute the new process, including the CPU registers.</p>
+</div>
+</div>
+<div class="section" id="create-processes">
+<h3><a class="toc-backref" href="#id98">3.4&nbsp;&nbsp;&nbsp;Create Processes</a></h3>
+<div class="section" id="clone">
+<h4><a class="toc-backref" href="#id99">3.4.1&nbsp;&nbsp;&nbsp;内核底层的clone</a></h4>
+<p>各种flag:</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field"><th class="field-name">CLONE_VM:</th><td class="field-body">Shares the memory descriptor and all Page Tables (see Chapter 9).
+共享地址空间.</td>
+</tr>
+<tr class="field"><th class="field-name">CLONE_FS:</th><td class="field-body">Shares the table that identifies the root directory and the current working directory, as
+well as the value of the bitmask used to mask the initial file permissions of a new file
+(the so-called file umask).</td>
+</tr>
+<tr class="field"><th class="field-name">CLONE_FILES:</th><td class="field-body">Shares the table that identifies the open files (see Chapter 12).
+共享打开的文件fd.</td>
+</tr>
+<tr class="field"><th class="field-name">CLONE_SIGHAND:</th><td class="field-body">Shares the tables that identify the signal handlers and the blocked and pending signals
+(see Chapter 11). If this flag is true, the CLONE_VM flag must also be set.
+共享sighandler(比如nohup 先设置了SIGHANDLER, 再打开子进程的时候, 肯定就设置了这个标记)</td>
+</tr>
+<tr class="field"><th class="field-name">CLONE_PTRACE:</th><td class="field-body">If traced, the parent wants the child to be traced too. Furthermore, the debugger may
+want to trace the child on its own; in this case, the kernel forces the flag to 1.
+跟踪模式</td>
+</tr>
+<tr class="field"><th class="field-name">CLONE_VFORK:</th><td class="field-body">Set when the system call issued is a vfork( ) (see later in this section).
+...</td>
+</tr>
+<tr class="field"><th class="field-name">CLONE_STOPPED:</th><td class="field-body">Forces the child to start in the TASK_STOPPED state.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="clone-fork-and-vfork">
+<h4><a class="toc-backref" href="#id100">3.4.2&nbsp;&nbsp;&nbsp;clone( ), fork( ), and vfork( )</a></h4>
+<ul>
+<li><p class="first">clone 创建线程, 基本上就是上面sys_clone系统调用.</p>
+</li>
+<li><dl class="first docutils">
+<dt>fork: 用clone实现, 设置了SIGCHILD, 所有的flag都未设置 (TODO: ? 难道CLONE_SIGHAND也没设置?)</dt>
+<dd><ul class="first last simple">
+<li>它的chile_stack参数是父进程当前堆栈指针(所以创建完成后, 父子两个进程的堆栈指针是一样的.)</li>
+<li><tt class="docutils literal">copy on write</tt> 保证堆栈上有写操作的时候, 父子进程就会使用不同的堆栈.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>vfork (create a child process and block parent)</dt>
+<dd><ul class="first last simple">
+<li>设置SIGCHILD, CLONE_VM, CLONE_VFORK,</li>
+<li>vfork 阻塞父进程的执行, 一直到子进程退出或执行一个新的程序为止.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<div class="section" id="man-clone">
+<h5><a class="toc-backref" href="#id101">3.4.2.1&nbsp;&nbsp;&nbsp;man clone(库函数)</a></h5>
+<pre class="literal-block">
+#define _GNU_SOURCE
+#include &lt;sched.h&gt;
+
+int clone(int (*fn)(void *), void *child_stack,
+          int flags, void *arg, ...
+          /* pid_t *ptid, struct user_desc *tls, pid_t *ctid */ );
+
+ It is actually a library function layered on top of the underlying clone() system call, hereinafter referred to as sys_clone.
+ (这个clone是一个library函数, 下层是通过sys_clone系统调用实现, sys_clone没有 fn, arg参数, 这两个参数是 clone这个库函数加上的.)
+
+ 这个clone是用于实现thread的. 允许设置共享内存, 栈空间, 栈位置等.
+</pre>
+</div>
+</div>
+<div class="section" id="do-fork">
+<h4><a class="toc-backref" href="#id102">3.4.3&nbsp;&nbsp;&nbsp;do_fork() 函数</a></h4>
+<p>do_fork() 负责处理clone(), fork(), vfork() 系统调用.</p>
+<p>几个重要步骤:
+1. 查找pidmap_array 位图, 为子进程分配新的pid
+2. If the child will run on the <strong>same CPU</strong> as the parent, and parent and child do not share the same set of page tables (CLONE_VM flag cleared), it then forces the child to run before the parent by inserting it into the parent’s runqueue right before the parent.</p>
+<blockquote>
+<p>This simple step yields better performance if the child flushes its address space and executes a new program right after the forking. If we let the parent run first, the Copy On Write mechanism would give rise to a series of unnecessary page duplications.</p>
+<p>这种情况, 强迫 子进程先运行,</p>
+</blockquote>
+</div>
+</div>
+<div class="section" id="id22">
+<h3><a class="toc-backref" href="#id103">3.5&nbsp;&nbsp;&nbsp;内核线程</a></h3>
+<p>内核中, 周期性执行, 只运行在内核态, 用kernel_thread() 函数创建.</p>
+<p>The function essentially invokes do_fork() as follows:</p>
+<pre class="literal-block">
+do_fork(flags|CLONE_VM|CLONE_UNTRACED, 0, pregs, 0, NULL, NULL);
+</pre>
+<p>常见的内核线程:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>keventd (also called events)</dt>
+<dd><ul class="first last simple">
+<li>Executes the functions in the keventd_wq workqueue (see Chapter 4).</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>kapmd</dt>
+<dd><ul class="first last simple">
+<li>Handles the events related to the Advanced Power Management (APM).</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>kswapd</dt>
+<dd><ul class="first last simple">
+<li>Reclaims memory, as described in the section “Periodic Reclaiming” in Chapter 17.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>pdflush</dt>
+<dd><ul class="first last simple">
+<li>Flushes “dirty” buffers to disk to reclaim memory, as described in the section “The pdflush Kernel Threads” in Chapter 15.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>kblockd</dt>
+<dd><ul class="first last simple">
+<li>Executes the functions in the kblockd_workqueue workqueue. Essentially, it periodically activates the block device drivers, as described in the section “Activating the Block Device Driver” in Chapter 14.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>ksoftirqd</dt>
+<dd><ul class="first last simple">
+<li>Runs the tasklets (see section “Softirqs and Tasklets” in Chapter 4); there is one of these kernel threads for each CPU in the system.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<div class="section" id="pdflush">
+<h4><a class="toc-backref" href="#id104">3.5.1&nbsp;&nbsp;&nbsp;pdflush</a></h4>
+<p>参考: <a class="reference external" href="http://www.westnet.com/~gsmith/content/linux-pdflush.htm">http://www.westnet.com/~gsmith/content/linux-pdflush.htm</a>
+<a class="reference external" href="http://www.linuxjournal.com/article/6931">http://www.linuxjournal.com/article/6931</a></p>
+<p>可能有 2 - 8 个pdflush threads.</p>
+<p>You can monitor how many are active by looking at /proc/sys/vm/nr_pdflush_threads.</p>
+<ul class="simple">
+<li>Whenever all existing pdflush threads are busy for at least one second, an additional pdflush daemon is spawned.</li>
+<li>Each time a second has passed without any pdflush activity, one of the threads is removed</li>
+</ul>
+<p>调优:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>/proc/sys/vm/dirty_writeback_centisecs (default 500):</dt>
+<dd><ul class="first last simple">
+<li>In hundredths of a second, this is how often pdflush wakes up to write data to disk.</li>
+<li>The default wakes up the two (or more) active threads every five seconds.</li>
+<li>减小这个值会让pdflush 更加激进.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>/proc/sys/vm/dirty_expire_centiseconds (default 3000):</dt>
+<dd><ul class="first last simple">
+<li>In hundredths of a second, how long data can be in the page cache before it's considered expired and must be written at the next opportunity. Note that this default is very long: a full 30 seconds. That means that under normal circumstances, unless you write enough to trigger the other pdflush method, Linux won't actually commit anything you write until 30 seconds later.</li>
+<li>多长时间以上的page需要flush</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>/proc/sys/vm/dirty_background_ratio (default 10):</dt>
+<dd><ul class="first last simple">
+<li>Maximum percentage of active that can be filled with dirty pages before pdflush begins to write them</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>/proc/sys/vm/dirty_ratio (default 40):</dt>
+<dd><ul class="first last simple">
+<li>Maximum percentage of total memory that can be filled with dirty pages before processes are forced to write dirty buffers themselves during their time slice instead of being allowed to do more writes.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id23">
+<h3><a class="toc-backref" href="#id105">3.6&nbsp;&nbsp;&nbsp;进程0 &amp; 进程1</a></h3>
+<ul>
+<li><dl class="first docutils">
+<dt>进程0: 所有进程的祖先, (idle进程)</dt>
+<dd><ul class="first last simple">
+<li>是一个内核线程</li>
+<li>执行 <tt class="docutils literal">cpu_idle()</tt> 函数, 本质上是在开中断的情况下重复执行hlt指令</li>
+<li>只有当没有其它进程处于TASK_RUNNING 状态时, 调度程序才选择进程0</li>
+<li>多核系统中, 每个核都有一个进程0 (TODO: how)</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>进程1: init进程, 由进程0创建,</dt>
+<dd><ul class="first last simple">
+<li>创建后调用 execve() 装载init二进制, 不是内核线程.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="destorying-processes">
+<h3><a class="toc-backref" href="#id106">3.7&nbsp;&nbsp;&nbsp;Destorying Processes</a></h3>
+<ul class="simple">
+<li>exit_group() 系统调用, 终止整个线程组, 对应 <tt class="docutils literal">c库函数exit()</tt></li>
+<li>exit() 系统调用, 终止一个线程          对应 <tt class="docutils literal">pthread_exit()</tt></li>
+</ul>
+</div>
+</div>
+<div class="section" id="c4-interrupts-and-exceptions">
+<h2><a class="toc-backref" href="#id107">4&nbsp;&nbsp;&nbsp;c4 Interrupts and Exceptions</a></h2>
+<ul>
+<li><dl class="first docutils">
+<dt><strong>Interrupts</strong> Asynchronous interrupts: <strong>硬件</strong> 发出的.</dt>
+<dd><ul class="first last">
+<li><dl class="first docutils">
+<dt>可屏蔽中断</dt>
+<dd><ul class="first last simple">
+<li></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>不可屏蔽中断</dt>
+<dd><ul class="first last simple">
+<li>极少数. Only a few critical events (such as hardware failures)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal">Exceptions</tt> Synchronous interrupts: cpu执行完一个指令后发出的</dt>
+<dd><ul class="first last">
+<li><dl class="first docutils">
+<dt>Processor-detected exceptions (怎么翻译)</dt>
+<dd><ul class="first last">
+<li><dl class="first docutils">
+<dt>Faults</dt>
+<dd><ul class="first last simple">
+<li>如Page Fault Exception Handler</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Traps</dt>
+<dd><ul class="first last simple">
+<li>如debugger</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">Aborts</p>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Programmed exceptions(程序主动触发)</dt>
+<dd><ul class="first last simple">
+<li><tt class="docutils literal">int</tt> or <tt class="docutils literal">int3</tt> instructions</li>
+<li><tt class="docutils literal">into</tt> (check for overflow) and <tt class="docutils literal">bound</tt>  (check on address bound) instructions</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>exception 和interrupt 是intel的术语.</p>
+<div class="section" id="interrupts-and-exceptions">
+<h3><a class="toc-backref" href="#id108">4.1&nbsp;&nbsp;&nbsp;Interrupts and Exceptions</a></h3>
+<div class="section" id="interrupt">
+<h4><a class="toc-backref" href="#id109">4.1.1&nbsp;&nbsp;&nbsp;Interrupt</a></h4>
+<div class="section" id="interrupt-handling">
+<h5><a class="toc-backref" href="#id110">4.1.1.1&nbsp;&nbsp;&nbsp;Interrupt handling</a></h5>
+<ul class="simple">
+<li>非常轻量, 内核必须尽量处理尽量多的中断, 这样内核就必须把Interrupt Handler 做的很轻.
+比如有数据ready时, 中断处理程序只是简单的做一个标记, 然后通知相应的程序, 而不会在中断处理程序里面拷贝数据到内存.</li>
+<li>可重入</li>
+</ul>
+</div>
+<div class="section" id="irqs-interrupt-requests">
+<h5><a class="toc-backref" href="#id111">4.1.1.2&nbsp;&nbsp;&nbsp;IRQs (Interrupt ReQuests)</a></h5>
+<ul>
+<li><p class="first">每个硬件都有一个 Interrupt ReQuest (IRQ) line 引脚</p>
+</li>
+<li><p class="first">所有硬件的引脚 都连到 <tt class="docutils literal">Programmable Interrupt Controller(PIC)</tt></p>
+</li>
+<li><dl class="first docutils">
+<dt>PIC (Programmable Interrupt Controller)</dt>
+<dd><ol class="first last arabic">
+<li><p class="first">Monitors the IRQ lines, checking for raised signals. If two or more IRQ lines are raised, selects the one having the lower pin number.</p>
+</li>
+<li><dl class="first docutils">
+<dt>If a raised signal occurs on an IRQ line:</dt>
+<dd><ol class="first last loweralpha simple">
+<li>Converts the raised signal received into a corresponding vector.</li>
+<li>Stores the vector in an Interrupt Controller I/O port, thus allowing the CPU to read it via the data bus.</li>
+<li>Sends a raised signal to the processor INTR pin—that is, issues an interrupt. (给CPU的INTR引脚发信号)</li>
+<li>Waits until the CPU acknowledges the interrupt signal by writing into one of the Programmable Interrupt Controllers (PIC) I/O ports; when this occurs, clears the INTR line.</li>
+</ol>
+</dd>
+</dl>
+</li>
+<li><p class="first">Goes back to step 1.</p>
+</li>
+</ol>
+</dd>
+</dl>
+</li>
+</ul>
+<p>IRQ线可以屏蔽.</p>
+<div class="section" id="pic">
+<h6><a class="toc-backref" href="#id112">4.1.1.2.1&nbsp;&nbsp;&nbsp;老的PIC 的硬件结构</a></h6>
+<p>2个8259芯片, 第二个向上连在第一个的一个引脚, 可以处理15个IRQ线</p>
+<p>Traditional PICs are implemented by connecting “in cascade” two 8259A-style external chips. Each chip can handle up to eight different IRQ input lines. Because the INT output line of the slave PIC is connected to the IRQ2 pin of the master PIC, the number of available IRQ lines is limited to 15.</p>
+</div>
+<div class="section" id="pic-the-advanced-programmable-interrupt-controller-apic">
+<h6><a class="toc-backref" href="#id113">4.1.1.2.2&nbsp;&nbsp;&nbsp;新的PIC 的硬件结构 The Advanced Programmable Interrupt Controller (APIC)</a></h6>
+<p>Pentium III 以后有APIC</p>
+<p>多核系统中, 每个核都应该可以处理中断, 所以有一个中断总线, APIC和CPU都连到这个总线上, 有总线仲裁/路由机制:</p>
+<img alt="" src="/imgs/ulk-multi-apic.png" />
+<p>硬件终端可以有两种处理方式:</p>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>Static distribution</dt>
+<dd><ul class="first last simple">
+<li>指定中断有某个CPU处理.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Dynamic distribution</dt>
+<dd><ul class="first last simple">
+<li>信号被分发到CPU 中 priority 最小的一个. (这个priority可以编程修改)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<p>CPU之间也能发送中断.</p>
+</div>
+</div>
+</div>
+<div class="section" id="exceptions">
+<h4><a class="toc-backref" href="#id114">4.1.2&nbsp;&nbsp;&nbsp;Exceptions</a></h4>
+<ul>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal">0</tt> “Divide error” (fault)</dt>
+<dd><ul class="first last simple">
+<li>Raised when a program issues an integer division by 0.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal">1</tt> “Debug” (trap or fault)</dt>
+<dd><ul class="first last simple">
+<li>Raised when the TF flag of eflags is set (quite useful to implement single-step execution of a debugged program) or when the address of an instruction or operand falls within the range of an active debug register (see the section “Hardware Context” in Chapter 3).</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal">3</tt> “Breakpoint” (trap)</dt>
+<dd><ul class="first last simple">
+<li>Caused by an int3 (breakpoint) instruction (usually inserted by a debugger).</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal">4</tt> “Overflow” (trap)</dt>
+<dd><ul class="first last simple">
+<li>An into (check for overflow) instruction has been executed while the OF (overflow) flag of eflags is set.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first"><tt class="docutils literal">8</tt> “Double fault”</p>
+</li>
+<li><p class="first"><tt class="docutils literal">11</tt> “Segment not present” (fault)</p>
+</li>
+<li><p class="first"><tt class="docutils literal">12</tt> “Stack segment fault” (fault)</p>
+</li>
+<li><p class="first"><tt class="docutils literal">14</tt> “Page Fault” (fault)</p>
+</li>
+</ul>
+<p>内核收到中断后，通常会向进程发送信号(这就是我们段错误的时候是收到信号的原因)</p>
+<pre class="literal-block">
+Table 4-1. Signals sent by the exception handlers
+
+# Exception                         Exception handler                  Signal
+0 Divide error                      divide_error( )                    SIGFPE
+1 Debug                             debug( )                           SIGTRAP
+2 NMI                               nmi( )                             None
+3 Breakpoint                        int3( )                            SIGTRAP
+4 Overflow                          overflow( )                        SIGSEGV
+5 Bounds check                      bounds( )                          SIGSEGV
+6 Invalid opcode                    invalid_op( )                      SIGILL
+7 Device not available              device_not_available( )            None
+8 Double fault                      doublefault_fn()                   None
+9 Coprocessor segment overrun       coprocessor_segment_overrun( )     SIGFPE
+10 Invalid TSS                      invalid_TSS( )                     SIGSEGV
+11 Segment not present              segment_not_present( )             SIGBUS
+12 Stack segment fault              stack_segment( )                   SIGBUS
+13 General protection               general_protection( )              SIGSEGV
+14 Page Fault                       page_fault( )                      SIGSEGV
+15 Intel-reserved                   None                               None
+16 Floating-point error             coprocessor_error( )               SIGFPE
+17 Alignment check                  alignment_check( )                 SIGBUS
+18 Machine check                    machine_check()                    None
+19 SIMD floating point              simd_coprocessor_error()           SIGFPE
+</pre>
+</div>
+<div class="section" id="idt">
+<h4><a class="toc-backref" href="#id115">4.1.3&nbsp;&nbsp;&nbsp;中断描述符表IDT</a></h4>
+</div>
+</div>
+<div class="section" id="nested-execution-of-exception-and-interrupt-handlers">
+<h3><a class="toc-backref" href="#id116">4.2&nbsp;&nbsp;&nbsp;Nested Execution of Exception and Interrupt Handlers</a></h3>
+</div>
+<div class="section" id="initializing-the-interrupt-descriptor-table">
+<h3><a class="toc-backref" href="#id117">4.3&nbsp;&nbsp;&nbsp;Initializing the Interrupt Descriptor Table</a></h3>
+<p>Intel 提供三种 Interrupt, Trap, and System Gates, 权限不同, o, 比较复杂:</p>
+<pre class="literal-block">
+set_trap_gate(0,&amp;divide_error);
+set_trap_gate(1,&amp;debug);
+
+set_intr_gate(2,&amp;nmi);
+set_system_intr_gate(3,&amp;int3);
+set_system_gate(4,&amp;overflow);
+set_system_gate(5,&amp;bounds);
+set_trap_gate(6,&amp;invalid_op);
+set_trap_gate(7,&amp;device_not_available);
+set_task_gate(8,31);
+set_trap_gate(9,&amp;coprocessor_segment_overrun);
+set_trap_gate(10,&amp;invalid_TSS);
+set_trap_gate(11,&amp;segment_not_present);
+set_trap_gate(12,&amp;stack_segment);
+set_trap_gate(13,&amp;general_protection);
+set_intr_gate(14,&amp;page_fault);
+...
+</pre>
+</div>
+<div class="section" id="exception-handling">
+<h3><a class="toc-backref" href="#id118">4.4&nbsp;&nbsp;&nbsp;Exception Handling</a></h3>
+<p>通常是发信号到响应进程.</p>
+<p>Most exceptions issued by the CPU are interpreted by Linux as error conditions.
+When one of them occurs, the kernel sends a signal to the process that caused the
+exception to notify it of an anomalous condition.</p>
+<p>例如:</p>
+<p>If, for instance, a process performs
+a division by zero, the CPU raises a “Divide error” exception, and the corresponding
+exception handler sends a SIGFPE signal to the current process, which then takes the
+necessary steps to recover or (if no signal handler is set for that signal) abort.</p>
+<pre class="literal-block">
+current-&gt;thread.error_code = error_code;
+current-&gt;thread.trap_no = vector;
+force_sig(sig_number, current);
+</pre>
+<p>The current process takes care of the signal right after the termination of the exception handler.</p>
+<p>The signal will be handled either in User Mode by the process’s own signal handler (if it exists) or in Kernel Mode. In the latter case, the kernel usually kills the process (see Chapter 11). The signals sent by the exception handlers are listed in Table 4-1.</p>
+</div>
+<div class="section" id="id24">
+<h3><a class="toc-backref" href="#id119">4.5&nbsp;&nbsp;&nbsp;Interrupt Handling(硬件产生的)</a></h3>
+<p>this approach does not hold for interrupts, because they frequently arrive long after the process to which they are related</p>
+<p>前面方法不适用, 因为当前进程和中断并没有关系.</p>
+<p>三种:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>I/O interrupts</dt>
+<dd><ul class="first last simple">
+<li>An I/O device requires attention; the corresponding interrupt handler must query the device to determine the proper course of action. We cover this type of interrupt in the later section “I/O Interrupt Handling.”</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Timer interrupts</dt>
+<dd><ul class="first last simple">
+<li>Some timer, either a local APIC timer or an external timer, has issued an interrupt; this kind of interrupt tells the kernel that a fixed-time interval has elapsed.  These interrupts are handled mostly as I/O interrupts; we discuss the peculiar characteristics of timer interrupts in Chapter 6.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Interprocessor interrupts</dt>
+<dd><ul class="first last simple">
+<li>A CPU issued an interrupt to another CPU of a multiprocessor system. We cover such interrupts in the later section “Interprocessor Interrupt Handling.”</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>Table 4-3. An example of IRQ assignment to I/O devices:</p>
+<pre class="literal-block">
+IRQ INT     Hardware device
+0   32      Timer  Timer 必须是0号IRQ线.
+1   33      Keyboard
+2   34      PIC cascading
+3   35      Second serial port
+4   36      First serial port
+6   38      Floppy disk
+8   40      System clock
+10  42      Network interface
+11  43      USB port, sound card
+12  44      PS/2 mouse
+13  45      Mathematical coprocessor
+14  46      EIDE disk controller’s first chain
+15  47      EIDE disk controller’s second chain
+</pre>
+<div class="section" id="irq">
+<h4><a class="toc-backref" href="#id120">4.5.1&nbsp;&nbsp;&nbsp;IRQ在多处理器系统上的分发</a></h4>
+<p>Linux 遵守对称多处理器模型(SMP), 这意味着， 内核对每个CPU都不应该有偏爱.</p>
+<p>内核试图以轮转的方式把来自硬件的IRQ信号在多个CPU之间分发, 所有CPU服务于I/O中断的执行时间片几乎相同.</p>
+<p>这是由硬件完成的, 但是有的硬件存在问题, Linux 使用kirqd的特殊内核线程来纠正对CPU进行的IRQ自动分配</p>
+<div class="section" id="cpuirq">
+<h5><a class="toc-backref" href="#id121">4.5.1.1&nbsp;&nbsp;&nbsp;CPU的IRQ亲和力</a></h5>
+<p>多APIC系统中, 通过修改APIC中断重定向表, 可以把指定中断发到特定的CPU上.</p>
+<p>kirqd内核线程定期执行 do_irq_balance() 函数, 它记录最近时间内每个cpu的终端次数, 如果发现负载不均衡, 就把IRQ从一个CPU转到另一个CPU.</p>
+</div>
+<div class="section" id="id25">
+<h5><a class="toc-backref" href="#id122">4.5.1.2&nbsp;&nbsp;&nbsp;例子:网卡多队列的中断绑定</a></h5>
+<p>如果大家用的万兆网卡跑linux或者nginx做大规模的负载均衡，那么肯定会遇到网卡中断占耗尽一个CPU的情况，会发现有一个ksoftirqd进程耗CPU非常厉害。这个时候就需要把万兆网卡的多个队列分别绑定到不同的核上。简单的在自己的笔记本上测试一下把单个中断绑定到指定CPU的方式。</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/test$ cat /proc/interrupts
+           CPU0       CPU1       CPU2       CPU3
+  0:       1120         78         73         89   IO-APIC-edge      timer
+  1:       8372       8326       4485       1256   IO-APIC-edge      i8042
+  8:          0          0          0          1   IO-APIC-edge      rtc0
+  9:     919824     902422     945216     917506   IO-APIC-fasteoi   acpi
+ 12:      70724      74831      73671     130628   IO-APIC-edge      i8042
+ 14:    3836954     375689     389297     391612   IO-APIC-edge      ata_piix
+ 15:          0          0          0          0   IO-APIC-edge      ata_piix
+ 17:     228109        213     105882      40581   IO-APIC-fasteoi   ata_piix, HDA Intel
+ 19:    2129264    2483519    2266058    1798885   IO-APIC-fasteoi   ehci_hcd:usb2
+ 23:     548565     795696     859954     207891   IO-APIC-fasteoi   ehci_hcd:usb1
+ 27:        929      23923       1717       2311   PCI-MSI-edge      eth0
+ 28:   60226455    7787039    7893406    8392505   PCI-MSI-edge      iwlagn
+ 29:    1156981    1577957    3826559    1869343   PCI-MSI-edge      i915&#64;pci:0000:00:02.0
+NMI:          0          0          0          0   Non-maskable interrupts
+LOC:   88922568   93984839  101969505   97218270   Local timer interrupts
+SPU:          0          0          0          0   Spurious interrupts
+PMI:          0          0          0          0   Performance monitoring interrupts
+PND:          0          0          0          0   Performance pending work
+RES:   15963006   16173515   13643964   13852799   Rescheduling interrupts
+CAL:     264642     254329     620940     555868   Function call interrupts
+TLB:    2069687    1882570    1553231    1561555   TLB shootdowns
+TRM:          0          0          0          0   Thermal event interrupts
+THR:          0          0          0          0   Threshold APIC interrupts
+MCE:          0          0          0          0   Machine check exceptions
+MCP:       1349       1345       1345       1345   Machine check polls
+ERR:          0
+MIS:          0
+</pre>
+<p>通过两次cat:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/test$ cat /proc/interrupts | grep iwl
+ 28:   60237470    7787039    7893406    8392505   PCI-MSI-edge      iwlagn
+ning&#64;ning-laptop:~/test$ cat /proc/interrupts | grep iwl
+ 28:   60237488    7787039    7893406    8392505   PCI-MSI-edge      iwlagn
+ning&#64;ning-laptop:~/test$ cat /proc/interrupts | grep iwl
+ 28:   60237512    7787039    7893406    8392505   PCI-MSI-edge      iwlagn
+</pre>
+<p>这里发现28号中断(iwlagn) 只有CPU0这一列在增加, 说明28号中断绑定在CPU0上.</p>
+<p>比如要绑定到CPU3:</p>
+<pre class="literal-block">
+echo 4 &gt; /proc/irq/28/smp_affinity
+</pre>
+<p>这里:</p>
+<pre class="literal-block">
+1 : CPU0
+2 : CPU1
+4 : CPU2
+8 : CPU3
+</pre>
+<p>再观察, 发现只有CPU2这一列在增加:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/test$ cat /proc/interrupts | grep iwl
+ 28:   60238491    7787039    7893707    8392505   PCI-MSI-edge      iwlagn
+ning&#64;ning-laptop:~/test$ cat /proc/interrupts | grep iwl
+ 28:   60238491    7787039    7893727    8392505   PCI-MSI-edge      iwlagn
+ning&#64;ning-laptop:~/test$ cat /proc/interrupts | grep iwl
+ 28:   60238491    7787039    7893740    8392505   PCI-MSI-edge      iwlagn
+</pre>
+<p>一个核每秒能处理多少中断?</p>
+<p>我们的机器eth中断都绑定在CPU0上面:</p>
+<pre class="literal-block">
+$ cat /proc/interrupts | grep eth
+  49:  273896202          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-0
+  50: 2839469681          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-1
+  51: 2443166700          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-2
+  52:  947194873          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-3
+  53: 3035084892          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-4
+  54: 2586224100          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-5
+  55: 1861561263          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-6
+  56: 4154271481          0          0          0          0          0          0          0          0          0          0          0   PCI-MSI-edge      eth1-7
+</pre>
+<pre class="literal-block">
+$ cat /proc/interrupts | grep eth | awk '{A+=$2} END{print A}' &amp;&amp; sleep 10 &amp;&amp; cat /proc/interrupts | grep eth | awk '{A+=$2} END{print A}'
+18144814547
+18145846813 (10s)
+</pre>
+<p>大约每秒10w个中断, 这个机器负载不重.</p>
+</div>
+<div class="section" id="id26">
+<h5><a class="toc-backref" href="#id123">4.5.1.3&nbsp;&nbsp;&nbsp;把进程绑在核上</a></h5>
+<p>查看:</p>
+<pre class="literal-block">
+$ taskset -p 40234
+pid 40234's current affinity mask: fff
+</pre>
+<p>说明每个核都可能运行.</p>
+<p>设置:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ taskset -p 7537
+pid 7537's current affinity mask: f
+
+ning&#64;ning-laptop ~/test$ taskset -p e 7537
+pid 7537's current affinity mask: f
+pid 7537's new affinity mask: e
+
+ning&#64;ning-laptop ~/test$ taskset -p 7537
+pid 7537's current affinity mask: e
+</pre>
+<p>另外一种格式set:</p>
+<pre class="literal-block">
+taskset -pc 0,3,7-11 700
+</pre>
+<p>进程启动时指定CPU:</p>
+<pre class="literal-block">
+taskset -c 1 ./redis-server ../redis.conf
+</pre>
+</div>
+<div class="section" id="id27">
+<h5><a class="toc-backref" href="#id124">4.5.1.4&nbsp;&nbsp;&nbsp;网卡多队列</a></h5>
+<p>对于万兆网卡, 一把提供多个中断号(多队列), 如果中断都绑在一个核上, 就悲剧了.</p>
+<p>有多个RSS队列.</p>
+<p>英特尔 X520万兆网卡里，最大可以同时支持128个队列，足以满足当前主流的服务器CPU配置。</p>
+<p>开启多队列:</p>
+<pre class="literal-block">
+sed -i 's/e1000/igb/g' /etc/modprobe.conf
+echo &quot;options igb RSS=8,8&quot; &gt;&gt; /etc/modprobe.conf
+</pre>
+</div>
+<div class="section" id="id28">
+<h5><a class="toc-backref" href="#id125">4.5.1.5&nbsp;&nbsp;&nbsp;千兆网卡多队列</a></h5>
+<div class="section" id="id29">
+<h6><a class="toc-backref" href="#id126">4.5.1.5.1&nbsp;&nbsp;&nbsp;是否支持</a></h6>
+<p><a class="reference external" href="http://blog.csdn.net/turkeyzhou/article/details/7528182">http://blog.csdn.net/turkeyzhou/article/details/7528182</a></p>
+<pre class="literal-block">
+#lspci -vvv
+Ethernet controller的条目内容，如果有MSI-X &amp;&amp; Enable+ &amp;&amp; TabSize &gt; 1，则该网卡是多队列网卡，如图4.4所示。
+
+图4.4 lspci内容
+Message Signaled Interrupts(MSI)是PCI规范的一个实现，可以突破CPU 256条interrupt的限制，使每个设备具有多个中断线变成可能，多队列网卡驱动给每个queue申请了MSI。MSI-X是MSI数组，Enable+指使能，TabSize是数组大小。
+
+02:00.1 Ethernet controller: Intel Corporation: Unknown device 150e (rev 01)
+        Subsystem: Intel Corporation: Unknown device 0000
+        Control: I/O+ Mem+ BusMaster+ SpecCycle- MemWINV- VGASnoop- ParErr- Stepping- SERR- FastB2B-
+        Status: Cap+ 66Mhz- UDF- FastB2B- ParErr- DEVSEL=fast &gt;TAbort- &lt;TAbort- &lt;MAbort- &gt;SERR- &lt;PERR-
+        Latency: 0, Cache Line Size 10
+        Interrupt: pin B routed to IRQ 30
+        Region 0: Memory at 94800000 (32-bit, non-prefetchable) [size=512K]
+        Region 2: I/O ports at 5000 [size=32]
+        Region 3: Memory at 94900000 (32-bit, non-prefetchable) [size=16K]
+        Capabilities: [40] Power Management version 3
+                Flags: PMEClk- DSI+ D1- D2- AuxCurrent=0mA PME(D0+,D1-,D2-,D3hot+,D3cold+)
+                Status: D0 PME-Enable- DSel=0 DScale=1 PME-
+        Capabilities: [50] Message Signalled Interrupts: 64bit+ Queue=0/0 Enable-
+                Address: 0000000000000000  Data: 0000
+        Capabilities: [70] MSI-X: Enable+ Mask- TabSize=10
+                Vector table: BAR=3 offset=00000000
+                PBA: BAR=3 offset=00002000
+        Capabilities: [a0] Express Endpoint IRQ 0
+                Device: Supported: MaxPayload 512 bytes, PhantFunc 0, ExtTag-
+                Device: Latency L0s &lt;512ns, L1 &lt;64us
+                Device: AtnBtn- AtnInd- PwrInd-
+                Device: Errors: Correctable+ Non-Fatal+ Fatal+ Unsupported+
+                Device: RlxdOrd+ ExtTag- PhantFunc- AuxPwr- NoSnoop+
+                Device: MaxPayload 128 bytes, MaxReadReq 512 bytes
+                Link: Supported Speed unknown, Width x4, ASPM L0s L1, Port 2
+                Link: Latency L0s &lt;4us, L1 &lt;8us
+                Link: ASPM Disabled RCB 64 bytes CommClk+ ExtSynch-
+                Link: Speed unknown, Width x4
+        Capabilities: [100] Advanced Error Reporting
+        Capabilities: [140] Device Serial Number ab-fb-2b-ff-ff-c7-0b-20
+        Capabilities: [1a0] Unknown (23)
+</pre>
+<p>还有种通用的方式，直接查看 interrupts 文件，看关键字 MSI 就知道了:</p>
+<pre class="literal-block">
+# grep -i msi /proc/interrupts
+</pre>
+<p>3.dmsg:</p>
+<pre class="literal-block">
+#  dmesg  | grep -i msi
+hpet: hpet2 irq 72 for MSI
+hpet: hpet3 irq 73 for MSI
+hpet: hpet4 irq 74 for MSI
+hpet: hpet5 irq 75 for MSI
+hpet: hpet6 irq 76 for MSI
+hpet: hpet7 irq 77 for MSI
+megaraid_sas 0000:03:00.0: irq 78 for MSI/MSI-X
+ahci 0000:00:1f.2: irq 79 for MSI/MSI-X
+igb 0000:02:00.0: irq 80 for MSI/MSI-X
+igb 0000:02:00.0: irq 81 for MSI/MSI-X
+igb 0000:02:00.0: Using MSI-X interrupts. 1 rx queue(s), 1 tx queue(s)
+igb 0000:02:00.1: irq 82 for MSI/MSI-X
+igb 0000:02:00.1: irq 83 for MSI/MSI-X
+igb 0000:02:00.1: Using MSI-X interrupts. 1 rx queue(s), 1 tx queue(s)
+isci 0000:04:00.0: irq 84 for MSI/MSI-X
+isci 0000:04:00.0: irq 85 for MSI/MSI-X
+</pre>
+<ol class="arabic" start="4">
+<li><p class="first">ethtool:</p>
+<pre class="literal-block">
+# ethtool -S eth0 | tail -20
+     os2bmc_tx_by_bmc: 0
+     os2bmc_tx_by_host: 0
+     os2bmc_rx_by_host: 0
+     rx_errors: 0
+     tx_errors: 0
+     tx_dropped: 0
+     rx_length_errors: 0
+     rx_over_errors: 0
+     rx_frame_errors: 0
+     rx_fifo_errors: 0
+     tx_fifo_errors: 0
+     tx_heartbeat_errors: 0
+     tx_queue_0_packets: 0
+     tx_queue_0_bytes: 0
+     tx_queue_0_restart: 0
+     rx_queue_0_packets: 0
+     rx_queue_0_bytes: 0
+     rx_queue_0_drops: 0
+     rx_queue_0_csum_err: 0
+     rx_queue_0_alloc_failed: 0
+</pre>
+</li>
+</ol>
+</div>
+<div class="section" id="id30">
+<h6><a class="toc-backref" href="#id127">4.5.1.5.2&nbsp;&nbsp;&nbsp;开启多队列</a></h6>
+<p>首先要支持MSI-X (内核2.6.24+)</p>
+<p>Linux 网卡驱动一般只有两种 e1000 和 igb. (无线的是iwlagn):</p>
+<pre class="literal-block">
+#下面来自
+本发行版包括两个适用于英特尔® 网卡的 Linux 基础驱动程序。这两个驱动程序的名称是 e1000 和 igb。为支持任何基于 82575 的网卡，必须安装 igb 驱动程序。其它所有网卡要求 e1000 驱动程序。
+</pre>
+<p>先通过lspci看看当前用的是什么驱动:</p>
+<pre class="literal-block">
+06:00.2 Ethernet controller: Intel Corporation I350 Gigabit Network Connection (rev 01)
+        Subsystem: Intel Corporation I350 Gigabit Network Connection
+        Control: I/O+ Mem+ BusMaster+ SpecCycle- MemWINV- VGASnoop- ParErr+ Stepping- SERR- FastB2B- DisINTx+
+        Status: Cap+ 66MHz- UDF- FastB2B- ParErr- DEVSEL=fast &gt;TAbort- &lt;TAbort- &lt;MAbort- &gt;SERR- &lt;PERR- INTx-
+        Latency: 0, Cache Line Size: 64 bytes
+        Interrupt: pin C routed to IRQ 18
+        Region 0: Memory at a9a20000 (32-bit, non-prefetchable) [size=128K]
+        Region 2: I/O ports at 1020 [size=32]
+        Region 3: Memory at a9a84000 (32-bit, non-prefetchable) [size=16K]
+        Capabilities: &lt;access denied&gt;
+        Kernel driver in use: igb
+        Kernel modules: igb
+
+06:00.3 Ethernet controller: Intel Corporation I350 Gigabit Network Connection (rev 01)
+        Subsystem: Intel Corporation I350 Gigabit Network Connection
+        Control: I/O+ Mem+ BusMaster+ SpecCycle- MemWINV- VGASnoop- ParErr+ Stepping- SERR- FastB2B- DisINTx+
+        Status: Cap+ 66MHz- UDF- FastB2B- ParErr- DEVSEL=fast &gt;TAbort- &lt;TAbort- &lt;MAbort- &gt;SERR- &lt;PERR- INTx-
+        Latency: 0, Cache Line Size: 64 bytes
+        Interrupt: pin D routed to IRQ 19
+        Region 0: Memory at a9a00000 (32-bit, non-prefetchable) [size=128K]
+        Region 2: I/O ports at 1000 [size=32]
+        Region 3: Memory at a9a80000 (32-bit, non-prefetchable) [size=16K]
+        Capabilities: &lt;access denied&gt;
+        Kernel driver in use: igb
+        Kernel modules: igb
+</pre>
+<p>igb是一个内核mod:</p>
+<pre class="literal-block">
+$ lsmod | grep igb
+igb                   143886  0
+</pre>
+<p>看看这个mod支持啥参数:</p>
+<pre class="literal-block">
+$ modinfo igb
+filename:       /lib/modules/2.6.32_1-12-0-0/kernel/drivers/net/igb/igb.ko
+version:        4.0.17
+license:        GPL
+description:    Intel(R) Gigabit Ethernet Network Driver
+author:         Intel Corporation, &lt;e1000-devel&#64;lists.sourceforge.net&gt;
+srcversion:     BCB38D2CABB33E0A1BA8385
+...
+depends:
+vermagic:       2.6.32_1-12-0-0 SMP mod_unload modversions
+parm:           InterruptThrottleRate:Maximum interrupts per second, per vector, (max 100000), default 3=adaptive (array of int)
+parm:           IntMode:Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), default 2 (array of int)
+parm:           Node:set the starting node to allocate memory on, default -1 (array of int)
+parm:           LLIPort:Low Latency Interrupt TCP Port (0-65535), default 0=off (array of int)
+parm:           LLIPush:Low Latency Interrupt on TCP Push flag (0,1), default 0=off (array of int)
+parm:           LLISize:Low Latency Interrupt on Packet Size (0-1500), default 0=off (array of int)
+parm:           RSS:Number of Receive-Side Scaling Descriptor Queues (0-8), default 1, 0=number of cpus (array of int)
+parm:           VMDQ:Number of Virtual Machine Device Queues: 0-1 = disable, 2-8 enable, default 0 (array of int)
+parm:           max_vfs:Number of Virtual Functions: 0 = disable, 1-7 enable, default 0 (array of int)
+parm:           MDD:Malicious Driver Detection (0/1), default 1 = enabled. Only available when max_vfs is greater than 0 (array of int)
+parm:           QueuePairs:Enable Tx/Rx queue pairs for interrupt handling (0,1), default 1=on (array of int)
+parm:           EEE:Enable/disable on parts that support the feature (array of int)
+parm:           DMAC:Disable or set latency for DMA Coalescing ((0=off, 1000-10000(msec), 250, 500 (usec)) (array of int)
+parm:           LRO:Large Receive Offload (0,1), default 0=off (array of int)
+parm:           debug:Debug level (0=none, ..., 16=all) (int)
+</pre>
+<p>通过调整IntMode, RSS, /etc/modules.conf or /etc/modprobe.conf</p>
+<pre class="literal-block">
+alias eth0 igb
+alias eth1 igb
+options igb IntMode=2,1 RSS=4,4
+</pre>
+<p>On some kernels a reboot is required to switch between a single queue mode and multiqueue modes, or vice-versa.</p>
+<p>可以看这里的intel驱动文档:</p>
+<pre class="literal-block">
+http://downloadmirror.intel.com/20927/eng/e1000.htm
+
+IntMode:
+    0-2 (0 = Legacy Int, 1 = MSI and 2 = MSI-X)
+    IntMode controls allow load time control over the type of interrupt registered for by the driver. MSI-X is required for multiple queue support, and some kernels and combinations of kernel .config options will force a lower level of interrupt support. 'cat /proc/interrupts' will show different values for each type of interrupt.
+
+RSS
+    0-8:
+
+    0 - Assign up to whichever is less, number of CPUS or number of queues
+    X - Assign X queues where X is less than the maximum number of queues
+</pre>
+</div>
+</div>
+</div>
+<div class="section" id="proc-softirqs">
+<h4><a class="toc-backref" href="#id128">4.5.2&nbsp;&nbsp;&nbsp;/proc/softirqs</a></h4>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ cat /proc/softirqs
+                CPU0       CPU1       CPU2       CPU3
+      HI:     185922     155733     322202     415150
+   TIMER:  116015047  115689110  116242953  114220601
+  NET_TX:  145507222    2411961    2579050    2645211
+  NET_RX:   91563132   62827666   54938487   56726882
+   BLOCK:   12582678     387007     389099     477301
+BLOCK_IOPOLL:         39          0         14          1
+ TASKLET:  268807160    8526283   10469002    7812433
+   SCHED:   85717988   81576238   76344646   74394437
+ HRTIMER:      38106      42778      28602      28957
+     RCU:  110562375  107074305  102180377   98345842
+</pre>
+<div class="section" id="mpstat">
+<h5><a class="toc-backref" href="#id129">4.5.2.1&nbsp;&nbsp;&nbsp;mpstat</a></h5>
+<pre class="literal-block">
+mpstat [ -P { cpu | ALL } ] [ -V ] [ interval [ count ] ]
+
+ CPU
+        Processor number. The keyword all indicates that statistics  are
+        calculated as averages among all processors.
+
+ ...
+ %iowait
+        Show  the percentage of time that the CPU or CPUs were idle dur-
+        ing which the system had an outstanding disk I/O request.
+ %irq (有多少时间花在处理中断)
+        Show the percentage of time spent by the CPU or CPUs to  service
+        interrupts.
+ %soft
+        Show  the percentage of time spent by the CPU or CPUs to service
+        softirqs.  A softirq (software interrupt) is one  of  up  to  32
+        enumerated software interrupts which can run on multiple CPUs at
+        once.
+ %idle
+        Show the percentage of time that the CPU or CPUs were  idle  and
+        the system did not have an outstanding disk I/O request.
+ intr/s
+        Show  the  total number of interrupts received per second by the
+        CPU or CPUs.
+</pre>
+<p>两种用法:</p>
+<pre class="literal-block">
+#看总体情况
+mpstat 1
+#看每个CPU情况.
+mpstat -P ALL 1
+</pre>
+</div>
+<div class="section" id="vmstat">
+<h5><a class="toc-backref" href="#id130">4.5.2.2&nbsp;&nbsp;&nbsp;vmstat</a></h5>
+<pre class="literal-block">
+$ vmstat  1
+procs -----------memory---------- ---swap-- -----io----    --system--    ----cpu----
+ r  b   swpd   free   buff  cache   si   so    bi    bo        in    cs  us sy id wa
+ 5  0 975864 3730960 237268 30782988    0    0     1   110      0     0  13  7 80  0
+ 1  0 975864 3731720 237268 30783940    0    0     0   412 111381 93381  5 10 85  0
+ 3  0 975864 3731780 237268 30784904    0    0     0   356 110127 92617  5 10 86  0
+ 5  0 975864 3729672 237268 30785796    0    0     0   324 109500 90538  5  9 86  0
+
+ system的in这一列, 就是说每秒多少中断.
+</pre>
+</div>
+</div>
+</div>
+<div class="section" id="softirqs-and-tasklets">
+<h3><a class="toc-backref" href="#id131">4.6&nbsp;&nbsp;&nbsp;Softirqs and Tasklets</a></h3>
+<p>TODO: SoftIRQ(软中断) 和中断/异常是什么关系??</p>
+<p>ksoftirqd/n 内核线程:</p>
+<pre class="literal-block">
+for(;;) {
+    set_current_state(TASK_INTERRUPTIBLE);
+    schedule();
+    /* now in TASK_RUNNING state */
+    while (local_softirq_pending()) {
+        preempt_disable();
+        do_softirq();
+        preempt_enable();
+        cond_resched();
+    }
+}
+</pre>
+</div>
+<div class="section" id="work-queues">
+<h3><a class="toc-backref" href="#id132">4.7&nbsp;&nbsp;&nbsp;Work Queues</a></h3>
+<p>工作队列实际上是这样一种概念:
+硬件中断发生时, 把中断对应的处理函数加到一个队列里面, 再由一个 <tt class="docutils literal">内核线程</tt> 来对这个队列里面的每个函数, 逐一调用, 可以简化中断处理例程.</p>
+<p>这种方法和lighttpd对请求有事件来时的处理很像.</p>
+<p>预定义的Work Queue: <tt class="docutils literal">events</tt></p>
+<p>内核线程:</p>
+<ul class="simple">
+<li>keventd(通用)</li>
+<li>kblockd(块设备层使用)</li>
+</ul>
+</div>
+<div class="section" id="returning-from-interrupts-and-exceptions">
+<h3><a class="toc-backref" href="#id133">4.8&nbsp;&nbsp;&nbsp;Returning from Interrupts and Exceptions</a></h3>
+<ul class="simple">
+<li>ret_from_intr():        中断处理结束时</li>
+<li>ret_from_exception():   异常处理结束时</li>
+</ul>
+</div>
+</div>
+<div class="section" id="c5-kernel-synchronization">
+<h2><a class="toc-backref" href="#id134">5&nbsp;&nbsp;&nbsp;c5 Kernel Synchronization</a></h2>
+<div class="section" id="how-the-kernel-services-requests">
+<h3><a class="toc-backref" href="#id135">5.1&nbsp;&nbsp;&nbsp;How the Kernel Services Requests</a></h3>
+<p>可以把内核看作不断对请求进行响应的服务器, 这些请求可能来自CPU上执行的进程, 也可能来自发出中断请求的外部设备.</p>
+<div class="section" id="id31">
+<h4><a class="toc-backref" href="#id136">5.1.1&nbsp;&nbsp;&nbsp;内核抢占</a></h4>
+<ul class="simple">
+<li>抢占内核的主要特点是: 一个在内核台运行的进程, 可能在执行内核函数期间被另一个进程取代.</li>
+<li>比如一个执行异常处理程序的进程, 用完了它的时间片, 如果内核是抢占的, 进程会立即被取代.
+如果内核不是抢占的, 进程继续执行直到它执行完异常处理程序或主动放弃CPU.</li>
+<li>使内核可抢占的目的是: 减少用户态进程的分派延迟.</li>
+<li>内核抢占会引起不容忽视的开销, 所以2.6内核允许用户在编译的时候设置是否开启内核抢占.</li>
+</ul>
+<p>这个界定其实不严格.</p>
+</div>
+</div>
+<div class="section" id="synchronization-primitives">
+<h3><a class="toc-backref" href="#id137">5.2&nbsp;&nbsp;&nbsp;Synchronization Primitives(同步原语)</a></h3>
+<p>Table 5-2. Various types of synchronization techniques used by the kernel</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="21%" />
+<col width="14%" />
+<col width="47%" />
+<col width="18%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">Technique</th>
+<th class="head">&nbsp;</th>
+<th class="head">Description</th>
+<th class="head">Scope</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>Per-CPU variables</td>
+<td>每CPU变量</td>
+<td>Duplicate a data Structure among the CPUs</td>
+<td>All CPUs</td>
+</tr>
+<tr><td>Atomic operation</td>
+<td>原子操作</td>
+<td>Atomic read-modify-write instruction to a counter</td>
+<td>All CPUs</td>
+</tr>
+<tr><td>Memory barrier</td>
+<td>内存屏障</td>
+<td>Avoid instruction reordering(避免指令重排)</td>
+<td>Local CPU or All CPUs</td>
+</tr>
+<tr><td>Spin lock</td>
+<td>自旋锁</td>
+<td>Lock with busy wait</td>
+<td>All CPUs</td>
+</tr>
+<tr><td>Semaphore</td>
+<td>信号量</td>
+<td>Lock with blocking wait (sleep)</td>
+<td>All CPUs</td>
+</tr>
+<tr><td>Seqlocks</td>
+<td>顺序锁</td>
+<td>Lock based on an access counter</td>
+<td>All CPUs</td>
+</tr>
+<tr><td>Local interrupt disabling</td>
+<td>本地中断禁止</td>
+<td>Forbid interrupt handling on a single CPU</td>
+<td>Local CPU</td>
+</tr>
+<tr><td>Local softirq disabling</td>
+<td>本地软中断禁止</td>
+<td>Forbid deferrable function handling on a single CPU</td>
+<td>Local CPU</td>
+</tr>
+<tr><td>Read-copy-update (RCU)</td>
+<td>通过指针而不是锁</td>
+<td>Lock-free access to shared data structures through pointers</td>
+<td>All CPUs</td>
+</tr>
+</tbody>
+</table>
+<p>RCU 应该是指一些无锁数据结构操作方式,</p>
+<p><tt class="docutils literal"><span class="pre">Read-copy-update</span></tt> 这个术语是针对 <tt class="docutils literal"><span class="pre">读-修改-写(read-modify-write)</span></tt> 这种常见的操作模式来说的.</p>
+<div class="section" id="cpu">
+<h4><a class="toc-backref" href="#id138">5.2.1&nbsp;&nbsp;&nbsp;每CPU变量</a></h4>
+<p>各个CPU的数据在硬件Cache中, 保证不会存放在同一个 <tt class="docutils literal">Cache Line</tt>, 对每CPU数组的并发访问不会导致Cache Line的窃用和失效.</p>
+<p>使用:</p>
+<pre class="literal-block">
+DEFINE_PER_CPU(type, name) Statically allocates a per-CPU array called name of type data structures
+per_cpu(name, cpu) Selects the element for CPU cpu of the per-CPU array name
+</pre>
+<p>每个CPU的运行队列就是 <tt class="docutils literal">每CPU变量</tt></p>
+</div>
+<div class="section" id="id32">
+<h4><a class="toc-backref" href="#id139">5.2.2&nbsp;&nbsp;&nbsp;原子操作</a></h4>
+<p><strong>哪些操作是原子的</strong> :</p>
+<ol class="arabic simple">
+<li>进行0次或1次 <strong>对齐</strong> 内存访问的汇编指令(如int/指针赋值)
+但是要注意, <strong>对齐</strong> 很重要, 一个结构体中, 很容易不对齐, 静态堆/栈/malloc是否对齐 依赖编译器.</li>
+<li>如果读操作后, 写操作前没有其它处理器占用内存总线(如 <tt class="docutils literal">inc</tt> , <tt class="docutils literal">dec</tt> )</li>
+<li>操作码有lock前缀(控制单元此时锁定内存总线, 直到这条指令执行完成)</li>
+</ol>
+<p><strong>注意</strong> : C代码中, 不能保证编译器会将 <tt class="docutils literal">a=a+1</tt> 甚至 <tt class="docutils literal">a++</tt> 这样的操作使用一个原子指令 (但是赋值是)</p>
+<p>原子操作:</p>
+<pre class="literal-block">
+atomic_read(v)
+atomic_set(v)
+atomic_add(v)
+atomic_add_return(v)
+</pre>
+</div>
+<div class="section" id="id33">
+<h4><a class="toc-backref" href="#id140">5.2.3&nbsp;&nbsp;&nbsp;优化屏障&amp;内存屏障</a></h4>
+<p>CPU的多发射会导致指令重排, 如果放在同步原语之后的一条指令在同步原语之前执行, 就悲剧了.</p>
+<div class="section" id="optimization-barrier">
+<h5><a class="toc-backref" href="#id141">5.2.3.1&nbsp;&nbsp;&nbsp;优化屏障(optimization barrier) 原语保证编译程序不会混淆原语前后的汇编指令.</a></h5>
+<p>Linux中, 优化屏障:</p>
+<pre class="literal-block">
+barrier()
+</pre>
+<p>展开为:</p>
+<pre class="literal-block">
+asm volatile(&quot;&quot;:::&quot;memory&quot;)
+</pre>
+<p><tt class="docutils literal">优化屏障</tt> 并不保证不使当前CPU把汇编指令混在一起执行. -- 这是 <tt class="docutils literal">内存屏障</tt> 的作用</p>
+</div>
+<div class="section" id="id34">
+<h5><a class="toc-backref" href="#id142">5.2.3.2&nbsp;&nbsp;&nbsp;内存屏障确保原语之后的操作开始执行之前, 原语之前的操作已完成.</a></h5>
+<p>在80x86处理器中, 下列种类的汇编指令是串行的, 他们起到 <tt class="docutils literal">内存屏障</tt> 的作用:</p>
+<ul>
+<li><p class="first">对I/O端口操作的所有指令</p>
+</li>
+<li><p class="first">lock前缀的所有指令</p>
+</li>
+<li><p class="first">写控制寄存器, 系统寄存器或调试寄存器的指令(cli, sti)</p>
+</li>
+<li><dl class="first docutils">
+<dt>Pentium 4中引入的</dt>
+<dd><ul class="first last simple">
+<li>lfence: 读内存屏障, 仅作用于读内存的指令</li>
+<li>sfence: 写内存屏障, 仅作用于写内存的指令</li>
+<li>mfence: 读-写内存屏障.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">少数汇编指令, 如iret.</p>
+</li>
+</ul>
+<p>Linux使用6个内存屏障原语, 它们同时也被作为优化屏障:</p>
+<pre class="literal-block">
+mb()        Memory barrier for MP and UP
+rmb()       Read memory barrier for MP and UP
+wmb()       Write memory barrier for MP and UP
+smp_mb()    Memory barrier for MP only
+smp_rmb()   Read memory barrier for MP only
+smp_wmb()   Write memory barrier for MP only
+</pre>
+<p>rmb 可能展开为:</p>
+<pre class="literal-block">
+asm volatile(&quot;lfence&quot;)
+asm volatile(&quot;lock;addl $0,0(%%esp)&quot;:::&quot;memory&quot;)
+lock; addl $0,0(%%esp)
+</pre>
+<p>wmb可能展开为:</p>
+<pre class="literal-block">
+barrier()
+</pre>
+</div>
+</div>
+<div class="section" id="id35">
+<h4><a class="toc-backref" href="#id143">5.2.4&nbsp;&nbsp;&nbsp;自旋锁</a></h4>
+<p>锁里面最简单的一种, 忙等锁.</p>
+<p>很多自旋锁只会锁1ms时间, 所以, 自旋锁不会造成很大的浪费.</p>
+<pre class="literal-block">
+spin_lock_init() Set the spin lock to 1 (unlocked)
+spin_lock() Cycle until spin lock becomes 1 (unlocked), then set it to 0 (locked)
+spin_unlock() Set the spin lock to 1 (unlocked)
+spin_unlock_wait() Wait until the spin lock becomes 1 (unlocked)
+spin_is_locked() Return 0 if the spin lock is set to 1 (unlocked); 1 otherwise
+spin_trylock() Set the spin lock to 0 (locked), and return 1 if the previous value of the lock was 1; 0 oth- erwise
+</pre>
+</div>
+<div class="section" id="id36">
+<h4><a class="toc-backref" href="#id144">5.2.5&nbsp;&nbsp;&nbsp;读/写自旋锁</a></h4>
+<p>目的是提高内核的并行能力.</p>
+<p>允许多个读并发.</p>
+<p>原来:</p>
+<pre class="literal-block">
+-    读  写
+读   0   0
+写   0   0
+</pre>
+<p>现在:</p>
+<pre class="literal-block">
+-    读  写
+读   1   0
+写   0   0
+</pre>
+</div>
+<div class="section" id="id37">
+<h4><a class="toc-backref" href="#id145">5.2.6&nbsp;&nbsp;&nbsp;顺序锁</a></h4>
+<p>SeqLock, 它和读写自旋锁很像, 只是它赋予写者更高的优先级,</p>
+<p>即使有读者正在读, 也允许写者继续写,</p>
+<ul class="simple">
+<li>这种策略的好处是写者永远不会等待(除非有另一个写者正在写),</li>
+<li>缺点是读者必须反复读相同的数据, 直到它获得有效的副本.</li>
+</ul>
+<p>每个读者在读前后两次读 <tt class="docutils literal">顺序计数器</tt> , 如果两次读到的值不相同, 说明新的写者已经开始写并增加了 <tt class="docutils literal">顺序计数器</tt></p>
+<p>p237, 在内核更新Time的时候使用了顺序锁, 这时读者其实可以只读一次, 因为取到旧时间关系不大.</p>
+</div>
+<div class="section" id="rcu">
+<h4><a class="toc-backref" href="#id146">5.2.7&nbsp;&nbsp;&nbsp;读-拷贝-更新 (RCU通过指针而不是锁)</a></h4>
+<p>不用锁:</p>
+<ul class="simple">
+<li>RCU只保护被动态分配 通过指针引用的数据结构</li>
+</ul>
+<p>读者几乎不做任何事情来防止竞争条件, 得靠写者.</p>
+<p>写着要更新数据结构时, 生成整个数据结构的副本, 写者修改这个副本, 修改完成后改变指针.</p>
+<p>改变指针是一个原子操作(我们在cruiser中需要动态加载配置的时候就是这样做的)</p>
+<p>写着修改指针后, 不能马上释放数据结构的旧副本, 因为写着修改时, 可能有读者拿着老指针呢.!!! <tt class="docutils literal"><span class="pre">--从前自己改这个模块的时候根本没意识到,</span> 只是模仿了浩哥的代码</tt></p>
+</div>
+<div class="section" id="id38">
+<h4><a class="toc-backref" href="#id147">5.2.8&nbsp;&nbsp;&nbsp;信号量</a></h4>
+<p>类似于自旋锁, 但是在锁的时候不是自旋, 而是挂起.</p>
+<p>信号量结构:</p>
+<pre class="literal-block">
+struct semphore{
+    atomic_t count;
+    wait: 等待队列
+    sleepers: 是否有进程在信号量上睡眠
+}
+</pre>
+<p><tt class="docutils literal">__up</tt> 和 <tt class="docutils literal">__down</tt></p>
+<div class="section" id="completion">
+<h5><a class="toc-backref" href="#id148">5.2.8.1&nbsp;&nbsp;&nbsp;补充原语(completion)</a></h5>
+<p>类似信号量,</p>
+</div>
+</div>
+<div class="section" id="id39">
+<h4><a class="toc-backref" href="#id149">5.2.9&nbsp;&nbsp;&nbsp;本地中断禁止</a></h4>
+</div>
+<div class="section" id="id40">
+<h4><a class="toc-backref" href="#id150">5.2.10&nbsp;&nbsp;&nbsp;本地软中断禁止</a></h4>
+</div>
+</div>
+<div class="section" id="synchronizing-accesses-to-kernel-data-structures">
+<h3><a class="toc-backref" href="#id151">5.3&nbsp;&nbsp;&nbsp;Synchronizing Accesses to Kernel Data Structures</a></h3>
+<p>链表例子.</p>
+</div>
+<div class="section" id="examples-of-race-condition-prevention">
+<h3><a class="toc-backref" href="#id152">5.4&nbsp;&nbsp;&nbsp;Examples of Race Condition Prevention</a></h3>
+<p>大内核锁.</p>
+</div>
+</div>
+<div class="section" id="c6-timing-measurements">
+<h2><a class="toc-backref" href="#id153">6&nbsp;&nbsp;&nbsp;c6 Timing Measurements</a></h2>
+<div class="section" id="clock-and-timer-circuits">
+<h3><a class="toc-backref" href="#id154">6.1&nbsp;&nbsp;&nbsp;Clock and Timer Circuits (几种硬件计时器)</a></h3>
+<ul>
+<li><dl class="first docutils">
+<dt>实时时钟 RTC (CMOS时间 )</dt>
+<dd><ul class="first last simple">
+<li>和CMOS在一个芯片上, 自带电池</li>
+<li>频率在2-8192Hz之间.</li>
+<li>IRQ8</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>时间戳计数器 TSC</dt>
+<dd><ul class="first last simple">
+<li>64位</li>
+<li>每个时钟信号来加1</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>可编程间隔定时器 PIT (8254芯片)</dt>
+<dd><ul class="first last simple">
+<li>Linux编程为 <tt class="docutils literal">大约</tt> 1000Hz, 向IRQ0发中断.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">CPU本地定时器</p>
+</li>
+<li><dl class="first docutils">
+<dt>高精度事件定时器 HPET</dt>
+<dd><ul class="first last simple">
+<li>8个32/64位独立计数器, 硬件中还不普遍.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">PCPI电源管理定时器</p>
+</li>
+</ul>
+<p>内核启动时会选择最好的一个计时器</p>
+</div>
+<div class="section" id="the-linux-timekeeping-architecture">
+<h3><a class="toc-backref" href="#id155">6.2&nbsp;&nbsp;&nbsp;The Linux Timekeeping Architecture</a></h3>
+<p>内核使用两个函数:</p>
+<p>time()
+gettimeofday()</p>
+<p>数据结构:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>timer_opts</dt>
+<dd><ul class="first last simple">
+<li>描述硬件定时器(每种硬件一个这个结构)</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>jiffies</dt>
+<dd><ul class="first last simple">
+<li>每个时钟中断加一, <strong>内核就是设置为1000Hz</strong></li>
+<li>80x86中是32位, (2**32/80000*1000)大约50天回绕到0, 内核处理了溢出.</li>
+<li>jiffies 被初始化为0xfffb6c20(-300,000) 系统启动5分钟后回到0(使得哪些不对jiffies做校验的bug及早发现)</li>
+<li>jiffies通过连接器被转换为一个64为计数器的低32位, 这个64位计数器: jiffies_64</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>xtime (timespec类型 )</dt>
+<dd><ul class="first last simple">
+<li>tv_sec (timestamp的秒数)</li>
+<li>tv_nsec (纳秒)</li>
+<li>初始化时用get_coms_time() 函数从 实时时钟读取.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<div class="section" id="id41">
+<h4><a class="toc-backref" href="#id156">6.2.1&nbsp;&nbsp;&nbsp;时钟中断时处理</a></h4>
+<ul class="simple">
+<li>需要判断是否丢失时钟中断.</li>
+<li>计算当前系统的负载(Load)</li>
+<li>更新xtime</li>
+</ul>
+<div class="section" id="id42">
+<h5><a class="toc-backref" href="#id157">6.2.1.1&nbsp;&nbsp;&nbsp;系统负载</a></h5>
+<p>单处理器: 0意味着没有活跃的进程(除了idle), 1意味着一个单独的进程100%占有cpu.</p>
+<p>大于1说明有几个进程处于running, 共享CPU.</p>
+</div>
+<div class="section" id="id43">
+<h5><a class="toc-backref" href="#id158">6.2.1.2&nbsp;&nbsp;&nbsp;监管内核代码</a></h5>
+<div class="section" id="readprofiler-hot-spot">
+<h6><a class="toc-backref" href="#id159">6.2.1.2.1&nbsp;&nbsp;&nbsp;readprofiler, 用于确定内核热点(hot spot).</a></h6>
+<p>监管器基于非常简单的 <tt class="docutils literal">蒙特卡洛算法</tt>, 每次时钟中断发生时, 内核确定中断是否发生在内核态, 如果是, 内核从堆栈取出eip寄存器值, 从而确定中断发生前内核正在做什么. 形成采样数据.</p>
+<p>启动内核时需要用 profile=N来开启prifile</p>
+<p>数据可以从 <tt class="docutils literal">/proc/profile</tt> 读取, 用 <tt class="docutils literal">readprofile</tt> 命令更方便</p>
+</div>
+<div class="section" id="oprofile">
+<h6><a class="toc-backref" href="#id160">6.2.1.2.2&nbsp;&nbsp;&nbsp;oprofile</a></h6>
+<p>此外, 内核提供另一个监管器: <tt class="docutils literal">oprofile</tt>, 还可一监控用户态程序热点.</p>
+</div>
+<div class="section" id="id44">
+<h6><a class="toc-backref" href="#id161">6.2.1.2.3&nbsp;&nbsp;&nbsp;检测死锁</a></h6>
+<p>通过非屏蔽中断NMI.</p>
+</div>
+<div class="section" id="id45">
+<h6><a class="toc-backref" href="#id162">6.2.1.2.4&nbsp;&nbsp;&nbsp;蒙特卡洛:</a></h6>
+<p>蒙特卡罗方法又称统计模拟法、随机抽样技术，是一种随机模拟方法，以概率和统计理论方法为基础的一种计算方法，是使用随机数（或更常见的伪随机数）来解决很多计算问题的方法。</p>
+<p>这个词构忽悠,其实就是随机采样的意思.</p>
+<p>提出：</p>
+<p>蒙特卡罗方法于20世纪40年代美国在第二次世界大战中研制原子弹的“曼哈顿计划”计划的成员S.M.乌拉姆和J.冯·诺伊曼首先提出。数学家冯·诺伊曼用驰名世界的赌城—摩纳哥的Monte Carlo—来命名这种方法，为它蒙上了一层神秘色彩。在这之前，蒙特卡罗方法就已经存在。1777年，法国数学家布丰（Georges Louis Leclere de Buffon，1707—1788）提出用投针实验的方法求圆周率π。这被认为是蒙特卡罗方法的起源。</p>
+</div>
+</div>
+</div>
+</div>
+<div class="section" id="updating-the-time-and-date">
+<h3><a class="toc-backref" href="#id163">6.3&nbsp;&nbsp;&nbsp;Updating the Time and Date</a></h3>
+</div>
+<div class="section" id="updating-system-statistics">
+<h3><a class="toc-backref" href="#id164">6.4&nbsp;&nbsp;&nbsp;Updating System Statistics</a></h3>
+</div>
+<div class="section" id="software-timers-and-delay-functions">
+<h3><a class="toc-backref" href="#id165">6.5&nbsp;&nbsp;&nbsp;Software Timers and Delay Functions</a></h3>
+</div>
+<div class="section" id="system-calls-related-to-timing-measurements">
+<h3><a class="toc-backref" href="#id166">6.6&nbsp;&nbsp;&nbsp;System Calls Related to Timing Measurements</a></h3>
+<pre class="literal-block">
+time()
+gettimeofday()
+adjtimex()
+settimer() / alarm()
+</pre>
+<p>posix 相关系统调用:</p>
+<pre class="literal-block">
+clock_gettime()
+...
+</pre>
+</div>
+</div>
+<div class="section" id="c7-process-scheduling">
+<h2><a class="toc-backref" href="#id167">7&nbsp;&nbsp;&nbsp;c7 Process Scheduling</a></h2>
+<p>亲和性:</p>
+<pre class="literal-block">
+sched_setaffinity()
+sched_getaffinity()
+</pre>
+<div class="section" id="scheduling-policy">
+<h3><a class="toc-backref" href="#id168">7.1&nbsp;&nbsp;&nbsp;Scheduling Policy</a></h3>
+</div>
+<div class="section" id="the-scheduling-algorithm">
+<h3><a class="toc-backref" href="#id169">7.2&nbsp;&nbsp;&nbsp;The Scheduling Algorithm</a></h3>
+</div>
+<div class="section" id="data-structures-used-by-the-scheduler">
+<h3><a class="toc-backref" href="#id170">7.3&nbsp;&nbsp;&nbsp;Data Structures Used by the Scheduler</a></h3>
+<p>140个双向链表, 代表140个优先级,</p>
+</div>
+<div class="section" id="functions-used-by-the-scheduler-schedule">
+<h3><a class="toc-backref" href="#id171">7.4&nbsp;&nbsp;&nbsp;Functions Used by the Scheduler(schedule)</a></h3>
+<p>schedule 执行的前半部分和后半部分在两个进程中, 中间还有一段时间不属于任何一个进程.</p>
+</div>
+<div class="section" id="id46">
+<h3><a class="toc-backref" href="#id172">7.5&nbsp;&nbsp;&nbsp;多处理器系统中 执行队列的平衡</a></h3>
+<p>Linux 一直使用对称多处理器模型(), 内核不应该对任何一个CPU有偏好(有点分布式系统中无master的意思)</p>
+<ul>
+<li><dl class="first docutils">
+<dt>超线程:</dt>
+<dd><ul class="first last simple">
+<li>当前线程在访问内存的间隙, 处理器可以利用机器周期去执行另外一个线程,</li>
+<li>一个超线程的物理CPU可以被linux看作是几个逻辑CPU</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>NUMA</dt>
+<dd><ul class="first last simple">
+<li>把CPU和RAM以本地节点为单位分组(通常一个节点包括一个CPU和几个RAM芯片)</li>
+<li>CPU访问本地RAM非常快, 防伪其它节点就非常慢.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">一般来说, 一个进程总是在一个CPU上执行, 但是也会在CPU之间迁移.</p>
+</li>
+<li><p class="first">任何一个可运行的进程都不会同时出现在两个或多个CPU的运行队列中, 一个保持可运行状态的进程通常被限制在一个固定的CPU上.</p>
+</li>
+<li><p class="first">内核周期性的检查运行队列是否平衡, 必要时迁移.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="system-calls-related-to-scheduling">
+<h3><a class="toc-backref" href="#id173">7.6&nbsp;&nbsp;&nbsp;System Calls Related to Scheduling</a></h3>
+</div>
+</div>
+<div class="section" id="c8-memory-management">
+<h2><a class="toc-backref" href="#id174">8&nbsp;&nbsp;&nbsp;c8 Memory Management</a></h2>
+<div class="section" id="page-frame-management">
+<h3><a class="toc-backref" href="#id175">8.1&nbsp;&nbsp;&nbsp;Page Frame Management</a></h3>
+<p>页描述符大小为32字节(放在mem_map中), 用于描述一个4k大小的页, 所以内存的(32/4k=0.8%)  的内存用于存放页描述符(被内核使用)</p>
+<div class="section" id="numa">
+<h4><a class="toc-backref" href="#id176">8.1.1&nbsp;&nbsp;&nbsp;非一致内存访问(NUMA)</a></h4>
+<p>Non-Uniform Memory Access, 对比与80x86体系结构的UMA模型(一致性内存访问)</p>
+<p>NUMA中, 某个CPU对不同内存单元的访问时间可能不一样, 系统中的CPU和内存被划分为几个节点. 一个节点内的cpu访问自己节点的内存很快, 跨节点访问就很慢.</p>
+</div>
+</div>
+<div class="section" id="memory-area-management">
+<h3><a class="toc-backref" href="#id177">8.2&nbsp;&nbsp;&nbsp;Memory Area Management</a></h3>
+<p>slab分配器: 类似于 预分配/对象池 的概念</p>
+<ul class="simple">
+<li>把内存去看作对象, 有构造/析构函数.</li>
+<li>内核反复申请同一类型的内存区.</li>
+</ul>
+<p>slab着色 - 解决高速缓存颠簸的问题.</p>
+</div>
+<div class="section" id="noncontiguous-memory-area-management">
+<h3><a class="toc-backref" href="#id178">8.3&nbsp;&nbsp;&nbsp;Noncontiguous Memory Area Management</a></h3>
+</div>
+</div>
+<div class="section" id="c9-process-address-space">
+<h2><a class="toc-backref" href="#id179">9&nbsp;&nbsp;&nbsp;c9. Process Address Space</a></h2>
+<div class="section" id="the-processs-address-space">
+<h3><a class="toc-backref" href="#id180">9.1&nbsp;&nbsp;&nbsp;The Process’s Address Space</a></h3>
+</div>
+<div class="section" id="the-memory-descriptor">
+<h3><a class="toc-backref" href="#id181">9.2&nbsp;&nbsp;&nbsp;The Memory Descriptor</a></h3>
+</div>
+<div class="section" id="memory-regions">
+<h3><a class="toc-backref" href="#id182">9.3&nbsp;&nbsp;&nbsp;Memory Regions</a></h3>
+</div>
+<div class="section" id="page-fault-exception-handler">
+<h3><a class="toc-backref" href="#id183">9.4&nbsp;&nbsp;&nbsp;Page Fault Exception Handler</a></h3>
+</div>
+<div class="section" id="creating-and-deleting-a-process-address-space">
+<h3><a class="toc-backref" href="#id184">9.5&nbsp;&nbsp;&nbsp;Creating and Deleting a Process Address Space</a></h3>
+</div>
+<div class="section" id="managing-the-heap">
+<h3><a class="toc-backref" href="#id185">9.6&nbsp;&nbsp;&nbsp;Managing the Heap</a></h3>
+</div>
+</div>
+<div class="section" id="c10-system-calls">
+<h2><a class="toc-backref" href="#id186">10&nbsp;&nbsp;&nbsp;c10 System Calls</a></h2>
+<div class="section" id="posix-apis-and-system-calls">
+<h3><a class="toc-backref" href="#id187">10.1&nbsp;&nbsp;&nbsp;POSIX APIs and System Calls</a></h3>
+</div>
+<div class="section" id="system-call-handler-and-service-routines">
+<h3><a class="toc-backref" href="#id188">10.2&nbsp;&nbsp;&nbsp;System Call Handler and Service Routines</a></h3>
+</div>
+<div class="section" id="entering-and-exiting-a-system-call">
+<h3><a class="toc-backref" href="#id189">10.3&nbsp;&nbsp;&nbsp;Entering and Exiting a System Call</a></h3>
+</div>
+<div class="section" id="parameter-passing">
+<h3><a class="toc-backref" href="#id190">10.4&nbsp;&nbsp;&nbsp;Parameter Passing</a></h3>
+</div>
+<div class="section" id="kernel-wrapper-routines">
+<h3><a class="toc-backref" href="#id191">10.5&nbsp;&nbsp;&nbsp;Kernel Wrapper Routines</a></h3>
+</div>
+</div>
+<div class="section" id="c11-signals">
+<h2><a class="toc-backref" href="#id192">11&nbsp;&nbsp;&nbsp;c11. Signals</a></h2>
+<div class="section" id="the-role-of-signals">
+<h3><a class="toc-backref" href="#id193">11.1&nbsp;&nbsp;&nbsp;The Role of Signals</a></h3>
+</div>
+<div class="section" id="generating-a-signal">
+<h3><a class="toc-backref" href="#id194">11.2&nbsp;&nbsp;&nbsp;Generating a Signal</a></h3>
+</div>
+<div class="section" id="delivering-a-signal">
+<h3><a class="toc-backref" href="#id195">11.3&nbsp;&nbsp;&nbsp;Delivering a Signal</a></h3>
+</div>
+<div class="section" id="system-calls-related-to-signal-handling">
+<h3><a class="toc-backref" href="#id196">11.4&nbsp;&nbsp;&nbsp;System Calls Related to Signal Handling</a></h3>
+</div>
+</div>
+<div class="section" id="c12-the-virtual-filesystem">
+<h2><a class="toc-backref" href="#id197">12&nbsp;&nbsp;&nbsp;c12 The Virtual Filesystem</a></h2>
+<div class="section" id="the-role-of-the-virtual-filesystem-vfs">
+<h3><a class="toc-backref" href="#id198">12.1&nbsp;&nbsp;&nbsp;The Role of the Virtual Filesystem (VFS)</a></h3>
+</div>
+<div class="section" id="vfs-data-structures">
+<h3><a class="toc-backref" href="#id199">12.2&nbsp;&nbsp;&nbsp;VFS Data Structures</a></h3>
+</div>
+<div class="section" id="filesystem-types">
+<h3><a class="toc-backref" href="#id200">12.3&nbsp;&nbsp;&nbsp;Filesystem Types</a></h3>
+</div>
+<div class="section" id="filesystem-handling">
+<h3><a class="toc-backref" href="#id201">12.4&nbsp;&nbsp;&nbsp;Filesystem Handling</a></h3>
+</div>
+<div class="section" id="pathname-lookup">
+<h3><a class="toc-backref" href="#id202">12.5&nbsp;&nbsp;&nbsp;Pathname Lookup</a></h3>
+</div>
+<div class="section" id="implementations-of-vfs-system-calls">
+<h3><a class="toc-backref" href="#id203">12.6&nbsp;&nbsp;&nbsp;Implementations of VFS System Calls</a></h3>
+</div>
+<div class="section" id="file-locking">
+<h3><a class="toc-backref" href="#id204">12.7&nbsp;&nbsp;&nbsp;File Locking</a></h3>
+</div>
+</div>
+<div class="section" id="c13-i-o-architecture-and-device-drivers">
+<h2><a class="toc-backref" href="#id205">13&nbsp;&nbsp;&nbsp;c13. I/O Architecture and Device Drivers</a></h2>
+<div class="section" id="i-o-architecture">
+<h3><a class="toc-backref" href="#id206">13.1&nbsp;&nbsp;&nbsp;I/O Architecture</a></h3>
+</div>
+<div class="section" id="the-device-driver-model">
+<h3><a class="toc-backref" href="#id207">13.2&nbsp;&nbsp;&nbsp;The Device Driver Model</a></h3>
+</div>
+<div class="section" id="device-files">
+<h3><a class="toc-backref" href="#id208">13.3&nbsp;&nbsp;&nbsp;Device Files</a></h3>
+</div>
+<div class="section" id="device-drivers">
+<h3><a class="toc-backref" href="#id209">13.4&nbsp;&nbsp;&nbsp;Device Drivers</a></h3>
+</div>
+<div class="section" id="character-device-drivers">
+<h3><a class="toc-backref" href="#id210">13.5&nbsp;&nbsp;&nbsp;Character Device Drivers</a></h3>
+</div>
+</div>
+<div class="section" id="c14-block-device-drivers">
+<h2><a class="toc-backref" href="#id211">14&nbsp;&nbsp;&nbsp;c14. Block Device Drivers</a></h2>
+<div class="section" id="block-devices-handling">
+<h3><a class="toc-backref" href="#id212">14.1&nbsp;&nbsp;&nbsp;Block Devices Handling</a></h3>
+</div>
+<div class="section" id="the-generic-block-layer">
+<h3><a class="toc-backref" href="#id213">14.2&nbsp;&nbsp;&nbsp;The Generic Block Layer</a></h3>
+</div>
+<div class="section" id="the-i-o-scheduler">
+<h3><a class="toc-backref" href="#id214">14.3&nbsp;&nbsp;&nbsp;The I/O Scheduler</a></h3>
+</div>
+<div class="section" id="block-device-drivers">
+<h3><a class="toc-backref" href="#id215">14.4&nbsp;&nbsp;&nbsp;Block Device Drivers</a></h3>
+</div>
+<div class="section" id="opening-a-block-device-file">
+<h3><a class="toc-backref" href="#id216">14.5&nbsp;&nbsp;&nbsp;Opening a Block Device File</a></h3>
+</div>
+</div>
+<div class="section" id="c15-the-page-cache">
+<h2><a class="toc-backref" href="#id217">15&nbsp;&nbsp;&nbsp;c15. The Page Cache</a></h2>
+<div class="section" id="the-page-cache">
+<h3><a class="toc-backref" href="#id218">15.1&nbsp;&nbsp;&nbsp;The Page Cache</a></h3>
+</div>
+<div class="section" id="storing-blocks-in-the-page-cache">
+<h3><a class="toc-backref" href="#id219">15.2&nbsp;&nbsp;&nbsp;Storing Blocks in the Page Cache</a></h3>
+</div>
+<div class="section" id="writing-dirty-pages-to-disk">
+<h3><a class="toc-backref" href="#id220">15.3&nbsp;&nbsp;&nbsp;Writing Dirty Pages to Disk</a></h3>
+</div>
+<div class="section" id="the-sync-fsync-and-fdatasync-system-calls">
+<h3><a class="toc-backref" href="#id221">15.4&nbsp;&nbsp;&nbsp;The sync( ), fsync( ), and fdatasync() System Calls</a></h3>
+</div>
+</div>
+<div class="section" id="c16-accessing-files">
+<h2><a class="toc-backref" href="#id222">16&nbsp;&nbsp;&nbsp;c16. Accessing Files</a></h2>
+<div class="section" id="reading-and-writing-a-file">
+<h3><a class="toc-backref" href="#id223">16.1&nbsp;&nbsp;&nbsp;Reading and Writing a File</a></h3>
+</div>
+<div class="section" id="memory-mapping">
+<h3><a class="toc-backref" href="#id224">16.2&nbsp;&nbsp;&nbsp;Memory Mapping</a></h3>
+</div>
+<div class="section" id="direct-i-o-transfers">
+<h3><a class="toc-backref" href="#id225">16.3&nbsp;&nbsp;&nbsp;Direct I/O Transfers</a></h3>
+</div>
+<div class="section" id="asynchronous-i-o">
+<h3><a class="toc-backref" href="#id226">16.4&nbsp;&nbsp;&nbsp;Asynchronous I/O</a></h3>
+</div>
+</div>
+<div class="section" id="c17-page-frame-reclaiming">
+<h2><a class="toc-backref" href="#id227">17&nbsp;&nbsp;&nbsp;c17. Page Frame Reclaiming</a></h2>
+<div class="section" id="the-page-frame-reclaiming-algorithm">
+<h3><a class="toc-backref" href="#id228">17.1&nbsp;&nbsp;&nbsp;The Page Frame Reclaiming Algorithm</a></h3>
+</div>
+<div class="section" id="reverse-mapping">
+<h3><a class="toc-backref" href="#id229">17.2&nbsp;&nbsp;&nbsp;Reverse Mapping</a></h3>
+</div>
+<div class="section" id="implementing-the-pfra">
+<h3><a class="toc-backref" href="#id230">17.3&nbsp;&nbsp;&nbsp;Implementing the PFRA</a></h3>
+</div>
+<div class="section" id="swapping">
+<h3><a class="toc-backref" href="#id231">17.4&nbsp;&nbsp;&nbsp;Swapping</a></h3>
+</div>
+</div>
+<div class="section" id="c18-the-ext2-and-ext3-filesystems">
+<h2><a class="toc-backref" href="#id232">18&nbsp;&nbsp;&nbsp;c18. The Ext2 and Ext3 Filesystems</a></h2>
+<div class="section" id="general-characteristics-of-ext2">
+<h3><a class="toc-backref" href="#id233">18.1&nbsp;&nbsp;&nbsp;General Characteristics of Ext2</a></h3>
+</div>
+<div class="section" id="ext2-disk-data-structures">
+<h3><a class="toc-backref" href="#id234">18.2&nbsp;&nbsp;&nbsp;Ext2 Disk Data Structures</a></h3>
+</div>
+<div class="section" id="ext2-memory-data-structures">
+<h3><a class="toc-backref" href="#id235">18.3&nbsp;&nbsp;&nbsp;Ext2 Memory Data Structures</a></h3>
+</div>
+<div class="section" id="creating-the-ext2-filesystem">
+<h3><a class="toc-backref" href="#id236">18.4&nbsp;&nbsp;&nbsp;Creating the Ext2 Filesystem</a></h3>
+</div>
+<div class="section" id="ext2-methods">
+<h3><a class="toc-backref" href="#id237">18.5&nbsp;&nbsp;&nbsp;Ext2 Methods</a></h3>
+</div>
+<div class="section" id="managing-ext2-disk-space">
+<h3><a class="toc-backref" href="#id238">18.6&nbsp;&nbsp;&nbsp;Managing Ext2 Disk Space</a></h3>
+</div>
+<div class="section" id="the-ext3-filesystem">
+<h3><a class="toc-backref" href="#id239">18.7&nbsp;&nbsp;&nbsp;The Ext3 Filesystem</a></h3>
+</div>
+</div>
+<div class="section" id="c19-process-communication">
+<h2><a class="toc-backref" href="#id240">19&nbsp;&nbsp;&nbsp;c19. Process Communication</a></h2>
+<div class="section" id="pipes">
+<h3><a class="toc-backref" href="#id241">19.1&nbsp;&nbsp;&nbsp;Pipes</a></h3>
+</div>
+<div class="section" id="fifos">
+<h3><a class="toc-backref" href="#id242">19.2&nbsp;&nbsp;&nbsp;FIFOs</a></h3>
+</div>
+<div class="section" id="system-v-ipc">
+<h3><a class="toc-backref" href="#id243">19.3&nbsp;&nbsp;&nbsp;System V IPC</a></h3>
+</div>
+<div class="section" id="posix-message-queues">
+<h3><a class="toc-backref" href="#id244">19.4&nbsp;&nbsp;&nbsp;POSIX Message Queues</a></h3>
+</div>
+</div>
+<div class="section" id="c20-program-execution">
+<h2><a class="toc-backref" href="#id245">20&nbsp;&nbsp;&nbsp;c20. Program Execution</a></h2>
+<div class="section" id="executable-files">
+<h3><a class="toc-backref" href="#id246">20.1&nbsp;&nbsp;&nbsp;Executable Files</a></h3>
+</div>
+<div class="section" id="executable-formats">
+<h3><a class="toc-backref" href="#id247">20.2&nbsp;&nbsp;&nbsp;Executable Formats</a></h3>
+</div>
+<div class="section" id="execution-domains">
+<h3><a class="toc-backref" href="#id248">20.3&nbsp;&nbsp;&nbsp;Execution Domains</a></h3>
+</div>
+<div class="section" id="the-exec-functions">
+<h3><a class="toc-backref" href="#id249">20.4&nbsp;&nbsp;&nbsp;The exec Functions</a></h3>
+</div>
+</div>
+<div class="section" id="id47">
+<h2><a class="toc-backref" href="#id250">21&nbsp;&nbsp;&nbsp;总结</a></h2>
+<ul>
+<li><dl class="first docutils">
+<dt>其实中文版翻译还算可以, 中文看不懂的地方, 去看英文版, 发现一样看不懂.</dt>
+<dd><ul class="first last simple">
+<li>不过看英文版映像深一些.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>读这本书, 需要和源码一起看</dt>
+<dd><ul class="first last simple">
+<li>比如c2 内存寻址 里面详细列出了页表操作的宏定义, 读的时候就每必要细究.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>之前一致理解有内核和用户进程这两种东西</dt>
+<dd><ul class="first last">
+<li><p class="first">实际上, 应该是一个进程, 可以运行在用户态, 也可以运行在内核态</p>
+</li>
+<li><p class="first">当发起系统调用的时候, 进入内核态, 切换栈为内核栈,</p>
+</li>
+<li><dl class="first docutils">
+<dt>用户态只能访问本进程的部分线性地址空间.</dt>
+<dd><ul class="first last simple">
+<li>进入内核态后, 可以访问全部线性地址空间.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">还有一些进程是只在内核态运行的</p>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>内核在运行中的代码形态(CPU执行内核代码的时候)</dt>
+<dd><ul class="first last simple">
+<li>初始化系统</li>
+<li>普通进程调用系统调用, 进入内核态, 用该进程的内核堆栈执行.</li>
+<li>几个内核线程</li>
+<li>中断处理</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>c5 Kernel Synchronization</dt>
+<dd><ul class="first last">
+<li><dl class="first docutils">
+<dt>对各种锁的介绍挺全面.</dt>
+<dd><ul class="first last simple">
+<li>自旋锁是锁里面最简单的一种,</li>
+<li>信号量是自旋锁的一种改进</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">对内存屏障的介绍, 看一遍就懂了</p>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

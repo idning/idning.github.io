@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>redis-latancy问题</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/redis-latancy.html">2014-07-09 10:04:00</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#redis-latency-problems-troubleshooting" id="id4">1&nbsp;&nbsp;&nbsp;Redis latency problems troubleshooting</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id1" id="id5">1.1&nbsp;&nbsp;&nbsp;1.网络</a></li>
+<li><a class="reference internal" href="#slow-commands" id="id6">1.2&nbsp;&nbsp;&nbsp;2.slow commands</a></li>
+<li><a class="reference internal" href="#fork" id="id7">1.3&nbsp;&nbsp;&nbsp;3.fork</a></li>
+<li><a class="reference internal" href="#swapping" id="id8">1.4&nbsp;&nbsp;&nbsp;4.swapping</a></li>
+<li><a class="reference internal" href="#aof-and-disk-i-o" id="id9">1.5&nbsp;&nbsp;&nbsp;5.aof and disk I/O</a></li>
+<li><a class="reference internal" href="#expires" id="id10">1.6&nbsp;&nbsp;&nbsp;6.expires</a></li>
+<li><a class="reference internal" href="#id2" id="id11">1.7&nbsp;&nbsp;&nbsp;工具</a><ul class="auto-toc">
+<li><a class="reference internal" href="#watchdog" id="id12">1.7.1&nbsp;&nbsp;&nbsp;watchdog</a></li>
+<li><a class="reference internal" href="#latancy" id="id13">1.7.2&nbsp;&nbsp;&nbsp;最新的latancy监控</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id3" id="id14">1.8&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="redis-latency-problems-troubleshooting">
+<h2><a class="toc-backref" href="#id4">1&nbsp;&nbsp;&nbsp;Redis latency problems troubleshooting</a></h2>
+<p>主要来自redis 作者的文章: <a class="reference external" href="http://redis.io/topics/latency">http://redis.io/topics/latency</a></p>
+<p>这篇文章介绍了很多工具, iostat, vmstat</p>
+<p>测量:</p>
+<pre class="literal-block">
+redis-cli --latency -h `host` -p `port`
+</pre>
+<p>基准(不可能好于这个数):</p>
+<pre class="literal-block">
+$ ./redis-cli --intrinsic-latency 100
+Max latency so far: 573 microseconds.
+Max latency so far: 695 microseconds.
+Max latency so far: 919 microseconds.
+Max latency so far: 1606 microseconds.
+Max latency so far: 3191 microseconds.
+Max latency so far: 9243 microseconds.
+Max latency so far: 9671 microseconds.
+Here we have an intrinsic latency of 9.7 milliseconds: this means that we can't ask better than that to Redis.
+</pre>
+<p>可能的原因:</p>
+<div class="section" id="id1">
+<h3><a class="toc-backref" href="#id5">1.1&nbsp;&nbsp;&nbsp;1.网络</a></h3>
+<p>The typical latency of a 1 GBits/s network is about 200 us, while the latency with a Unix domain socket can be as low as 30 us.</p>
+<ul class="simple">
+<li>不要用虚拟机.</li>
+<li>长连接</li>
+<li>use Unix domain sockets</li>
+<li>MSET/MGET/pipeline</li>
+</ul>
+<dl class="docutils">
+<dt>On Linux, some people can achieve better latencies by playing with :</dt>
+<dd>process placement (taskset), cgroups, real-time priorities (chrt), NUMA configuration (numactl), or by using a low-latency kernel.</dd>
+</dl>
+<p>Please note vanilla Redis is not really suitable to be bound on a single CPU core. Redis can fork background tasks that can be extremely CPU consuming like bgsave or AOF rewrite. These tasks must never run on the same core as the main event loop.</p>
+<p>from Redis 2.4 we use threads in Redis in order to perform some slow I/O operations in the background, mainly related to disk I/O,</p>
+</div>
+<div class="section" id="slow-commands">
+<h3><a class="toc-backref" href="#id6">1.2&nbsp;&nbsp;&nbsp;2.slow commands</a></h3>
+<p>建议:</p>
+<ul class="simple">
+<li>避免keys, sort, lrem, sunion</li>
+</ul>
+</div>
+<div class="section" id="fork">
+<h3><a class="toc-backref" href="#id7">1.3&nbsp;&nbsp;&nbsp;3.fork</a></h3>
+<ul class="simple">
+<li>内存page为4K,  24 GB Redis instance requires a page table of 24 GB / 4 KB * 8 = 48 MB</li>
+<li>Xen 上更加糟糕.</li>
+</ul>
+<p>建议:</p>
+<ul class="simple">
+<li>使用较小的实例.(&lt;10G)</li>
+</ul>
+</div>
+<div class="section" id="swapping">
+<h3><a class="toc-backref" href="#id8">1.4&nbsp;&nbsp;&nbsp;4.swapping</a></h3>
+<p>查看swap:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ cat /proc/18941/smaps  | grep Swap
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                  0 kB
+Swap:                156 kB
+</pre>
+</div>
+<div class="section" id="aof-and-disk-i-o">
+<h3><a class="toc-backref" href="#id9">1.5&nbsp;&nbsp;&nbsp;5.aof and disk I/O</a></h3>
+<p>write() + fdatasync()</p>
+<p>Both the write(2) and fdatasync(2) calls can be source of latency. For instance write(2) can block both when there is a system wide sync in progress, or when the output buffers are full and the kernel requires to flush on disk in order to accept new writes.</p>
+<p>close 也会导致flush.</p>
+<p>fdatasync 可能从几个ms到几s. 所以redis2.4 尽可能在另一个线程里面做fdatasync.</p>
+<p>When appendfsync is set to the value of no Redis performs no fsync. In this configuration the only source of latency can be write(2).</p>
+<p>测量:</p>
+<blockquote>
+sudo strace -p $(pidof redis-server) -T -e trace=fdatasync -f</blockquote>
+<p>因为fdatasync 是在另一个线程, 所以需要加-f</p>
+<p>However since write(2) is also used in order to write data to the client sockets this will likely show too many things unrelated to disk I/O. Apparently there is no way to tell strace to just show slow system calls so I use the following command:</p>
+<pre class="literal-block">
+strace -f -p $(pidof redis-server) -T -e trace=fdatasync,write 2&gt;&amp;1 | grep -v '0.0' | grep -v unfinished
+</pre>
+<p>建议:</p>
+<ul class="simple">
+<li>appendfsync no</li>
+<li>Using an SSD disk can help as well,</li>
+</ul>
+<p>用这个, 我们在做copy 的时候, 可以观察到:</p>
+<pre class="literal-block">
+[pid 24734] write(42, &quot;*4\r\n$5\r\nhmset\r\n$37\r\np-lc-d687791&quot;..., 272475) = 272475 &lt;0.036430&gt;
+[pid 24738] &lt;... fdatasync resumed&gt; )   = 0 &lt;2.030435&gt;
+[pid 24738] &lt;... fdatasync resumed&gt; )   = 0 &lt;0.012418&gt;
+[pid 24734] write(42, &quot;*4\r\n$5\r\nHMSET\r\n$37\r\np-lc-6787211&quot;..., 73) = 73 &lt;0.125906&gt;
+[pid 24738] &lt;... fdatasync resumed&gt; )   = 0 &lt;4.476948&gt;
+[pid 24734] &lt;... write resumed&gt; )       = 294594 &lt;2.477184&gt;   (2.47s)
+</pre>
+<p>此时输出:</p>
+<pre class="literal-block">
+$ ./_binaries/redis-cli --latency-history -h 10.38.114.60 -p 2000
+min: 0, max: 223, avg: 1.24 (1329 samples) -- 15.01 seconds range
+min: 0, max: 2500, avg: 3.46 (1110 samples) -- 15.00 seconds range   (这里观察到2.5s)
+min: 0, max: 5, avg: 1.01 (1355 samples) -- 15.01 seconds range
+</pre>
+<p>watchdog 输出:</p>
+<pre class="literal-block">
+[24734] 07 Jul 10:54:41.006 * Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Redis.
+[24734 | signal handler] (1404701682)
+--- WATCHDOG TIMER EXPIRED ---
+bin/redis-server *:2000(logStackTrace+0x4b)[0x443bdb]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+/lib64/tls/libpthread.so.0[0x302b80c420]
+/lib64/tls/libpthread.so.0(__write+0x4f)[0x302b80b03f]
+bin/redis-server *:2000(flushAppendOnlyFile+0x76)[0x43f616]
+bin/redis-server *:2000(serverCron+0x325)[0x41b5b5]
+bin/redis-server *:2000(aeProcessEvents+0x2b2)[0x416a22]
+bin/redis-server *:2000(aeMain+0x3f)[0x416bbf]
+bin/redis-server *:2000(main+0x1c8)[0x41dcd8]
+/lib64/tls/libc.so.6(__libc_start_main+0xdb)[0x302af1c4bb]
+bin/redis-server *:2000[0x415b1a]
+[24734 | signal handler] (1404701682) --------
+</pre>
+</div>
+<div class="section" id="expires">
+<h3><a class="toc-backref" href="#id10">1.6&nbsp;&nbsp;&nbsp;6.expires</a></h3>
+<p>if the database contains has many many keys expiring in the same second, and this keys are at least 25% of the current population of keys with an expire set,</p>
+</div>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id11">1.7&nbsp;&nbsp;&nbsp;工具</a></h3>
+<div class="section" id="watchdog">
+<h4><a class="toc-backref" href="#id12">1.7.1&nbsp;&nbsp;&nbsp;watchdog</a></h4>
+<p>redis2.6 自带. 通过时钟中断定时触发检查:</p>
+<pre class="literal-block">
+CONFIG SET watchdog-period 500
+</pre>
+<p>会在发现有大延迟时, 打印日志.</p>
+</div>
+<div class="section" id="latancy">
+<h4><a class="toc-backref" href="#id13">1.7.2&nbsp;&nbsp;&nbsp;最新的latancy监控</a></h4>
+<p>配置:</p>
+<pre class="literal-block">
+latency-monitor-threshold 100
+</pre>
+</div>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id14">1.8&nbsp;&nbsp;&nbsp;小结</a></h3>
+<p>2, 3, 5 我们都遇到了.</p>
+</div>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>vimcasts笔记</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/vim-vimcasts.html">2013-12-05 11:13:53</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#id1" id="id7">关于</a></li>
+<li><a class="reference internal" href="#show-invisibles" id="id8">#1.Show invisibles</a></li>
+<li><a class="reference internal" href="#tabs-and-spaces" id="id9">#2.Tabs and Spaces</a></li>
+<li><a class="reference internal" href="#whitespace-preferences-and-filetypes" id="id10">#3.Whitespace preferences and filetypes</a></li>
+<li><a class="reference internal" href="#tidying-whitespace" id="id11">#4.Tidying whitespace</a></li>
+<li><a class="reference internal" href="#indentation-commands" id="id12">#5.Indentation commands</a><ul>
+<li><a class="reference internal" href="#id2" id="id13">缩进规则</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#working-with-buffers" id="id14">#6.Working with buffers</a></li>
+<li><a class="reference internal" href="#working-with-windows-5-32" id="id15">#7 Working with windows (5:32)</a></li>
+<li><a class="reference internal" href="#working-with-tabs-3-17" id="id16">#8 Working with tabs (3:17)</a></li>
+<li><a class="reference internal" href="#how-to-use-tabs-5-28" id="id17">#9 How to use tabs (5:28)</a></li>
+<li><a class="reference internal" href="#nice-demo-creating-the-vimcasts-logo-as-ascii-art-5-47" id="id18">#10 &lt;nice-demo&gt;Creating the Vimcasts logo as ASCII art (5:47)</a></li>
+<li><a class="reference internal" href="#using-the-changelist-and-jumplist-3-21" id="id19">#11 Using the changelist and jumplist (3:21)</a></li>
+<li><a class="reference internal" href="#modal-editing-undo-redo-and-repeat-5-26" id="id20">#12 Modal editing: undo, redo and repeat (5:26)</a></li>
+<li><a class="reference internal" href="#cleaning-up-with-vim-0-36" id="id21">#13 Cleaning up with Vim (0:36)</a></li>
+<li><a class="reference internal" href="#the-edit-command-3-50" id="id22">#14 The :edit command (3:50)</a></li>
+<li><a class="reference internal" href="#the-file-explorer-5-36" id="id23">#15 The file explorer (5:36)</a></li>
+<li><a class="reference internal" href="#soft-wrapping-text-4-54" id="id24">#16 Soft wrapping text (4:54)</a></li>
+<li><a class="reference internal" href="#hard-wrapping-text-5-23" id="id25">#17 Hard wrapping text (5:23)</a></li>
+<li><a class="reference internal" href="#formatting-text-with-par-5-12" id="id26">#18 Formatting text with par (5:12)</a></li>
+<li><a class="reference internal" href="#spell-checking-5-42" id="id27">#19 Spell checking (5:42)</a></li>
+<li><a class="reference internal" href="#running-vim-within-irb-4-35" id="id28">#20 Running Vim within IRB (4:35)</a></li>
+<li><a class="reference internal" href="#nice-demo-converting-markdown-to-struct-ured-html-with-a-macro-9-25" id="id29">#21 &lt;nice-demo&gt;Converting markdown to struct_ured HTML with a macro (9:25)</a></li>
+<li><a class="reference internal" href="#nice-demo-selecting-columns-with-visual-block-mode-4-21" id="id30">#22 &lt;nice-demo&gt;Selecting columns with visual block mode (4:21)</a></li>
+<li><a class="reference internal" href="#converting-haml-to-erb-with-vim-macros-7-36" id="id31">#23 Converting HAML to ERB with Vim macros (7:36)</a></li>
+<li><a class="reference internal" href="#updating-your-vimrc-file-on-the-fly-2-51" id="id32">#24 Updating your vimrc file on the fly (2:51)</a></li>
+<li><a class="reference internal" href="#creating-colorschemes-for-vim-9-44" id="id33">#25 Creating colorschemes for Vim (9:44)</a></li>
+<li><a class="reference internal" href="#bubbling-text-6-23" id="id34">#26 Bubbling text (6:23)</a></li>
+<li><a class="reference internal" href="#synchronizing-plugins-with-git-submodules-and-pathogen-9-24" id="id35">#27 Synchronizing plugins with git submodules and pathogen (9:24)</a></li>
+<li><a class="reference internal" href="#refining-search-patterns-with-the-command-line-window-7-51" id="id36">#28 Refining search patterns with the command-line window (7:51)</a></li>
+<li><a class="reference internal" href="#aligning-text-with-tabular-vim-5-11" id="id37">#29 Aligning text with Tabular.vim (5:11)</a></li>
+<li><a class="reference internal" href="#undo-branching-and-gundo-vim-6-30" id="id38">#30 Undo branching and Gundo.vim (6:30)</a><ul>
+<li><a class="reference internal" href="#id3" id="id39">例1</a></li>
+<li><a class="reference internal" href="#id4" id="id40">例2</a></li>
+<li><a class="reference internal" href="#undo-branch" id="id41">undo branch</a></li>
+<li><a class="reference internal" href="#gundo" id="id42">gundo</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#fugitive-vim-a-complement-to-command-line-git-8-27" id="id43">#31 Fugitive.vim - a complement to command line git (8:27)</a></li>
+<li><a class="reference internal" href="#fugitive-vim-working-with-the-git-index-11-41" id="id44">#32 Fugitive.vim - working with the git index (11:41)</a></li>
+<li><a class="reference internal" href="#fugitive-vim-resolving-merge-conflicts-with-vimdiff-11-35" id="id45">#33 Fugitive.vim - resolving merge conflicts with vimdiff (11:35)</a></li>
+<li><a class="reference internal" href="#fugitive-vim-browsing-the-git-object-database-9-45" id="id46">#34 Fugitive.vim - browsing the git object database (9:45)</a></li>
+<li><a class="reference internal" href="#fugitive-vim-exploring-the-history-of-a-git-repository-10-04" id="id47">#35 Fugitive.vim - exploring the history of a git repository (10:04)</a></li>
+<li><a class="reference internal" href="#vimgolf-prime-numbers-6-53" id="id48">#36 VimGolf - Prime Numbers (6:53)</a></li>
+<li><a class="reference internal" href="#how-to-fold-8-49" id="id49">#37 How to fold (8:49)</a></li>
+<li><a class="reference internal" href="#writing-a-custom-fold-expression-12-07" id="id50">#38 Writing a custom fold expression (12:07)</a></li>
+<li><a class="reference internal" href="#profiling-vimscript-performance-8-09" id="id51">#39 Profiling Vimscript performance (8:09)</a></li>
+<li><a class="reference internal" href="#long-range-line-duplication-6-31" id="id52">#40 Long-range line duplication (6:31)</a></li>
+<li><a class="reference internal" href="#meet-the-arglist-4-57" id="id53">#41 Meet the arglist (4:57)</a></li>
+<li><a class="reference internal" href="#populating-the-arglist-5-31" id="id54">#42 Populating the arglist (5:31)</a></li>
+<li><a class="reference internal" href="#using-argdo-to-change-multiple-files-5-40" id="id55">#43 Using :argdo to change multiple files (5:40)</a></li>
+<li><a class="reference internal" href="#search-multiple-files-with-vimgrep-7-25" id="id56">#44 Search multiple files with :vimgrep (7:25)</a></li>
+<li><a class="reference internal" href="#project-wide-find-and-replace-6-25" id="id57">#45 Project-wide find and replace (6:25)</a></li>
+<li><a class="reference internal" href="#search-for-the-selected-text-4-39" id="id58">#46 Search for the selected text (4:39)</a></li>
+<li><a class="reference internal" href="#smart-search-with-subvert-5-33" id="id59">&#64;47 Smart search with :Subvert (5:33)</a></li>
+<li><a class="reference internal" href="#supercharged-substitution-with-subvert-7-09" id="id60">&#64;48 Supercharged substitution with :Subvert (7:09)</a></li>
+<li><a class="reference internal" href="#enhanced-abbreviations-with-abolish-3-09" id="id61">&#64;49 Enhanced abbreviations with :Abolish (3:09)</a></li>
+<li><a class="reference internal" href="#an-introduction-to-vspec-7-15" id="id62">#50 An introduction to vspec (7:15)</a></li>
+<li><a class="reference internal" href="#simple-operations-using-the-default-register-4-07" id="id63">#51 Simple operations using the default register (4:07)</a></li>
+<li><a class="reference internal" href="#meet-the-yank-register-4-29" id="id64">#52 Meet the yank register (4:29)</a></li>
+<li><a class="reference internal" href="#using-vim-s-named-registers-3-29" id="id65">#53 Using Vim's named registers (3:29)</a></li>
+<li><a class="reference internal" href="#pasting-from-visual-mode-3-33" id="id66">#54 Pasting from Visual mode (3:33)</a></li>
+<li><a class="reference internal" href="#pasting-from-insert-mode-4-15" id="id67">#55 Pasting from Insert mode (4:15)</a></li>
+<li><a class="reference internal" href="#simple-calculations-with-vim-s-expression-register-4-02" id="id68">#56 Simple calculations with Vim's expression register (4:02)</a></li>
+<li><a class="reference internal" href="#evaluating-scripts-with-vim-s-expression-register-3-56" id="id69">#57 Evaluating scripts with Vim's expression register (3:56)</a></li>
+<li><a class="reference internal" href="#accessing-the-system-clipboard-from-vim-4-48" id="id70">#58 Accessing the system clipboard from Vim (4:48)</a></li>
+<li><a class="reference internal" href="#using-vim-s-paste-mode-with-the-system-paste-command-4-25" id="id71">#59 Using Vim's paste mode with the system paste command (4:25)</a></li>
+<li><a class="reference internal" href="#comparing-buffers-with-vimdiff-4-16" id="id72">#60 Comparing buffers with vimdiff (4:16)</a></li>
+<li><a class="reference internal" href="#creating-repeatable-mappings-with-repeat-vim-4-33" id="id73">#61 Creating repeatable mappings with repeat.vim (4:33)</a></li>
+<li><a class="reference internal" href="#id5" id="id74">关于</a></li>
+<li><a class="reference internal" href="#ning-vim-modline" id="id75">ning: vim modline</a></li>
+<li><a class="reference internal" href="#id6" id="id76">总结</a></li>
+</ul>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id7">关于</a></h2>
+<p>这个系列视频来自:
+<a class="reference external" href="http://vimcasts.org/episodes/archive">http://vimcasts.org/episodes/archive</a></p>
+<p>作者每个月会录1-5个视频放出来.从2010年坚持到现在.</p>
+<p>这个网站的作者经常进行 vim 课程, $250 每次.(4小时)
+他也是 &lt;Practical Vim&gt; 的作者(<strong>豆瓣8.9分</strong>)</p>
+<p>对tabstop 不熟悉的, 建议观看1,2,4</p>
+</div>
+<div class="section" id="show-invisibles">
+<h2><a class="toc-backref" href="#id8">#1.Show invisibles</a></h2>
+<p>显示不可见字符:</p>
+<pre class="literal-block">
+set list
+set nolist
+</pre>
+<p>修改使用的不可见字符样式:</p>
+<pre class="literal-block">
+&quot; Use the same symbols as TextMate for tabstops and EOLs
+set listchars=tab:▸\ ,eol:¬
+</pre>
+</div>
+<div class="section" id="tabs-and-spaces">
+<h2><a class="toc-backref" href="#id9">#2.Tabs and Spaces</a></h2>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field"><th class="field-name">tabstop:</th><td class="field-body">tab符宽度</td>
+</tr>
+<tr class="field"><th class="field-name">softtabstop:</th><td class="field-body">使用&lt;-键删除的时候, 删除多少宽度</td>
+</tr>
+<tr class="field"><th class="field-name">shiftwidth:</th><td class="field-body">用&gt;, &lt;缩进的时候, 插入多宽.</td>
+</tr>
+<tr class="field"><th class="field-name">expandtab:</th><td class="field-body">输入的tab, shift 时, 都替换为空格.</td>
+</tr>
+</tbody>
+</table>
+<p>默认值:</p>
+<pre class="literal-block">
+tabstop = 8
+softtabstop = 0
+shiftwidth = 8
+no expandtab
+</pre>
+<p>不一样会很混乱</p>
+<p>结论:</p>
+<ul class="simple">
+<li>保证 tabstop == softtabstop == shiftwidth</li>
+</ul>
+<p>retab</p>
+</div>
+<div class="section" id="whitespace-preferences-and-filetypes">
+<h2><a class="toc-backref" href="#id10">#3.Whitespace preferences and filetypes</a></h2>
+<p>用autocommand实现对python 和Makefile 不同的缩进设置.</p>
+<pre class="literal-block">
+autocmd FileType html setlocal ts=2 sts=2 sw=2 expandtab
+autocmd FileType css setlocal ts=2 sts=2 sw=2 expandtab
+autocmd FileType javascript setlocal ts=4 sts=4 sw=4 noexpandtab
+</pre>
+</div>
+<div class="section" id="tidying-whitespace">
+<h2><a class="toc-backref" href="#id11">#4.Tidying whitespace</a></h2>
+<ul class="simple">
+<li>convert between tabs and spaces.</li>
+<li>strip trailing whitespace,</li>
+<li>how to remove blank lines from a file.</li>
+</ul>
+<p>noexpandtab 的时候, <cite>retab</cite> 把space 变成tab,
+expandtab 的时候  <cite>retab</cite> 把tab变成space.</p>
+<p>不错的函数例子, 保存当前位置:</p>
+<pre class="literal-block">
+function! &lt;SID&gt;StripTrailingWhitespaces()
+    &quot; Preparation: save last search, and cursor position.
+    let _s=&#64;/
+    let l = line(&quot;.&quot;)
+    let c = col(&quot;.&quot;)
+    &quot; Do the business:
+    %s/\s\+$//e
+    &quot; Clean up: restore previous search history, and cursor position
+    let &#64;/=_s
+    call cursor(l, c)
+endfunction
+</pre>
+<p><strong>删除空白行</strong></p>
+<pre class="literal-block">
+:g/^$/d
+</pre>
+<p><strong>g命令</strong>:</p>
+<p>:g 表示范围 <tt class="docutils literal">global command</tt></p>
+<p>d 是一个Ex command</p>
+</div>
+<div class="section" id="indentation-commands">
+<h2><a class="toc-backref" href="#id12">#5.Indentation commands</a></h2>
+<p>就是讲&gt;&gt; 和 &lt;&lt;
+还有:</p>
+<pre class="literal-block">
+vmap &lt;D-[&gt; &lt;gv (我用tab和shift-tab)
+vmap &lt;D-]&gt; &gt;gv
+</pre>
+<ul class="simple">
+<li>N模式下用 <tt class="docutils literal">==</tt>, V模式下用 <tt class="docutils literal">=</tt> 格式化,</li>
+<li><tt class="docutils literal">vi}</tt> 选择{}中的代码.</li>
+<li><tt class="docutils literal">=i}</tt> 格式化{}中的代码</li>
+</ul>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id13">缩进规则</a></h3>
+<p>~/.vim/indent/python.vim</p>
+</div>
+</div>
+<div class="section" id="working-with-buffers">
+<h2><a class="toc-backref" href="#id14">#6.Working with buffers</a></h2>
+<p>讲的不错:</p>
+<pre class="literal-block">
+:buffers
+1 #    &quot;.recent&quot;                      line 2        # 是上一个活跃buffer
+2      &quot;./notes/misc/vim_usage.rst&quot;   line 217
+3 %a   &quot;./notes/misc/vim-vimcasts.rst&quot; line 123     %a是active buffer
+</pre>
+<p>如果修改了一下 .recent. 就需要 bn! 才能切到下一个buffer:</p>
+<pre class="literal-block">
+:ls
+1 #h + &quot;.recent&quot;                      line 3            +表示有modify,  h 表示hidden
+2 %a   &quot;./notes/misc/vim_usage.rst&quot;   line 217
+3  a   &quot;./notes/misc/vim-vimcasts.rst&quot; line 0
+</pre>
+<p>bn时不要求buffer 一定要写入:</p>
+<pre class="literal-block">
+:set hidden
+</pre>
+<ul class="simple">
+<li><tt class="docutils literal">:ls</tt>     show the buffer list</li>
+<li><tt class="docutils literal">:bn</tt>     open the next buffer in t        he current window (cycles from the end of the list to the beginning).</li>
+<li><tt class="docutils literal">:bp</tt>     open the previous buffer in the current window (cycles from the start of the  list to the end).</li>
+<li><tt class="docutils literal"><span class="pre">CTRL-^</span></tt>   switch to the alternate file</li>
+</ul>
+</div>
+<div class="section" id="working-with-windows-5-32">
+<h2><a class="toc-backref" href="#id15">#7 Working with windows (5:32)</a></h2>
+<p>知识通过读 <tt class="docutils literal">window</tt> 一节, 已经知道, 演示的例子不错.</p>
+<p>移动焦点:</p>
+<pre class="literal-block">
+ctrl-w hjkl
+</pre>
+<p>移动窗口:</p>
+<pre class="literal-block">
+ctrl-w HJKL
+</pre>
+</div>
+<div class="section" id="working-with-tabs-3-17">
+<h2><a class="toc-backref" href="#id16">#8 Working with tabs (3:17)</a></h2>
+<pre class="literal-block">
+:tabedit xxx.txt
+
+:tabonly
+
+:3gt, 直接到第几个tab.
+</pre>
+<pre class="literal-block">
+map &lt;C-1&gt; 1gt
+map &lt;C-2&gt; 2gt
+map &lt;C-3&gt; 3gt
+map &lt;C-4&gt; 4gt
+map &lt;C-5&gt; 5gt
+map &lt;C-6&gt; 6gt
+map &lt;C-7&gt; 7gt
+map &lt;C-8&gt; 8gt
+map &lt;C-9&gt; 9gt
+map &lt;C-0&gt; :tablast&lt;CR&gt;
+</pre>
+<p>可惜在我这用不了</p>
+<pre class="literal-block">
+tabmove
+tabmove 1
+</pre>
+</div>
+<div class="section" id="how-to-use-tabs-5-28">
+<h2><a class="toc-backref" href="#id17">#9 How to use tabs (5:28)</a></h2>
+<p>这一节基本没有什么内容..</p>
+</div>
+<div class="section" id="nice-demo-creating-the-vimcasts-logo-as-ascii-art-5-47">
+<h2><a class="toc-backref" href="#id18">#10 &lt;nice-demo&gt;Creating the Vimcasts logo as ASCII art (5:47)</a></h2>
+<p>ASCII art</p>
+<p>在线工具: <a class="reference external" href="http://patorjk.com/software/taag/#p=display&amp;v=0&amp;f=Bulbhead&amp;t=hello">http://patorjk.com/software/taag/#p=display&amp;v=0&amp;f=Bulbhead&amp;t=hello</a></p>
+<p>宏:</p>
+<pre class="literal-block">
+qavwr_jq
+q      q  两个q作为起始和结束
+ a        表示放在a这个寄存器.
+</pre>
+<p>这一节对vim 的:</p>
+<ul class="simple">
+<li>V模式,</li>
+<li>ctrl+v 模式,</li>
+<li>拷贝,</li>
+<li>replace</li>
+<li>宏</li>
+</ul>
+<p>等的介绍, 对初学者是 <strong>很好的例子</strong> .</p>
+<p><strong>有用hint</strong>, 如何在ctrl+v (C-V)模式下, 只替换选中的内容:</p>
+<pre class="literal-block">
+aaxxxaaaaaabbbbbb
+aaxxxaaaaaabbbbbb
+aaxxxaaaaaabbbbbb
+aaxxxaaaaaabbbbbb
+aaxxxaaaaaabbbbbb
+</pre>
+<p>选中后 <tt class="docutils literal"><span class="pre">'&lt;,'&gt;s/./x/g</span></tt>, 替换是在整个行上的. 会把ab都替换</p>
+<p>需要加上 <tt class="docutils literal">\%V</tt></p>
+<pre class="literal-block">
+:'&lt;,'&gt;s/\%V./x/g
+</pre>
+</div>
+<div class="section" id="using-the-changelist-and-jumplist-3-21">
+<h2><a class="toc-backref" href="#id19">#11 Using the changelist and jumplist (3:21)</a></h2>
+<p>changelist:</p>
+<pre class="literal-block">
+:changes
+g;  到上一个编辑点.
+g,
+</pre>
+<pre class="literal-block">
+10g;  到倒数第10个编辑点.
+
+   10   269    0 ============================
+    9   197    8 #10 &lt;nice&gt;Creating the Vimcasts logo as ASCII art (5:47)
+    8   269    0 ============================
+    7   232    0
+    6   269    0 ============================
+    5   235    0
+    4   269    0 ============================
+    3   269    0 ============================
+    2   238    4 :changes
+    1   242    0
+&gt;   0   250    0
+    1   247    9 ctrl+I
+    2   269    0 ============================
+    3   248    0
+    4   269    0 ============================
+    5   239   29 g;  到上一个编辑点.
+    6   269    0 ============================
+    7   269    0 ============================
+    8   240   36 10g;  到倒数第10个编辑点.
+    9   269    0 ============================
+   10   269    0 ============================
+</pre>
+<p>jumplist, 比较熟悉了:</p>
+<pre class="literal-block">
+:jumps
+ctrl+O
+ctrl+I
+</pre>
+</div>
+<div class="section" id="modal-editing-undo-redo-and-repeat-5-26">
+<h2><a class="toc-backref" href="#id20">#12 Modal editing: undo, redo and repeat (5:26)</a></h2>
+<p>.是对编辑命令重复, 不会对移动命令.</p>
+<p><strong>有用</strong> :</p>
+<ul class="simple">
+<li><tt class="docutils literal">cw</tt>  相当于 <tt class="docutils literal">dwi</tt>  (之后进入insert模式)</li>
+<li><tt class="docutils literal">I</tt>  相当于 <tt class="docutils literal">^i</tt>    (到行首insert)</li>
+<li><tt class="docutils literal">A</tt>  相当于 <tt class="docutils literal">$i</tt></li>
+<li><tt class="docutils literal">o</tt>  想当于 <tt class="docutils literal">$a&lt;CR&gt;</tt> (这个习惯了)</li>
+</ul>
+</div>
+<div class="section" id="cleaning-up-with-vim-0-36">
+<h2><a class="toc-backref" href="#id21">#13 Cleaning up with Vim (0:36)</a></h2>
+<p>搞笑的.</p>
+</div>
+<div class="section" id="the-edit-command-3-50">
+<h2><a class="toc-backref" href="#id22">#14 The :edit command (3:50)</a></h2>
+<p><tt class="docutils literal">:e</tt></p>
+<p><tt class="docutils literal">:help expand</tt></p>
+<pre class="literal-block">
+map &lt;leader&gt;ew :e &lt;C-R&gt;=expand(&quot;%:p:h&quot;) . &quot;/&quot; &lt;CR&gt;
+</pre>
+<p>后, 通过,ew, 就可以:</p>
+<pre class="literal-block">
+e /home/ning/idning/blog_and_notes/notes/misc/
+</pre>
+<p>有点用处, 不过不大, 下面这个更有用些:</p>
+<pre class="literal-block">
+Thanks to Gary Bernhardt, here is a less horrible way of creating the same mappings:
+
+cnoremap %% &lt;C-R&gt;=fnameescape(expand('%:h')).'/'&lt;cr&gt;
+
+this allows you to expand the directory of the current file anywhere at the command line by pressing %%. A top tip from Max Cantor!
+</pre>
+<p><strong>cmap</strong>  是命令行的map, 可以在命令行里面, 用%%表示当前文件路径, <strong>这个收入我的.vimrc</strong></p>
+</div>
+<div class="section" id="the-file-explorer-5-36">
+<h2><a class="toc-backref" href="#id23">#15 The file explorer (5:36)</a></h2>
+<p>用 <tt class="docutils literal">:E</tt>, 用原生的目录管理器打开 一个目录, 支持排序，创建文件/目录, 删除, 重命名等:</p>
+<pre class="literal-block">
+&quot; Netrw Directory Listing                                        (netrw v149)
+&quot;   /home/ning/idning/blog_and_notes
+&quot;   Sorted by time
+&quot;   Quick Help: &lt;F1&gt;:help  -:go up dir  D:delete  R:rename  s:sort-by  x:exec
+
+%   create a new file
+d   create a new directory
+R   rename the file/directory under the cursor
+D   Delete the file/directory under the cursor
+</pre>
+</div>
+<div class="section" id="soft-wrapping-text-4-54">
+<h2><a class="toc-backref" href="#id24">#16 Soft wrapping text (4:54)</a></h2>
+<p>关于:</p>
+<pre class="literal-block">
+set wrap
+set linebreak
+set showbreak=◀  (在被wrap的行前面加个符号)
+</pre>
+<p>关闭wrap:</p>
+<pre class="literal-block">
+set nowrap (此时可以用zl来向右滚动)
+</pre>
+<p>开启wrap:</p>
+<pre class="literal-block">
+set wrap
+</pre>
+<p>此时默认是会断开单词的, 可以用 <tt class="docutils literal">:set linebreak</tt>, 设置为不断开单词, (这和 <tt class="docutils literal">:set list</tt> 是冲突的)</p>
+<p><strong>有用: 有wrap时候的移动</strong> :</p>
+<p><tt class="docutils literal">0</tt> ,  <tt class="docutils literal">$</tt> ,  <tt class="docutils literal">k</tt> ,  <tt class="docutils literal">j</tt>  等前面加上 <tt class="docutils literal">g</tt> , 就是按照break后的行来移动了(按照显示行移动)</p>
+</div>
+<div class="section" id="hard-wrapping-text-5-23">
+<h2><a class="toc-backref" href="#id25">#17 Hard wrapping text (5:23)</a></h2>
+<p>未看</p>
+<p>强制断行.</p>
+<p>选中一段``gq``就是按照80列格式化,</p>
+<p>the textwidth setting is a number representing the maximum allowed width of a
+line. when set to zero, which is the default, vim will use the full width of
+the window up to a maximum of 80 characters. when set to a value above zero,
+vim will format lines of text so as not to exceed the value of textwidth.</p>
+<p>相关设置:</p>
+<pre class="literal-block">
+set textwidth=xx &quot; 一行最多多宽
+默认 textwidth=0, 表示按照当前窗口宽度(但是得小于80)来做断行.
+
+set wrapmargin=xx &quot; 断行的时候, 右边空多少个字符(set nu后就需要这个了) 如果设置了textwidth, 则这个选项没有用
+默认wrapmargin=0,
+</pre>
+<pre class="literal-block">
+::set formatoptions=tcq
+默认: formatoptions=tcroql
+
+:set formatoptions+=a &quot; 在输入的时候自动断行. 会比较奇怪. 不要设
+</pre>
+<p>两个format engine: formatexpr vs formatprg.</p>
+</div>
+<div class="section" id="formatting-text-with-par-5-12">
+<h2><a class="toc-backref" href="#id26">#18 Formatting text with par (5:12)</a></h2>
+<p>设置外部fromat engine:</p>
+<pre class="literal-block">
+:set formatprg=par
+</pre>
+<p>par 输出更好看, 能处理注释格式.</p>
+<p>太复杂, 木有必要</p>
+</div>
+<div class="section" id="spell-checking-5-42">
+<h2><a class="toc-backref" href="#id27">#19 Spell checking (5:42)</a></h2>
+<pre class="literal-block">
+:set spell
+对txt文件有用, 写代码用不着.
+
+~/.vim/spell/LL.EEE.add
+</pre>
+</div>
+<div class="section" id="running-vim-within-irb-4-35">
+<h2><a class="toc-backref" href="#id28">#20 Running Vim within IRB (4:35)</a></h2>
+<p>IRB: interactive ruby shell</p>
+<p>在irb解释器里面调用vim来编辑代码(比如定义一个多行的函数),  <strong>确实不错的特性</strong></p>
+<p>python 要有这个多好</p>
+</div>
+<div class="section" id="nice-demo-converting-markdown-to-struct-ured-html-with-a-macro-9-25">
+<h2><a class="toc-backref" href="#id29">#21 &lt;nice-demo&gt;Converting markdown to struct_ured HTML with a macro (9:25)</a></h2>
+<p>surround.vim 插件</p>
+<p>用例子讲解.</p>
+<p><strong>非常好的例子, 应该再看一遍</strong> , 虽然不是很常用, 而且可以用脚本实现, 但是用的多了, 还是很有效率!!</p>
+<p>比如 <tt class="docutils literal">&quot;zdw</tt>  剪切到 <tt class="docutils literal">z</tt> 寄存器 <tt class="docutils literal">&quot;zP</tt> 粘贴出来, 这样的寄存器, 一般多用在宏里面.</p>
+</div>
+<div class="section" id="nice-demo-selecting-columns-with-visual-block-mode-4-21">
+<h2><a class="toc-backref" href="#id30">#22 &lt;nice-demo&gt;Selecting columns with visual block mode (4:21)</a></h2>
+<p>对 <tt class="docutils literal">ctrl+v</tt> 非常好的例子, 自己已经用习惯了:)</p>
+<p>textmate 也有这个功能.</p>
+<p><tt class="docutils literal">ctrl+v</tt>
+可以用</p>
+<ul class="simple">
+<li><tt class="docutils literal">I</tt></li>
+<li><tt class="docutils literal">A</tt></li>
+<li><tt class="docutils literal">r</tt> 替换</li>
+<li><tt class="docutils literal">d</tt> 删</li>
+<li><tt class="docutils literal">p</tt> 粘贴</li>
+<li><tt class="docutils literal">c</tt> <strong>这个有用</strong> , 删掉选中的, 再进入插入模式</li>
+<li><tt class="docutils literal">C</tt> 这相当于按了 <tt class="docutils literal">$</tt> .</li>
+<li><tt class="docutils literal">o</tt> <strong>有用</strong> 到选中方块的对角.</li>
+<li><tt class="docutils literal">o9</tt> 固定到块尾,(对V模式都一样)</li>
+</ul>
+<p>例子:</p>
+<pre class="literal-block">
+############################
+# nihao ,wo hao            #
+#                          #
+############################
+</pre>
+</div>
+<div class="section" id="converting-haml-to-erb-with-vim-macros-7-36">
+<h2><a class="toc-backref" href="#id31">#23 Converting HAML to ERB with Vim macros (7:36)</a></h2>
+<p>也是例子, 没有特别的东东, 例子需要对ruby 熟悉才比较好懂.</p>
+</div>
+<div class="section" id="updating-your-vimrc-file-on-the-fly-2-51">
+<h2><a class="toc-backref" href="#id32">#24 Updating your vimrc file on the fly (2:51)</a></h2>
+<pre class="literal-block">
+:source $MYVIMRC
+autocmd bufwritepost .vimrc source $MYVIMRC
+</pre>
+</div>
+<div class="section" id="creating-colorschemes-for-vim-9-44">
+<h2><a class="toc-backref" href="#id33">#25 Creating colorschemes for Vim (9:44)</a></h2>
+<p>默认放在~/.vim/colors/下面:</p>
+<pre class="literal-block">
+highlight Todo guifg=#990000 guibg=NONE gui=NONE
+highlight link Comment Todo
+</pre>
+<p>对颜色没有特殊癖好.</p>
+</div>
+<div class="section" id="bubbling-text-6-23">
+<h2><a class="toc-backref" href="#id34">#26 Bubbling text (6:23)</a></h2>
+<p>类似Eclise &lt;ctrl+up&gt; &lt;ctrl-down&gt; 之类的功能:</p>
+<pre class="literal-block">
+&quot; Bubble single lines
+nmap &lt;C-Up&gt; ddkP
+nmap &lt;C-Down&gt; ddp
+&quot; Bubble multiple lines
+vmap &lt;C-Up&gt; xkP`[V`]
+vmap &lt;C-Down&gt; xp`[V`]
+</pre>
+<p>虽然自己基本不用, 不过还是 <strong>不错的tip</strong></p>
+<p><strong>下面这个很有用</strong></p>
+<p><tt class="docutils literal">gV</tt> 选择刚编辑的地方:</p>
+<pre class="literal-block">
+&quot; Visually select the text that was last edited/pasted
+nmap gV `[v`]
+</pre>
+</div>
+<div class="section" id="synchronizing-plugins-with-git-submodules-and-pathogen-9-24">
+<h2><a class="toc-backref" href="#id35">#27 Synchronizing plugins with git submodules and pathogen (9:24)</a></h2>
+<p>用这种方法管理模块:</p>
+<pre class="literal-block">
+Installation:
+
+    git clone git://github.com/nelstrom/dotvim.git ~/.vim
+
+Create symlinks:
+
+    ln -s ~/.vim/vimrc ~/.vimrc
+    ln -s ~/.vim/gvimrc ~/.gvimrc
+
+Switch to the `~/.vim` directory, and fetch submodules:
+
+    cd ~/.vim
+    git submodule init
+    git submodule update
+</pre>
+<p>附带了一个简单的github用法介绍.</p>
+<p>Pathgon: 10年10月就有了的, 现在已然3年过去了.</p>
+<p>我用svn+vundle.</p>
+</div>
+<div class="section" id="refining-search-patterns-with-the-command-line-window-7-51">
+<h2><a class="toc-backref" href="#id36">#28 Refining search patterns with the command-line window (7:51)</a></h2>
+<p>Refining 是提炼的意思</p>
+<p>When you press : or / in Vim, you go into commandline mode. 此时:</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field"><th class="field-name">ctrl-p:</th><td class="field-body">Show previous historical command/search</td>
+</tr>
+<tr class="field"><th class="field-name">ctrl-n:</th><td class="field-body">Show next         historical command/search</td>
+</tr>
+<tr class="field"><th class="field-name">ctrl-f:</th><td class="field-body">Switch from commandline mode to the co    mmandline window</td>
+</tr>
+</tbody>
+</table>
+<p>在normal模式下:</p>
+<ul class="simple">
+<li><tt class="docutils literal">q/</tt>:  Open the commandline window with history of searches</li>
+<li><tt class="docutils literal">q:</tt>:  Open the commandline window with history of commands</li>
+</ul>
+<p><strong>command-line window, 需要练习, 对正则式来说也是不错的例子</strong></p>
+<p>在写command的时候, 可以用 <tt class="docutils literal">ctrl+n</tt> 自动提示.</p>
+<p>例子:</p>
+<pre class="literal-block">
+\v'.+'
+\v'[^']+'
+\v'('\w|[^'])+'
+\v'(('\w|[^'])+)'
+</pre>
+</div>
+<div class="section" id="aligning-text-with-tabular-vim-5-11">
+<h2><a class="toc-backref" href="#id37">#29 Aligning text with Tabular.vim (5:11)</a></h2>
+<p><strong>练习</strong></p>
+<pre class="literal-block">
+:Tab /=
+:Tab /:
+</pre>
+<p>下面这个如果用在输入等号的时候格式化应该不错:</p>
+<pre class="literal-block">
+inoremap &lt;silent&gt; &lt;Bar&gt;   &lt;Bar&gt;&lt;Esc&gt;:call &lt;SID&gt;align()&lt;CR&gt;a
+
+function! s:align()
+  let p = '^\s*|\s.*\s|\s*$'
+  if exists(':Tabularize') &amp;&amp; getline('.') =~# '^\s*|' &amp;&amp; (getline(line('.')-1) =~# p || getline(line('.')+1) =~# p)
+    let column = strlen(substitute(getline('.')[0:col('.')],'[^|]','','g'))
+    let position = strlen(matchstr(getline('.')[0:col('.')],'.*|\s*\zs.*'))
+    Tabularize/|/l1
+    normal! 0
+    call search(repeat('[^|]*|',column).'\s\{-\}'.repeat('.',position),'ce',line('.'))
+  endif
+endfunction
+</pre>
+</div>
+<div class="section" id="undo-branching-and-gundo-vim-6-30">
+<h2><a class="toc-backref" href="#id38">#30 Undo branching and Gundo.vim (6:30)</a></h2>
+<p>每次回到normal 状态的时候, 记录一个undo record, 这很重要!!</p>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id39">例1</a></h3>
+<p>在riv.vim插件里面, 如果设置了:</p>
+<pre class="literal-block">
+let s:default.buf_imaps = {
+    \'&lt;BS&gt;'         : 'riv#action#ins_backspace()',
+    \'&lt;CR&gt;'         : 'riv#action#ins_enter()'   ,
+    \'&lt;KEnter&gt;'     : 'riv#action#ins_enter()'   ,
+    ...
+}
+</pre>
+<p>这里粘贴一段多行文字的时候, 每次遇到&lt;CR&gt;都会切入normal模式, 造成多个undo history</p>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id40">例2</a></h3>
+<p>自己的修改LastModified 字段的插件, 每次保存的时候, 都会生成两个undo history, undo 的时候会跳到文件头.</p>
+<p>不少人遇到这个问题:</p>
+<ul class="simple">
+<li><a class="reference external" href="http://stackoverflow.com/questions/12741977/prevent-vim-from-updating-its-undo-tree">http://stackoverflow.com/questions/12741977/prevent-vim-from-updating-its-undo-tree</a></li>
+<li><a class="reference external" href="http://stackoverflow.com/questions/17969784/vim-temporary-disable-undo">http://stackoverflow.com/questions/17969784/vim-temporary-disable-undo</a></li>
+</ul>
+<p>都没有很好解决.</p>
+<p>我通过在python里面判断, 如果last modify 正好是当天, 就不做update, 来减少undo history</p>
+</div>
+<div class="section" id="undo-branch">
+<h3><a class="toc-backref" href="#id41">undo branch</a></h3>
+<p>vim 7.0的特性</p>
+<p><strong>这里讲解非常好!!</strong></p>
+<p>因为undo, redo 只能在一个分支上走, 不能到一个已经被丢弃的分支,
+但是可以通过 <tt class="docutils literal">g+</tt> , <tt class="docutils literal">g-</tt> 回到上一个状态(可以在undo branch之间切换!) 类似时光机.</p>
+<pre class="literal-block">
+:earlier {count}    Go to older text state {count} times.
+:earlier {N}s       Go to older text state about {N} seconds before.
+:earlier {N}m       Go to older text state about {N} minutes before.
+:earlier {N}h       Go to older text state about {N} hours before.
+:earlier {N}d       Go to older text state about {N} days before.
+</pre>
+</div>
+<div class="section" id="gundo">
+<h3><a class="toc-backref" href="#id42">gundo</a></h3>
+<p>这个插件, 可以展示undo branch的分支, 还能显示两次变换之间的diff.</p>
+<p>也是用python做的!</p>
+<p>很赞: <a class="reference external" href="https://github.com/sjl/gundo.vim">https://github.com/sjl/gundo.vim</a></p>
+</div>
+</div>
+<div class="section" id="fugitive-vim-a-complement-to-command-line-git-8-27">
+<h2><a class="toc-backref" href="#id43">#31 Fugitive.vim - a complement to command line git (8:27)</a></h2>
+<p>Git run任何git命令:</p>
+<pre class="literal-block">
+:Git log
+:Git lg
+
+:Gwrite
+:Gread
+:Gremove
+:Gmove
+</pre>
+<p>感觉没有必要</p>
+</div>
+<div class="section" id="fugitive-vim-working-with-the-git-index-11-41">
+<h2><a class="toc-backref" href="#id44">#32 Fugitive.vim - working with the git index (11:41)</a></h2>
+<p><tt class="docutils literal">Gstatus</tt></p>
+<ul class="simple">
+<li>之后用 <tt class="docutils literal">-</tt> 来修改是否要stage 一个文件, 很赞</li>
+<li>之后用 <tt class="docutils literal">C</tt> 来开始commit</li>
+</ul>
+<p><tt class="docutils literal">Gblame</tt>, <tt class="docutils literal">Gdiff</tt> 是有点用.</p>
+</div>
+<div class="section" id="fugitive-vim-resolving-merge-conflicts-with-vimdiff-11-35">
+<h2><a class="toc-backref" href="#id45">#33 Fugitive.vim - resolving merge conflicts with vimdiff (11:35)</a></h2>
+<p>Gdiff 3路merge , 太复杂.</p>
+<p>diffput, diffget 太夫在, <tt class="docutils literal">dp</tt> 还好</p>
+</div>
+<div class="section" id="fugitive-vim-browsing-the-git-object-database-9-45">
+<h2><a class="toc-backref" href="#id46">#34 Fugitive.vim - browsing the git object database (9:45)</a></h2>
+<p>Gbrowser挺强大和方便, <em>但是少用</em></p>
+<p>statusline显示git branch:</p>
+<pre class="literal-block">
+set statusline=%&lt;%f\ %h%m%r%{fugitive#statusline()}%=%-14.(%l,%c%V%)\ %P
+</pre>
+</div>
+<div class="section" id="fugitive-vim-exploring-the-history-of-a-git-repository-10-04">
+<h2><a class="toc-backref" href="#id47">#35 Fugitive.vim - exploring the history of a git repository (10:04)</a></h2>
+<p>Fugitive.vim这个插件挺强大和方便, 但是这些功能太少用了 -- 很多人几乎一年浏览一下某个项目的历史项目, 就不错了.</p>
+</div>
+<div class="section" id="vimgolf-prime-numbers-6-53">
+<h2><a class="toc-backref" href="#id48">#36 VimGolf - Prime Numbers (6:53)</a></h2>
+<p>VimGolf是一个Vim挑战网站, 从获得Prime Numbers这个例子上, 可以学习宏/正则式.</p>
+</div>
+<div class="section" id="how-to-fold-8-49">
+<h2><a class="toc-backref" href="#id49">#37 How to fold (8:49)</a></h2>
+<p>:help fold-methods</p>
+<ul class="simple">
+<li><tt class="docutils literal">zi</tt> switch folding on or off</li>
+<li><tt class="docutils literal">za</tt> toggle current fold open/closed</li>
+<li><tt class="docutils literal">zc</tt>          close current fold</li>
+<li><tt class="docutils literal">zR</tt> open all folds</li>
+<li><tt class="docutils literal">zM</tt> close all folds</li>
+<li><tt class="docutils literal">zv</tt> expand folds           to reveal cursor</li>
+<li><tt class="docutils literal">zo</tt>  open current fold</li>
+<li><tt class="docutils literal">zO</tt>  recursively open current fold</li>
+<li><tt class="docutils literal">zc</tt>  close current fold</li>
+<li><tt class="docutils literal">zC</tt>  recursively close current fold</li>
+<li><tt class="docutils literal">za</tt>  toggle current fold                           有用, 可以换掉zc, zo</li>
+<li><tt class="docutils literal">zA</tt>  recursively open/close current fold</li>
+<li><tt class="docutils literal">zm</tt>  reduce <cite>foldlevel</cite> by one</li>
+<li><tt class="docutils literal">zM</tt>  close all folds</li>
+<li><tt class="docutils literal">zr</tt>  increase <cite>foldlevel</cite> by one</li>
+<li><tt class="docutils literal">zR</tt>  open all folds</li>
+</ul>
+<p><tt class="docutils literal">nnoremap &lt;Space&gt; za</tt> 不错, 很方便.</p>
+<p>知识点不多, 基本都用惯了.</p>
+</div>
+<div class="section" id="writing-a-custom-fold-expression-12-07">
+<h2><a class="toc-backref" href="#id50">#38 Writing a custom fold expression (12:07)</a></h2>
+<ul>
+<li><p class="first"><tt class="docutils literal">foldcolumn</tt> 是说左边有几个列是放fold标记的</p>
+</li>
+<li><p class="first">使用foldmethod=marker 时, 可以用:</p>
+<pre class="literal-block">
+{{{
+{{{1  这里1表示级别
+</pre>
+</li>
+</ul>
+<p>Here’s the boilerplate fold expression that we used to begin with:</p>
+<pre class="literal-block">
+function! MarkdownFolds()
+  return &quot;0&quot;
+endfunction
+setlocal foldmethod=expr
+setlocal foldexpr=MarkdownFolds()
+</pre>
+<p>返回值:</p>
+<blockquote>
+&quot;0&quot; the line is not in a fold
+&quot;1&quot;, &quot;2&quot;, ...   the line is in a fold with this level
+&quot;=&quot; use fold level from the previous line
+&quot;&gt;1&quot;, &quot;&gt;2&quot;  a fold with this level starts at this line</blockquote>
+<p>可以通过这个函数, 设置fold的区域显示什么:</p>
+<pre class="literal-block">
+function! MarkdownFoldText()
+  return getline(v:foldstart)
+endfunction
+setlocal foldtext=MarkdownFoldText()
+</pre>
+<p>有用但是不重要</p>
+</div>
+<div class="section" id="profiling-vimscript-performance-8-09">
+<h2><a class="toc-backref" href="#id51">#39 Profiling Vimscript performance (8:09)</a></h2>
+<p>vim --cmd 'profile start vimrc.profile' --cmd 'profile! file ~/.vimrc'</p>
+<p>会把profile结果记录在vimrc.profile 里面</p>
+<p><strong>赞</strong> , 有用技巧</p>
+</div>
+<div class="section" id="long-range-line-duplication-6-31">
+<h2><a class="toc-backref" href="#id52">#40 Long-range line duplication (6:31)</a></h2>
+<p>没用, 不方便, 把第9行拷贝到16行:</p>
+<pre class="literal-block">
+:9copy16
+</pre>
+<p>拷贝到当前行:</p>
+<pre class="literal-block">
+:9t.
+</pre>
+<pre class="literal-block">
+set relativenumber, 显示相对行号
+
+:-7t.
+</pre>
+</div>
+<div class="section" id="meet-the-arglist-4-57">
+<h2><a class="toc-backref" href="#id53">#41 Meet the arglist (4:57)</a></h2>
+<pre class="literal-block">
+:args
+</pre>
+<p><tt class="docutils literal">.</tt> 是重复上一个编辑命令
+<tt class="docutils literal">&#64;:</tt> 是重复上一个命令模式的命令</p>
+<p><tt class="docutils literal">buffer list</tt> 包含 <tt class="docutils literal">argument list</tt>, 比如我用 <tt class="docutils literal">lsrecent</tt> 打开一个文件后, <tt class="docutils literal">:args</tt> 显示:</p>
+<pre class="literal-block">
+[.recent]
+</pre>
+<p>并不显示当前文件.</p>
+</div>
+<div class="section" id="populating-the-arglist-5-31">
+<h2><a class="toc-backref" href="#id54">#42 Populating the arglist (5:31)</a></h2>
+<p>how to set the contents of the arglist using the :args command, which can receive filepaths, globs, or even backtick expressions.</p>
+<p>比如:</p>
+<pre class="literal-block">
+:args notes/misc/vim-ctags-vs-cscope.rst
+</pre>
+<p>会打开这个文件.</p>
+<p>args 有点像用 <tt class="docutils literal">vim *.rst</tt> 这样的命令打开多个文件的时候, 带的参数 <tt class="docutils literal">*.rst</tt>, 可以传shell 命令给args:</p>
+<pre class="literal-block">
+args `cat a.txt`
+</pre>
+<img alt="" src="/imgs/vim_buffer_list_vs_arglist.png" />
+</div>
+<div class="section" id="using-argdo-to-change-multiple-files-5-40">
+<h2><a class="toc-backref" href="#id55">#43 Using :argdo to change multiple files (5:40)</a></h2>
+<p>这个没啥可说的</p>
+</div>
+<div class="section" id="search-multiple-files-with-vimgrep-7-25">
+<h2><a class="toc-backref" href="#id56">#44 Search multiple files with :vimgrep (7:25)</a></h2>
+<p>vimgrep is Vim’s built-in command for searching across multiple files. It’s not so fast as external tools like ack and git-grep, but it has its uses. vimgrep uses Vim’s built-in regex engine, so you can reuse the patterns that work with Vim’s standard search command.</p>
+<p>不如:</p>
+<pre class="literal-block">
+ack
+git-grep
+ag
+</pre>
+<p>快.</p>
+<p>grep 一个东西:</p>
+<pre class="literal-block">
+:Ack ensureIndex
+:grep ensureIndex * -r  会把svn 之类的grep出来.
+
+在当前文件中找:
+:vimgrep /ensureIndex/g %
+
+:vimgrep /ensureIndex/g *
+
+:vimgrep /ensureIndex/g `find . -type f`
+
+在arglist 里面搜索
+:vimgrep /ensureIndex/g ##
+</pre>
+<pre class="literal-block">
+:vim /pattern1/ `find . -type f`
+:vim /pattern2/ `find . -type f`
+:vim /pattern3/ `find . -type f`
+</pre>
+<p>可以换成:</p>
+<pre class="literal-block">
+:args `find . -type f`
+:vim /pattern1/ ##
+:vim /pattern2/ ##
+:vim /pattern3/ ##
+</pre>
+<p>vimgrep 的优势只有: 和vim使用同样的正则.</p>
+</div>
+<div class="section" id="project-wide-find-and-replace-6-25">
+<h2><a class="toc-backref" href="#id57">#45 Project-wide find and replace (6:25)</a></h2>
+<p>把quickfix 窗口里面的文件名, 放到arglist里面去, <strong>非常有用</strong>, 但是用到这种全局替换的case不多:</p>
+<pre class="literal-block">
+command! -nargs=0 -bar Qargs execute 'args' QuickfixFilenames()
+function! QuickfixFilenames()
+  &quot; Building a hash ensures we get each buffer only once
+  let buffer_numbers = {}
+  for quickfix_item in getqflist()
+    let buffer_numbers[quickfix_item['bufnr']] = bufname(quickfix_item['bufnr'])
+  endfor
+  return join(map(values(buffer_numbers), 'fnameescape(v:val)'))
+endfunction
+</pre>
+<p>这样, 流程变为:</p>
+<ol class="arabic simple">
+<li>vimgrep 找出需要替换的单词</li>
+<li>Qargs</li>
+<li>:argdo %s/xxx/xxxxx/ge</li>
+<li>:argdo w</li>
+</ol>
+</div>
+<div class="section" id="search-for-the-selected-text-4-39">
+<h2><a class="toc-backref" href="#id58">#46 Search for the selected text (4:39)</a></h2>
+<p>用内置功能:</p>
+<pre class="literal-block">
+:vmap X y/&lt;C-R&gt;&quot;&lt;CR&gt;
+</pre>
+<p>用插件:</p>
+<pre class="literal-block">
+visual-star-search plugin from github,
+</pre>
+<p>非常有用, 效果比之前用的 <tt class="docutils literal">UtilVisualSelection</tt> 好.</p>
+<p><strong>某些时候可以替代ack</strong> 也不错:</p>
+<pre class="literal-block">
+&quot; recursively vimgrep for word under cursor or selection if you hit leader-star
+nnoremap &lt;leader&gt;* :execute 'noautocmd vimgrep /\V' . substitute(escape(expand(&quot;&lt;cword&gt;&quot;), '\'), '\n', '\\n', 'g') . '/ **'&lt;CR&gt;
+vnoremap &lt;leader&gt;* :&lt;C-u&gt;call &lt;SID&gt;VSetSearch()&lt;CR&gt;:execute 'noautocmd vimgrep /' . &#64;/ . '/ **'&lt;CR&gt;
+</pre>
+<p><tt class="docutils literal">,*</tt> 这个map比 <tt class="docutils literal">F3</tt> 也更好</p>
+</div>
+<div class="section" id="smart-search-with-subvert-5-33">
+<h2><a class="toc-backref" href="#id59">&#64;47 Smart search with :Subvert (5:33)</a></h2>
+</div>
+<div class="section" id="supercharged-substitution-with-subvert-7-09">
+<h2><a class="toc-backref" href="#id60">&#64;48 Supercharged substitution with :Subvert (7:09)</a></h2>
+</div>
+<div class="section" id="enhanced-abbreviations-with-abolish-3-09">
+<h2><a class="toc-backref" href="#id61">&#64;49 Enhanced abbreviations with :Abolish (3:09)</a></h2>
+<p>abolish插件对我应该不太有用.</p>
+<p>Abolish's killer feature is that it handles the fight between logical names &amp; the English language.
+在替换的时候能自动处理单复数, 大小写, 前后缀:</p>
+<pre class="literal-block">
+:%s/Notes/Entries/g
+:%s/Note/Entry/g
+:%s/notes/entries/g
+</pre>
+</div>
+<div class="section" id="an-introduction-to-vspec-7-15">
+<h2><a class="toc-backref" href="#id62">#50 An introduction to vspec (7:15)</a></h2>
+<p><tt class="docutils literal">Vspec</tt> is a library that allows you to test-drive your Vimscript code. In this tutorial, we’ll cover the basics: how to inspect the contents of a buffer, how to simulate the actions of a user, and how to invoke user-defined mappings.</p>
+<p>可以给vim 插件写测试:</p>
+<pre class="literal-block">
+nnoremap x daw
+
+describe 'vspec'
+
+  before
+    new
+    put! = 'Welcome to Vimcasts'
+  end
+
+  after
+    close!
+  end
+
+  it 'can read the contents of the buffer'                  #一个case
+    Expect getline(1) == &quot;Welcome to Vimcasts&quot;
+  end
+
+  it 'feels just like operating Vim!'                       #一个case
+    normal gg$
+    normal daw
+    Expect getline(1) == 'Welcome to'
+    Expect getreg('&quot;') == ' Vimcasts'
+  end
+
+  it 'can exercise user-defined mappings'                   #一个case
+    normal gg$
+    normal x
+    Expect getline(1) == 'Welcome to'
+    Expect getreg('&quot;') == ' Vimcasts'
+  end
+
+end
+</pre>
+<ol class="arabic simple">
+<li>把如上脚本转换为vimscrip (excommand)</li>
+<li>用Ex模式调用vim(不会出现gui), 并执行excommand</li>
+<li>可以用excommand <tt class="docutils literal">normal d</tt> 模拟normal 模式下按一下 <tt class="docutils literal">d</tt></li>
+</ol>
+<p><strong>非常赞</strong> .</p>
+</div>
+<div class="section" id="simple-operations-using-the-default-register-4-07">
+<h2><a class="toc-backref" href="#id63">#51 Simple operations using the default register (4:07)</a></h2>
+<p>讲ddp交换两行.</p>
+<p>比较简单</p>
+</div>
+<div class="section" id="meet-the-yank-register-4-29">
+<h2><a class="toc-backref" href="#id64">#52 Meet the yank register (4:29)</a></h2>
+<p>已知, 比较简单</p>
+</div>
+<div class="section" id="using-vim-s-named-registers-3-29">
+<h2><a class="toc-backref" href="#id65">#53 Using Vim's named registers (3:29)</a></h2>
+<ul class="simple">
+<li><tt class="docutils literal">&quot;ayy</tt> 是把当前行放入 <tt class="docutils literal">寄存器a</tt></li>
+<li><tt class="docutils literal">&quot;Ayy</tt> 是把当前行append 到 <tt class="docutils literal">寄存器a</tt></li>
+</ul>
+<p>比较简单</p>
+</div>
+<div class="section" id="pasting-from-visual-mode-3-33">
+<h2><a class="toc-backref" href="#id66">#54 Pasting from Visual mode (3:33)</a></h2>
+<p>比较简单</p>
+</div>
+<div class="section" id="pasting-from-insert-mode-4-15">
+<h2><a class="toc-backref" href="#id67">#55 Pasting from Insert mode (4:15)</a></h2>
+<p>insert下/命令模式下, 按 <tt class="docutils literal">crtl+r 0</tt>, 粘贴0号寄存器.</p>
+</div>
+<div class="section" id="simple-calculations-with-vim-s-expression-register-4-02">
+<h2><a class="toc-backref" href="#id68">#56 Simple calculations with Vim's expression register (4:02)</a></h2>
+<p>表达式寄存器: <tt class="docutils literal">&quot;=</tt></p>
+<p><strong>有用</strong> : 编辑模式下: <tt class="docutils literal">ctrl+r =</tt> 输入 <tt class="docutils literal">3*5</tt> , 插入结果</p>
+<p>用下面这个map:</p>
+<pre class="literal-block">
+nnoremap Q 0yt=A&lt;C-r&gt;=&lt;C-r&gt;&quot;&lt;CR&gt;&lt;Esc&gt;
+</pre>
+<pre class="literal-block">
+3*2 =
+</pre>
+</div>
+<div class="section" id="evaluating-scripts-with-vim-s-expression-register-3-56">
+<h2><a class="toc-backref" href="#id69">#57 Evaluating scripts with Vim's expression register (3:56)</a></h2>
+<p><tt class="docutils literal">system()</tt> 函数</p>
+<p><tt class="docutils literal">&quot;=</tt> 下可以用 abs(), round(), system()之类函数</p>
+<pre class="literal-block">
+:help function-list
+</pre>
+<pre class="literal-block">
+:put = 3+3
+:put =system('echo $RANDOM')
+</pre>
+</div>
+<div class="section" id="accessing-the-system-clipboard-from-vim-4-48">
+<h2><a class="toc-backref" href="#id70">#58 Accessing the system clipboard from Vim (4:48)</a></h2>
+<p>&quot;+y
+粘贴, 不需要设置set paste:</p>
+<pre class="literal-block">
+&quot;+gp
+:put +
+</pre>
+<p>If you’d like to make it easier to interact with the system clipboard, try out this setting,</p>
+<pre class="literal-block">
+:set clipboard=unnamed,unnamedplus
+</pre>
+<p><strong>有用</strong>, 但是会破坏我在 <tt class="docutils literal">rst_bold_it</tt> 的ctrl+c, ctrl+b, 因为这里我用了默认寄存器 <tt class="docutils literal">&quot;</tt> , 我换成命名寄存器 <tt class="docutils literal">n</tt> 就好了</p>
+<p>上面这个行为想当于 在d, x, y, p 命令前都加了&quot;*</p>
+</div>
+<div class="section" id="using-vim-s-paste-mode-with-the-system-paste-command-4-25">
+<h2><a class="toc-backref" href="#id71">#59 Using Vim's paste mode with the system paste command (4:25)</a></h2>
+<p>set paste 之后 ， imap都失效了.</p>
+<p><tt class="docutils literal">unimpaired</tt> 这个插件, 可以在我想要粘贴的时候, 按 <tt class="docutils literal">yo</tt> , 此时会自动 <tt class="docutils literal">set paste</tt> 贴完之后, 会自动 <tt class="docutils literal">set nopaste</tt></p>
+<p><em>-对我基本没用</em></p>
+</div>
+<div class="section" id="comparing-buffers-with-vimdiff-4-16">
+<h2><a class="toc-backref" href="#id72">#60 Comparing buffers with vimdiff (4:16)</a></h2>
+<pre class="literal-block">
+:windo diffthis 比较两个win.
+:windo diffoff
+</pre>
+</div>
+<div class="section" id="creating-repeatable-mappings-with-repeat-vim-4-33">
+<h2><a class="toc-backref" href="#id73">#61 Creating repeatable mappings with repeat.vim (4:33)</a></h2>
+<p>基本没用.</p>
+</div>
+<div class="section" id="id5">
+<h2><a class="toc-backref" href="#id74">关于</a></h2>
+<p>作者:<a class="reference external" href="https://github.com/nelstrom/">https://github.com/nelstrom/</a></p>
+</div>
+<div class="section" id="ning-vim-modline">
+<h2><a class="toc-backref" href="#id75">ning: vim modline</a></h2>
+<p>比如写在文件头:</p>
+<pre class="literal-block">
+&quot;vim: foldmethod=marker
+</pre>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id76">总结</a></h2>
+<p>前30个非常好, 后面知识较少.</p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>
