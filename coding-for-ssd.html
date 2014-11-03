@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>reading: coding-for-ssd &amp; implement a kv</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/coding-for-ssd.html">2014-07-30 16:58:07</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#coding-for-ssds" id="id7">1&nbsp;&nbsp;&nbsp;Coding for SSDs</a><ul class="auto-toc">
+<li><a class="reference internal" href="#part-1-introduction-and-table-of-contents" id="id8">1.1&nbsp;&nbsp;&nbsp;Part 1: Introduction and Table of Contents</a></li>
+<li><a class="reference internal" href="#part-2-architecture-of-an-ssd-and-benchmarking" id="id9">1.2&nbsp;&nbsp;&nbsp;Part 2: Architecture of an SSD and Benchmarking</a><ul class="auto-toc">
+<li><a class="reference internal" href="#ssd" id="id10">1.2.1&nbsp;&nbsp;&nbsp;ssd 架构</a></li>
+<li><a class="reference internal" href="#benchmark" id="id11">1.2.2&nbsp;&nbsp;&nbsp;如何做benchmark:</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#part-3-pages-blocks-and-the-flash-translation-layer" id="id12">1.3&nbsp;&nbsp;&nbsp;Part 3: Pages, Blocks, and the Flash Translation Layer</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id1" id="id13">1.3.1&nbsp;&nbsp;&nbsp;基本操作</a></li>
+<li><a class="reference internal" href="#id2" id="id14">1.3.2&nbsp;&nbsp;&nbsp;写放大</a></li>
+<li><a class="reference internal" href="#wear-leveling" id="id15">1.3.3&nbsp;&nbsp;&nbsp;wear leveling</a></li>
+<li><a class="reference internal" href="#flash-translation-layer-ftl" id="id16">1.3.4&nbsp;&nbsp;&nbsp;Flash Translation Layer (FTL)</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#part-4-advanced-functionalities-and-internal-parallelism" id="id17">1.4&nbsp;&nbsp;&nbsp;Part 4: Advanced Functionalities and Internal Parallelism</a><ul class="auto-toc">
+<li><a class="reference internal" href="#trim" id="id18">1.4.1&nbsp;&nbsp;&nbsp;TRIM 命令</a></li>
+<li><a class="reference internal" href="#over-provisioning" id="id19">1.4.2&nbsp;&nbsp;&nbsp;over-provisioning</a></li>
+<li><a class="reference internal" href="#secure-erase" id="id20">1.4.3&nbsp;&nbsp;&nbsp;Secure Erase</a></li>
+<li><a class="reference internal" href="#internal-parallelism-in-ssds" id="id21">1.4.4&nbsp;&nbsp;&nbsp;Internal Parallelism in SSDs</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#part-5-access-patterns-and-system-optimizations" id="id22">1.5&nbsp;&nbsp;&nbsp;Part 5: Access Patterns and System Optimizations</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id3" id="id23">1.5.1&nbsp;&nbsp;&nbsp;访问模式</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#part-6-a-summary-what-every-programmer-should-know-about-solid-state-drives" id="id24">1.6&nbsp;&nbsp;&nbsp;Part 6: A Summary – What every programmer should know about solid-state drives</a></li>
+<li><a class="reference internal" href="#id4" id="id25">1.7&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#implementing-a-key-value-store-felixdb" id="id26">2&nbsp;&nbsp;&nbsp;Implementing a Key-Value Store(FelixDB)</a><ul class="auto-toc">
+<li><a class="reference internal" href="#what-are-key-value-stores-and-why-implement-one" id="id27">2.1&nbsp;&nbsp;&nbsp;1 What are key-value stores, and why implement one?</a></li>
+<li><a class="reference internal" href="#using-existing-key-value-stores-as-models" id="id28">2.2&nbsp;&nbsp;&nbsp;2 Using existing key-value stores as models</a></li>
+<li><a class="reference internal" href="#comparative-analysis-of-the-architectures-of-kyoto-cabinet-and-leveldb" id="id29">2.3&nbsp;&nbsp;&nbsp;3 Comparative Analysis of the Architectures of Kyoto Cabinet and LevelDB</a></li>
+<li><a class="reference internal" href="#api-design" id="id30">2.4&nbsp;&nbsp;&nbsp;4 API Design</a></li>
+<li><a class="reference internal" href="#hash-table-implementations" id="id31">2.5&nbsp;&nbsp;&nbsp;5 Hash table implementations</a></li>
+<li><a class="reference internal" href="#implementing-a-memory-efficient-hash-table-stored-on-the-file-system" id="id32">2.6&nbsp;&nbsp;&nbsp;-6 Implementing a memory-efficient hash table stored on the file system</a></li>
+<li><a class="reference internal" href="#memory-management" id="id33">2.7&nbsp;&nbsp;&nbsp;7 Memory Management</a></li>
+<li><a class="reference internal" href="#networking" id="id34">2.8&nbsp;&nbsp;&nbsp;8 Networking</a></li>
+<li><a class="reference internal" href="#interfaces-rest-memcached-etc" id="id35">2.9&nbsp;&nbsp;&nbsp;9 Interfaces: REST, memcached, etc.</a></li>
+<li><a class="reference internal" href="#going-further" id="id36">2.10&nbsp;&nbsp;&nbsp;10 Going further</a></li>
+<li><a class="reference internal" href="#id5" id="id37">2.11&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id6" id="id38">3&nbsp;&nbsp;&nbsp;参考</a></li>
+</ul>
+</div>
+<div class="section" id="coding-for-ssds">
+<h2><a class="toc-backref" href="#id7">1&nbsp;&nbsp;&nbsp;Coding for SSDs</a></h2>
+<p><a class="reference external" href="http://codecapsule.com/2014/02/12/coding-for-ssds-part-1-introduction-and-table-of-contents/">http://codecapsule.com/2014/02/12/coding-for-ssds-part-1-introduction-and-table-of-contents/</a></p>
+<div class="section" id="part-1-introduction-and-table-of-contents">
+<h3><a class="toc-backref" href="#id8">1.1&nbsp;&nbsp;&nbsp;Part 1: Introduction and Table of Contents</a></h3>
+</div>
+<div class="section" id="part-2-architecture-of-an-ssd-and-benchmarking">
+<h3><a class="toc-backref" href="#id9">1.2&nbsp;&nbsp;&nbsp;Part 2: Architecture of an SSD and Benchmarking</a></h3>
+<p>两种flash:</p>
+<ul class="simple">
+<li>NOR flash</li>
+<li>NAND flash (主流)</li>
+<li>寿命有限, Each cell has a maximum number of P/E cycles (Program/Erase)</li>
+<li>高温会导致数据清除.</li>
+</ul>
+<p>存储单元类型:</p>
+<ul class="simple">
+<li>1 bit per cell (single level cell, <strong>SLC</strong> ),   <tt class="docutils literal">寿命相对较长</tt></li>
+<li>2 bits per cell (multiple level cell, <strong>MLC</strong> ),  <tt class="docutils literal">成本低</tt></li>
+<li>3 bits per cell (triple-level cell, <strong>TLC</strong> ).</li>
+</ul>
+<p>MLC/TLC成本较低  目前多数是MLC或TLC, 如果update很多的话, 还是SLC好.</p>
+<div class="section" id="ssd">
+<h4><a class="toc-backref" href="#id10">1.2.1&nbsp;&nbsp;&nbsp;ssd 架构</a></h4>
+<img alt="" src="/imgs/ssd_architecture.jpg" style="width: 360px; height: 207px;" />
+<ul class="simple">
+<li>接口主要是  Serial ATA (SATA), PCI Express (PCIe), 现在还有新的SAS.</li>
+<li>通常都有RAM存储(256M+), 用作buffer/cache/map关系等</li>
+</ul>
+<p>厂商给的数字通常是在某种条件下测得的, 不见得能表示真实性能:</p>
+<pre class="literal-block">
+In his articles about common flaws in SSD benchmarking [66], Marc Bevand mentioned that for instance it is common for the IOPS of random write workloads to be reported without any mention of the span of the LBA, and that many IOPS are also reported for queue depth of 1 instead of the maximum value for the drive being tested. There are also many cases of bugs and misuses of the benchmarking tools.
+
+Correctly assessing the performance of SSDs is not an easy task.
+</pre>
+<ol class="arabic">
+<li><p class="first">span</p>
+</li>
+<li><p class="first">queue-depth很重要.</p>
+</li>
+<li><p class="first">测试时间, 和SSD的size有很大关系:</p>
+<pre class="literal-block">
+the performance of SSDs only drops under a sustained workload of random writes, which depending on the total size of the SSD can take just 30 minutes or up to three hours
+</pre>
+<p>如下图, 30min后性能有明显下降:</p>
+<img alt="" src="/imgs/writes_preconditioning.jpg" style="width: 360px; height: 414px;" />
+<dl class="docutils">
+<dt>原因:</dt>
+<dd><ul class="first last simple">
+<li>garbage collection must erase blocks as write commands arrive, therefore competing with the foreground operations from the host,</li>
+<li>GC影响正常流量.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<p>这里: <a class="reference external" href="http://www.storagereview.com/samsung_ssd_840_pro_review">http://www.storagereview.com/samsung_ssd_840_pro_review</a></p>
+</div>
+<div class="section" id="benchmark">
+<h4><a class="toc-backref" href="#id11">1.2.2&nbsp;&nbsp;&nbsp;如何做benchmark:</a></h4>
+<p>The parameters used are generally the following:
+- The type of workload: can be a specific benchmark based on data collected from users, or just only sequential or random accesses of the same type (ex: only random writes)
+- The percentages of reads and writes performed concurrently (ex: 30% reads and 70% writes)
+- The queue length: this is the number of concurrent execution threads running commands on a drive
+- The size of the data chunks being accessed (4 KB, 8 KB, etc.)</p>
+<p>结果:
+- Throughput (对顺序读写)
+- ipos (对随机读写)
+- Latancy</p>
+</div>
+</div>
+<div class="section" id="part-3-pages-blocks-and-the-flash-translation-layer">
+<h3><a class="toc-backref" href="#id12">1.3&nbsp;&nbsp;&nbsp;Part 3: Pages, Blocks, and the Flash Translation Layer</a></h3>
+<p>不少概念:</p>
+<ul class="simple">
+<li>how writes are handled at the page and block level,</li>
+<li>write amplification</li>
+<li>wear leveling</li>
+<li>Flash Translation Layer (FTL),</li>
+<li>logical block mapping</li>
+<li>garbage collection</li>
+</ul>
+<div class="section" id="id1">
+<h4><a class="toc-backref" href="#id13">1.3.1&nbsp;&nbsp;&nbsp;基本操作</a></h4>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>Reads are aligned on page size (It is not possible to read less than one page at once.)</dt>
+<dd><ul class="first last simple">
+<li>和hdd其实一样.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Writes are aligned on page size</dt>
+<dd><ul class="first last">
+<li><p class="first">每次读一个page比较好理解, 每次怎么写一个page??</p>
+</li>
+<li><p class="first">write amplification(写放大)</p>
+</li>
+<li><dl class="first docutils">
+<dt>写操作不是直接覆盖原来的page, 而是 拷贝这个page到ssd的RAM中, 在RAM中修改, 最后写到一个新的page里面去.</dt>
+<dd><ul class="first last simple">
+<li>When data is changed, the content of the page is copied into an internal register, the data is updated, and the new version is stored in a “free” page,  an operation called “read-modify-write”. The data is not updated in-place, as the “free” page is a different page than the page that originally contained the data. Once the data is persisted to the drive, the original page is marked as being “stale”, and will remain as such until it is erased.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Erases are aligned on block size</dt>
+<dd><ul class="first last simple">
+<li>对于write造成的 <tt class="docutils literal">stale</tt> 状态的page, 需要一个erase操作, 变成 <tt class="docutils literal">free</tt> 状态.</li>
+<li>但是, 又不能Erase单独的一个Page, 只能Erase整个block.</li>
+<li>这些都是由ssd控制器的garbage collection process来处理的, 所以这里有很多各种算法(因为寿命有限, 所以寿命管理也需要复杂算法)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<img alt="" src="/imgs/ssd_writing_data.jpg" style="width: 360px; height: 380px;" />
+</div>
+<div class="section" id="id2">
+<h4><a class="toc-backref" href="#id14">1.3.2&nbsp;&nbsp;&nbsp;写放大</a></h4>
+<p>写一个字节也会导致整个page的read-modify-write</p>
+<p>应该尽量避免 small write.</p>
+</div>
+<div class="section" id="wear-leveling">
+<h4><a class="toc-backref" href="#id15">1.3.3&nbsp;&nbsp;&nbsp;wear leveling</a></h4>
+<p>写均衡. 避免总是写同一个page.</p>
+</div>
+<div class="section" id="flash-translation-layer-ftl">
+<h4><a class="toc-backref" href="#id16">1.3.4&nbsp;&nbsp;&nbsp;Flash Translation Layer (FTL)</a></h4>
+<p>Flash Translation Layer 是一个地址映射机制, 提供像磁盘一样的逻辑地址.</p>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>logical block mapping</dt>
+<dd><ul class="first last">
+<li><p class="first">一个逻辑地址到page的有映射表.</p>
+</li>
+<li><p class="first">This mapping table is stored in the RAM of the SSD for speed of access, and is persisted in flash memory in case of power failure.</p>
+</li>
+<li><p class="first">When the SSD powers up, the table is read from the persisted version and reconstructed into the RAM of the SSD</p>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal"><span class="pre">block-level</span> mapping</tt> or <tt class="docutils literal"><span class="pre">page-level</span> mapping</tt></dt>
+<dd><ul class="first last">
+<li><p class="first">page-level 太费内存. Let’s assume that an SSD drive has 256 pages per block. This means that block-level mapping requires 256 times less memory than page-level mapping</p>
+</li>
+<li><p class="first">block-level 让写放大更加明显</p>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal"><span class="pre">log-block</span> mapping</tt></dt>
+<dd><ul class="first last simple">
+<li>which uses an approach similar to log-structured file systems. Incoming write operations are written sequentially to log blocks. When a log block is full, it is merged with the data block associated to the same logical block number (LBN) into a free block</li>
+<li><tt class="docutils literal"><span class="pre">log-block</span> mapping</tt> 应该是现在ssd写能达到和读一样性能的关键点.</li>
+<li>This allows random writes to be handled like sequential writes.</li>
+<li>但是read requests need to check both the log-block mapping table and the data-block mapping table, 性能损耗应该很小.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">garbage collection.</p>
+</li>
+</ol>
+<p>做ssd控制器的厂商比较少:</p>
+<pre class="literal-block">
+seven companies are providing controllers for 90% of the solid-state drive market(做ssd的厂商很多, 但是做控制芯片/算法的很少)
+</pre>
+<p>Erase: 1500-3500 μs
+Write: 250-1500 μs</p>
+<p>A less important reason for blocks to be moved is the read disturb. Reading can change the state of nearby cells, thus blocks need to be moved around after a certain number of reads have been reached [14].</p>
+</div>
+</div>
+<div class="section" id="part-4-advanced-functionalities-and-internal-parallelism">
+<h3><a class="toc-backref" href="#id17">1.4&nbsp;&nbsp;&nbsp;Part 4: Advanced Functionalities and Internal Parallelism</a></h3>
+<div class="section" id="trim">
+<h4><a class="toc-backref" href="#id18">1.4.1&nbsp;&nbsp;&nbsp;TRIM 命令</a></h4>
+<p>which can be sent by the operating system to notify the SSD controller that pages are no longer in use in the logical space</p>
+<p>帮助控制器更好的GC.</p>
+<p>The TRIM command will only work if the SSD controller, the operating system, and the filesystem are supporting it.</p>
+<p>Under Linux, support for the ATA TRIM was added in version <tt class="docutils literal">2.6.33</tt> .
+ext2 and ext3 filesystems do not support TRIM,
+<tt class="docutils literal">ext4</tt> and <tt class="docutils literal">XFS</tt> , among others, do support it.</p>
+</div>
+<div class="section" id="over-provisioning">
+<h4><a class="toc-backref" href="#id19">1.4.2&nbsp;&nbsp;&nbsp;over-provisioning</a></h4>
+<p>Over-provisioning is simply having more physical blocks than logical blocks, by keeping a ratio of the physical blocks reserved for the controller and not visible to the user. Most manufacturers of professional SSDs already include some over-provisioning, generally in the order of 7 to 25%</p>
+</div>
+<div class="section" id="secure-erase">
+<h4><a class="toc-backref" href="#id20">1.4.3&nbsp;&nbsp;&nbsp;Secure Erase</a></h4>
+<p>Some SSD controllers offer the ATA Secure Erase functionality</p>
+</div>
+<div class="section" id="internal-parallelism-in-ssds">
+<h4><a class="toc-backref" href="#id21">1.4.4&nbsp;&nbsp;&nbsp;Internal Parallelism in SSDs</a></h4>
+<p>Due to physical limitations, an asynchronous NAND-flash I/O bus cannot provide more than 32-40 MB/s of bandwidth [5].</p>
+<p>所以实际上, ssd控制器内部有多个芯片, 类似raid那样.</p>
+</div>
+</div>
+<div class="section" id="part-5-access-patterns-and-system-optimizations">
+<h3><a class="toc-backref" href="#id22">1.5&nbsp;&nbsp;&nbsp;Part 5: Access Patterns and System Optimizations</a></h3>
+<div class="section" id="id3">
+<h4><a class="toc-backref" href="#id23">1.5.1&nbsp;&nbsp;&nbsp;访问模式</a></h4>
+<p>在ssd里面, 因为映射关系是动态的, contiguous addresses in the logical space may refer to addresses that are not contiguous in the physical space.</p>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>避免随机small write.</dt>
+<dd><ul class="first last simple">
+<li>amall write 实际上需要写整个block. 所以写一个小数据和一个大数据都需要同样的copy-erase-write操作</li>
+<li>需要大量操作映射关系表.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Reads are faster than writes</dt>
+<dd><ul class="first last simple">
+<li>顺序读比随机读throughput好.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>其它优化</dt>
+<dd><ul class="first last simple">
+<li>对齐读写(有比较小的提升)</li>
+<li>打开 TRIM</li>
+<li>IO scheduler, (默认是CFQ,  NOOP or Deadline 会好一些)</li>
+<li>尽量不要用ssd存临时文件或做swap (写次数有限)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+</div>
+</div>
+<div class="section" id="part-6-a-summary-what-every-programmer-should-know-about-solid-state-drives">
+<h3><a class="toc-backref" href="#id24">1.6&nbsp;&nbsp;&nbsp;Part 6: A Summary – What every programmer should know about solid-state drives</a></h3>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id25">1.7&nbsp;&nbsp;&nbsp;小结</a></h3>
+<ul>
+<li><dl class="first docutils">
+<dt>ssd在大量写压力下, 性能可能恶化到8000iops.</dt>
+<dd><ul class="first last simple">
+<li>因为很多update, GC可能跟不上, 如果每次写操作需要做一次erase整个block, 就悲剧了.</li>
+<li>正常情况下, GC利用后台的时间, 可以完成erase工作.</li>
+<li>The TRIM command and over-provisioning are two great ways to reduce this effect, and are covered in more details in Sections 6.1 and 6.2.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>写放大, 写一个字节也会导致整个page的read-modify-write</dt>
+<dd><ul class="first last simple">
+<li>应该尽量避免 small write.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">很多ssd会通过hybrid log-block mapping来做写merge. 从而减轻写放大.</p>
+</li>
+<li><p class="first">ssd 适合写少, 读多的情况</p>
+</li>
+</ul>
+<p>我们到底要不要避免用small write 呢?</p>
+<ul class="simple">
+<li>如果没用 <tt class="docutils literal">hybrid <span class="pre">log-block</span> mapping</tt> , 明显是要避免small-write.</li>
+<li>如果有 <tt class="docutils literal">hybrid <span class="pre">log-block</span> mapping</tt> 呢? 小的写操作还是没有大的写操作效率高.</li>
+</ul>
+</div>
+</div>
+<div class="section" id="implementing-a-key-value-store-felixdb">
+<h2><a class="toc-backref" href="#id26">2&nbsp;&nbsp;&nbsp;Implementing a Key-Value Store(FelixDB)</a></h2>
+<p><a class="reference external" href="http://codecapsule.com/2012/11/07/ikvs-implementing-a-key-value-store-table-of-contents/">http://codecapsule.com/2012/11/07/ikvs-implementing-a-key-value-store-table-of-contents/</a></p>
+<p>July 8, 2014: I am currently implementing the key-value store and will write a post about it when it’s done</p>
+<p>1-4: 作者选了半天名字, api形式, 命名风格....</p>
+<div class="section" id="what-are-key-value-stores-and-why-implement-one">
+<h3><a class="toc-backref" href="#id27">2.1&nbsp;&nbsp;&nbsp;1 What are key-value stores, and why implement one?</a></h3>
+<p>练习目的:</p>
+<ul>
+<li><p class="first">I am starting this project as a way to refresh my knowledge of some fundamentals of hardcore back-end engineering</p>
+</li>
+<li><p class="first">Reading books and Wikipedia articles is boring and exempt of practice</p>
+</li>
+<li><dl class="first docutils">
+<dt>练习点</dt>
+<dd><ul class="first last simple">
+<li>The C++ programming language</li>
+<li>Object-oriented design</li>
+<li>Algorithmics and data structures</li>
+<li>Memory management</li>
+<li>Concurrency control with multi-processors or multi-threading</li>
+<li>Networking with a server/client model</li>
+<li>I/O problems with disk access and use of the file system</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">现有的: Redis, MongoDB, memcached, BerkeleyDB, Kyoto Cabinet and LevelDB.</p>
+</li>
+</ul>
+<p>打算提供的特性:
+- Adapt to a specific data representation (ex: graphs, geographic data, etc.)
+- Adapt to a specific operation (ex: performing very well for reads only, or writes only, etc.)
+- Offer more data access options. For instance in LevelDB, data can be accessed forward or backward, with iterators</p>
+<p>貌似没有什么特点..</p>
+<ul class="simple">
+<li>I will use a hash table for the underlying data Structure, the data will be persistent on disk, and a network interface will also be implemented.</li>
+<li>不求速度 I will not run for absolute speed</li>
+<li>将基于一个现有c/c++项目(见第2节)</li>
+</ul>
+</div>
+<div class="section" id="using-existing-key-value-stores-as-models">
+<h3><a class="toc-backref" href="#id28">2.2&nbsp;&nbsp;&nbsp;2 Using existing key-value stores as models</a></h3>
+<ul class="simple">
+<li>One of the most memorable projects is DBM, the initial database manager coded by Kenneth Thompson for Unix version 7 and released in 1979</li>
+</ul>
+<p>主要考察:</p>
+<ul>
+<li><p class="first">DBM</p>
+</li>
+<li><p class="first">Berkeley DB , 当时作为改进的DBM</p>
+</li>
+<li><dl class="first docutils">
+<dt>Kyoto Cabinet, <strong>主要考察对象</strong></dt>
+<dd><ul class="first last simple">
+<li>(a straightforward implementation of DBM)一般性能7w/s, 在超过某一个buckets值之后有性能问题</li>
+<li>hash 或者B+ tree.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>LevelDB <strong>主要考察对象</strong></dt>
+<dd><ul class="first last simple">
+<li>LSM structures are allegedly optimized for SSD drives [13].</li>
+<li>有测试, 当条目数从1e6 到1e9的时候, 性能有下降: <tt class="docutils literal">找不到原始文章了</tt></li>
+<li>作者认为LevelDB 代码很好: it is just pure beauty. Everything is clear, simple, and logical.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">Memcached and MemcacheDB</p>
+</li>
+<li><p class="first">MongoDB</p>
+</li>
+<li><p class="first">Redis</p>
+</li>
+<li><p class="first">OpenLDAP</p>
+</li>
+<li><p class="first">SQLite</p>
+</li>
+</ul>
+</div>
+<div class="section" id="comparative-analysis-of-the-architectures-of-kyoto-cabinet-and-leveldb">
+<h3><a class="toc-backref" href="#id29">2.3&nbsp;&nbsp;&nbsp;3 Comparative Analysis of the Architectures of Kyoto Cabinet and LevelDB</a></h3>
+<p>分成这些模块:</p>
+<ul class="simple">
+<li>Interface, Get/Put/Delete</li>
+<li>配置参数</li>
+<li>String库</li>
+<li>Logging</li>
+<li>Compression</li>
+<li>Checksum</li>
+<li>Data Storage</li>
+<li>Data Structure Hash/B+Tree/LSM-Tree</li>
+<li>Memory Management</li>
+<li>Iteration</li>
+<li>Lock 管理</li>
+<li>Error管理</li>
+<li>Transaction</li>
+<li>Comparators</li>
+<li>Snapshot</li>
+<li>Sharding</li>
+<li>Replication</li>
+<li>Testing</li>
+</ul>
+<p>太多了... 后面4个不该考虑.</p>
+<p>作者认为Kyoto Cabinet 代码耦合较重, 比如: such as the definition of the Parametrization module inside the Core.</p>
+<p>String库:
+- LevelDB is using a specialized class called “Slice
+- Kyoto Cabinet is using std::string</p>
+<p>Memory Management
+- Kyoto Cabinet 用mmap()
+- LevelDB: 用LSM-tree</p>
+<p>Data Storage</p>
+<ul class="simple">
+<li>Kyoto Cabinet, LevelDB, BerkeleyDB, MongoDB and Redis are using the file system to store the data. Memcached, on the contrary, is storing the data in memory (RAM).</li>
+<li>对Redis 说错了.</li>
+</ul>
+<p>关于代码:</p>
+<p>Kyoto Cabinet 会把实现写在.h里面, Kyoto Cabinet 代码比Tokyo Cabinet好多了(The overall architecture and naming conventions have been greatly improved.) 但是还是很糟糕:</p>
+<pre class="literal-block">
+embcomp, trhard, fmtver(), fpow()
+</pre>
+<p>LevelDB 的代码命名就很好.</p>
+<p>Kyoto Cabinet 的代码重复也很严重.</p>
+</div>
+<div class="section" id="api-design">
+<h3><a class="toc-backref" href="#id30">2.4&nbsp;&nbsp;&nbsp;4 API Design</a></h3>
+<ul class="simple">
+<li>Opening and closing a database</li>
+<li>Reading and writing data to a database</li>
+<li>Iterating over the full collection of keys and values in a database</li>
+<li>Offer a way to tune parameters</li>
+<li>Offer a decent error notification interface</li>
+</ul>
+<p>作者考虑的: Kyoto, LevelDB, BDB, SQLite, 都是库的形式.</p>
+<p>LevelDB 的api有open(). 但是没有close(), 关闭的时候是通过delete 指针做的 -&gt; 不对称.</p>
+<p>Iteration接口, sqlite 是通过一个回调, 不好:</p>
+<pre class="literal-block">
+/* SQLite3 */
+static int callback(void *NotUsed, int argc, char **argv, char **szColName) {
+  for(int i = 0; i &lt; argc; i++) {
+    printf(&quot;%s = %s\n&quot;, szColName[i], argv[i] ? argv[i] : &quot;NULL&quot;);
+  }
+  printf(&quot;\n&quot;);
+  return 0;
+}
+
+char *query = “SELECT * FROM table”;
+sqlite3_exec(db, query, callback, 0, &amp;szErrMsg);
+</pre>
+<p>it's always interesting to see how different engineers solved the same problems.</p>
+<p>小结: 作者很喜欢LevelDB的api. 除了没有close.</p>
+</div>
+<div class="section" id="hash-table-implementations">
+<h3><a class="toc-backref" href="#id31">2.5&nbsp;&nbsp;&nbsp;5 Hash table implementations</a></h3>
+<p>这都研究cache line的优化去了, 每必要把.</p>
+<ol class="arabic simple">
+<li>gcc4.8中stl 的 hash</li>
+</ol>
+<p>2. sparsehash库, 提供 sparse_hash_map 和 dense_hash_map两个类.
+其中dense_hash_map可以scales up or down</p>
+<ol class="arabic" start="3">
+<li><dl class="first docutils">
+<dt>Kyoto Cabinet 中的HashDB</dt>
+<dd><ul class="first last simple">
+<li>不会自动扩容.</li>
+<li>一旦冲突后, 性能就很差.</li>
+<li>it is very difficult to allow the bucket array to be resized for an on-disk hash table implementation</li>
+<li>把hash表存在磁盘里面, 导致一旦冲突, 就需要在磁盘中访问链表, 这是严重的随机IO</li>
+<li>所以, 基于ssd的cache应该优化: <strong>读操作最多进行多少次IO</strong> .</li>
+<li>碎片: 有磁盘整理</li>
+<li>一个基于磁盘的存储引擎确实较复杂.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<p>也许我们能设计这样一个引擎:</p>
+<ul class="simple">
+<li>hash表放在内存, 对hash的所有操作写aof(像redis一样)</li>
+<li>数据操作直接写磁盘.</li>
+<li>如何解决碎片.</li>
+</ul>
+<p><a class="reference external" href="https://code.google.com/p/sparsehash/">https://code.google.com/p/sparsehash/</a></p>
+</div>
+<div class="section" id="implementing-a-memory-efficient-hash-table-stored-on-the-file-system">
+<h3><a class="toc-backref" href="#id32">2.6&nbsp;&nbsp;&nbsp;-6 Implementing a memory-efficient hash table stored on the file system</a></h3>
+</div>
+<div class="section" id="memory-management">
+<h3><a class="toc-backref" href="#id33">2.7&nbsp;&nbsp;&nbsp;7 Memory Management</a></h3>
+</div>
+<div class="section" id="networking">
+<h3><a class="toc-backref" href="#id34">2.8&nbsp;&nbsp;&nbsp;8 Networking</a></h3>
+</div>
+<div class="section" id="interfaces-rest-memcached-etc">
+<h3><a class="toc-backref" href="#id35">2.9&nbsp;&nbsp;&nbsp;9 Interfaces: REST, memcached, etc.</a></h3>
+</div>
+<div class="section" id="going-further">
+<h3><a class="toc-backref" href="#id36">2.10&nbsp;&nbsp;&nbsp;10 Going further</a></h3>
+</div>
+<div class="section" id="id5">
+<h3><a class="toc-backref" href="#id37">2.11&nbsp;&nbsp;&nbsp;小结</a></h3>
+<p>这里作者考察的一些KV系统, 实际是一些库(KV引擎), 从我的角度看, 有这些引擎:</p>
+<ol class="arabic simple">
+<li>BDB</li>
+<li>LevelDB</li>
+</ol>
+</div>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id38">3&nbsp;&nbsp;&nbsp;参考</a></h2>
+<p>这里有很多ssd测试数据: <a class="reference external" href="http://www.storagereview.com/samsung_ssd_840_pro_review">http://www.storagereview.com/samsung_ssd_840_pro_review</a></p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

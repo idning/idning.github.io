@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>hhvm-redis-bug</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/hhvm-redis-bug.html">2014-09-09 21:29:40</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id13">1&nbsp;&nbsp;&nbsp;尝试问题复现</a></li>
+<li><a class="reference internal" href="#fake-redis" id="id14">2&nbsp;&nbsp;&nbsp;fake-redis 复现</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id2" id="id15">2.1&nbsp;&nbsp;&nbsp;测试1</a></li>
+<li><a class="reference internal" href="#id3" id="id16">2.2&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#redis" id="id17">3&nbsp;&nbsp;&nbsp;Redis库的问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#mock" id="id18">3.1&nbsp;&nbsp;&nbsp;Mock 测试</a></li>
+<li><a class="reference internal" href="#id4" id="id19">3.2&nbsp;&nbsp;&nbsp;修复</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#fgets" id="id20">4&nbsp;&nbsp;&nbsp;fgets问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id5" id="id21">4.1&nbsp;&nbsp;&nbsp;Mock 测试</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id6" id="id22">4.1.1&nbsp;&nbsp;&nbsp;情况1</a></li>
+<li><a class="reference internal" href="#id7" id="id23">4.1.2&nbsp;&nbsp;&nbsp;情况2</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#fgets-bug" id="id24">4.2&nbsp;&nbsp;&nbsp;fgets bug</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id8" id="id25">4.2.1&nbsp;&nbsp;&nbsp;看实现</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id9" id="id26">4.2.1.1&nbsp;&nbsp;&nbsp;fgets</a></li>
+<li><a class="reference internal" href="#readimpl" id="id27">4.2.1.2&nbsp;&nbsp;&nbsp;readImpl</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id10" id="id28">4.2.2&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hang" id="id29">5&nbsp;&nbsp;&nbsp;模拟hang住的情况</a></li>
+<li><a class="reference internal" href="#id11" id="id30">6&nbsp;&nbsp;&nbsp;小结</a></li>
+<li><a class="reference internal" href="#id12" id="id31">7&nbsp;&nbsp;&nbsp;更新</a></li>
+</ul>
+</div>
+<p>最近发现hhvm和redis的交互偶尔hang住(这里连接没有设置超时), 分析有三种可能性:</p>
+<ol class="arabic">
+<li><p class="first">server端返回错误的response.
+比如返回一个超大的 length:</p>
+<pre class="literal-block">
+$10240000\r\nabcd\4\n
+</pre>
+</li>
+</ol>
+<blockquote>
+客户端读到这个大数, 但是发现没有这么多字节要读, 于是就一直等着读</blockquote>
+<ol class="arabic simple" start="2">
+<li>client解析的时候出错, 如果读到正确的 <tt class="docutils literal">$12\r\n</tt> , 解析出错溢出, 被解析成一个超大的数, 也会一直等.</li>
+<li>由于网络问题造成hang住(比如FIN包丢失)</li>
+</ol>
+<p>当然, 要绕过这个问题最简单的办法是:</p>
+<ol class="arabic simple">
+<li>请求加读写超时</li>
+<li>给每个线程加个超时重启机制 (php就可以这么干).</li>
+</ol>
+<p>鉴于其它client很少发现类似问题(不过其它client通常都是连接超时, hhvm没有设置), 而且hhvm redis库代码质量较低(之前已经发现了bug), 首先怀疑是client解析出错.</p>
+<p>这篇分析做下面几个事情:</p>
+<ol class="arabic simple">
+<li>尝试复现hang住的问题</li>
+<li>通过一个fake-redis稳定复现解析错误.</li>
+<li>检查hhvm Redis/fgets中的bug</li>
+<li>构造hang住的case.</li>
+<li>如何fix.</li>
+</ol>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id13">1&nbsp;&nbsp;&nbsp;尝试问题复现</a></h2>
+<p>由于之前发现 hgetall比较容易hang住, 写了这样一个php来测试:</p>
+<pre class="literal-block">
+&lt;?php
+set_time_limit(0);
+
+$r = new Redis();
+$r-&gt;setOption('OPT_READ_TIMEOUT', 0.0);
+$conn = $r-&gt;connect('10.81.19.14', 4000, 0.1 );
+
+$key = 'kkkkkkkkk';
+for ($i=0; $i&lt;3000; $i++) {
+    $value = str_pad( $i, $i%100, &quot;\r\n&quot; );
+
+    $r-&gt;hMset($key, array(&quot;field-$i&quot; =&gt; $value));
+}
+
+for($i=0; $i&lt;10000000; $i++) {
+    $v = $r-&gt;hgetall($key);
+    $len = count($v);
+
+    if ($i%100 == 0) {
+        echo &quot;$i: $len\n&quot;;
+    }
+}
+
+hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf a.php
+</pre>
+<p>发现不会hang住, 但是经常报错:</p>
+<pre class="literal-block">
+[Tue Sep  9 12:58:00 2014] [hphp] [54093:7f598d376340:0:000955] []
+Fatal error: Uncaught exception 'RedisException' with Message 'protocol error, got 'o' as reply type byte' in :
+Stack trace:
+#0 (): Redis-&gt;sockReadData()
+#1 (): Redis-&gt;processMapResponse()
+#2 /home/ning/hhvm/a.php(26): Redis-&gt;__call()
+#3 {main}
+</pre>
+<p>这个应该是解析过程中发生的某种错误, 我们先研究这个问题.</p>
+</div>
+<div class="section" id="fake-redis">
+<h2><a class="toc-backref" href="#id14">2&nbsp;&nbsp;&nbsp;fake-redis 复现</a></h2>
+<p>粗略看了hhvm Redis库的代码, 发现读response的地方处理不好, 所以我们构造一个fake-redis用于测试, fake-redis在response的时候, 每次写一个字节, sleep <tt class="docutils literal">100ms</tt> .</p>
+<p><a class="reference external" href="https://github.com/idning/fake-redis/blob/master/fake-redis.py">https://github.com/idning/fake-redis/blob/master/fake-redis.py</a></p>
+<p>(这个测试估计可以让多数网络程序出bug, 包括lighttpd, openssl等)</p>
+<p>应用这个 fake-redis, 做了下面测试</p>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id15">2.1&nbsp;&nbsp;&nbsp;测试1</a></h3>
+<p>c.php:</p>
+<pre class="literal-block">
+$r = new Redis();
+
+$conn = $r-&gt;connect('127.1', 9999, 0.1 );
+
+echo &quot;set\n&quot;;
+echo $r-&gt;set('k', 'abc');
+echo &quot;get\n&quot;;
+echo $r-&gt;Get('k');
+echo &quot;done\n&quot;;
+</pre>
+<p>会出问题:</p>
+<pre class="literal-block">
+$ hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf c.php
+set
+get
+[Tue Sep  9 22:10:57 2014] [hphp] [54178:7f539ac6f340:0:000001] []
+Fatal error: Uncaught exception 'RedisException' with Message 'protocol error, got 'K' as reply type byte' in :
+Stack trace:
+#0 (): Redis-&gt;sockReadData()
+#1 (): Redis-&gt;processSerializedResponse()
+#2 hhvm/c.php(11): Redis-&gt;__call()
+#3 {main}
+</pre>
+<p>加了strace打算看下原因, 发现ok了:</p>
+<pre class="literal-block">
+$ strace -oa.txt hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf c.php
+set
+1get
+abcdone
+</pre>
+<p>后来仔细分析了strace, 发现客户端会经常用100ms 去poll(更详细的分析参考后面):</p>
+<pre class="literal-block">
+recvfrom(7, &quot;O&quot;, 1, MSG_PEEK|MSG_DONTWAIT, NULL, NULL) = 1
+fcntl(7, F_GETFL)                       = 0x2 (flags O_RDWR)
+poll([{fd=7, events=POLLIN|POLLERR|POLLHUP, revents=POLLIN}], 1, 100) = 1
+getsockopt(7, SOL_SOCKET, SO_ERROR, [0], [4]) = 0
+recvfrom(7, &quot;O&quot;, 8192, MSG_DONTWAIT, NULL, NULL) = 1
+</pre>
+<p>因为server端也是sleep 100ms, 所以用了strace后, cliet慢了一点, server端的response已经来了, 正好就ok了.</p>
+<p>修改 sleep 为150ms, 这时候就能稳定复现, 每次结果都一样:</p>
+<pre class="literal-block">
+$ strace -oa.txt hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf c.php
+set
+NRedis: type=+, resp=
+get
+[Wed Sep 10 10:43:44 2014] [hphp] [14966:7f42e70f4340:0:000001] []
+Fatal error: Uncaught exception 'RedisException' with Message 'protocol error, got 'O' as reply type byte' in :
+Stack trace:
+#0 (): Redis-&gt;sockReadData()
+#1 (): Redis-&gt;processSerializedResponse()
+#2 /home/ning/hhvm/c.php(56): Redis-&gt;__call()
+#3 {main}
+</pre>
+<p>strace如下:</p>
+<pre class="literal-block">
+recvfrom(7, &quot;O&quot;, 1, MSG_PEEK|MSG_DONTWAIT, NULL, NULL) = 1
+fcntl(7, F_GETFL)                       = 0x2 (flags O_RDWR)
+poll([{fd=7, events=POLLIN|POLLERR|POLLHUP, revents=POLLIN}], 1, 100) = 1
+getsockopt(7, SOL_SOCKET, SO_ERROR, [0], [4]) = 0
+recvfrom(7, &quot;O&quot;, 8192, MSG_DONTWAIT, NULL, NULL) = 1
+recvfrom(7, 0x7fff6c432e40, 1, 66, 0, 0) = -1 EAGAIN (Resource temporarily unavailable)
+fcntl(7, F_GETFL)                       = 0x2 (flags O_RDWR)
+poll([{fd=7, events=POLLIN|POLLERR|POLLHUP}], 1, 100) = 0
+recvfrom(7, 0x7fa647bf5000, 8192, 64, 0, 0) = -1 EAGAIN (Resource temporarily unavailable)
+</pre>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id16">2.2&nbsp;&nbsp;&nbsp;小结</a></h3>
+<p>到了这里, 我们很容易模拟fgets不符合预期的情况了, 通过读代码, 发现主要是fgets的问题.</p>
+</div>
+</div>
+<div class="section" id="redis">
+<h2><a class="toc-backref" href="#id17">3&nbsp;&nbsp;&nbsp;Redis库的问题</a></h2>
+<div class="section" id="mock">
+<h3><a class="toc-backref" href="#id18">3.1&nbsp;&nbsp;&nbsp;Mock 测试</a></h3>
+<p>我们通过继承Redis，来看看到底发生了什么(这个php被编译在二进制里面了, 每次修改都要重新编译, 不如继承, 方便调试):</p>
+<pre class="literal-block">
+class NRedis extends Redis{
+
+  protected function processBooleanResponse() {
+    if ($this-&gt;mode === self::ATOMIC) {
+      $resp = $this-&gt;sockReadData($type);
+      echo &quot;NRedis: type=$type, resp=$resp\r\n&quot;;
+
+      return ($type === self::TYPE_LINE) AND ($resp === 'OK');
+    }
+    $this-&gt;multiHandler[] = [ 'cb' =&gt; [$this,'processBooleanResponse'] ];
+    if (($this-&gt;mode === self::MULTI) &amp;&amp; !$this-&gt;processQueuedResponse()) {
+      return false;
+    }
+    return $this;
+  }
+
+  public function hMSet($key, array $pairs) {
+    $args = [$this-&gt;prefix($key)];
+    foreach ($pairs as $k =&gt; $v) {
+      $args[] = $k;
+      $args[] = $this-&gt;serialize($v);
+    }
+    $this-&gt;processArrayCommand('HMSET', $args);
+    return $this-&gt;processBooleanResponse();
+  }
+}
+
+
+$ strace -oa.txt hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf c.php
+set
+NRedis: type=+, resp=
+get
+[Wed Sep 10 10:43:44 2014] [hphp] [14966:7f42e70f4340:0:000001] []
+Fatal error: Uncaught exception 'RedisException' with Message 'protocol error, got 'O' as reply type byte' in :
+Stack trace:
+#0 (): Redis-&gt;sockReadData()
+#1 (): Redis-&gt;processSerializedResponse()
+#2 /home/ning/hhvm/c.php(56): Redis-&gt;__call()
+#3 {main}
+</pre>
+<p>发现第一个set请求, server 端的返回是 <tt class="docutils literal">+OK\r\n</tt>, 但是客户端读到 <tt class="docutils literal">+</tt> 就返回了, 此时返回的type是 <tt class="docutils literal">+</tt> , resp为空, 所以接下来读get请求的response的时候, 就读到了 'O', 这就是上面这个异常的原因.</p>
+<p>这里 <tt class="docutils literal">fgets</tt> 返回了 <tt class="docutils literal">+</tt> , 还没遇到 <tt class="docutils literal">\n</tt> 就返回, 这是 <tt class="docutils literal">fgets</tt> 的问题, 我们后面再分析</p>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id19">3.2&nbsp;&nbsp;&nbsp;修复</a></h3>
+<p>既然fgets有问题, 我们可以换一个比较保守的readLine实现:</p>
+<pre class="literal-block">
+class NRedis extends Redis{
+  ...
+  protected function sockReadLine() {
+   if (!$this-&gt;checkConnection()) {
+     return false;
+   }
+
+   $line = '';
+   while(1) {
+     $c = fgetc($this-&gt;connection);
+     $line .= $c;
+     if (substr($line, -2) == &quot;\r\n&quot;) {
+       $line = substr($line, 0, -2);
+       return $line;
+     }
+   }
+
+   return false;
+  }
+}
+</pre>
+<p>使用修复版的NRedis, 测试OK:</p>
+<pre class="literal-block">
+$ strace -oa.txt hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf c.php
+set
+NRedis: type=+, resp=OK
+1get
+abcdone
+</pre>
+</div>
+</div>
+<div class="section" id="fgets">
+<h2><a class="toc-backref" href="#id20">4&nbsp;&nbsp;&nbsp;fgets问题</a></h2>
+<div class="section" id="id5">
+<h3><a class="toc-backref" href="#id21">4.1&nbsp;&nbsp;&nbsp;Mock 测试</a></h3>
+<p>利用前面的fake-redis server, 写了这样一个测试代码:</p>
+<pre class="literal-block">
+$ cat d.php
+&lt;?php
+
+$conn = fsockopen('127.1', 9999, $errno, $errstr, 0.1);
+
+fwrite($conn, &quot;*3\r\n$3\r\nSET\r\n$1\r\nk\r\n$1\r\nv\r\n&quot;);
+$r = fgets($conn);
+var_dump($r);
+
+fwrite($conn, &quot;*2\r\n$3\r\nGET\r\n$1\r\nk\r\n&quot;);
+
+$r = fgets($conn);
+var_dump($r);
+
+$r = fgets($conn);
+var_dump($r);
+</pre>
+<div class="section" id="id6">
+<h4><a class="toc-backref" href="#id22">4.1.1&nbsp;&nbsp;&nbsp;情况1</a></h4>
+<p>server端不sleep时, 返回一切正常:</p>
+<pre class="literal-block">
+$ hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf d.php
+string(5) &quot;+OK
+&quot;
+string(4) &quot;$1
+&quot;
+string(3) &quot;v
+&quot;
+</pre>
+</div>
+<div class="section" id="id7">
+<h4><a class="toc-backref" href="#id23">4.1.2&nbsp;&nbsp;&nbsp;情况2</a></h4>
+<p>server端每发送1个byte sleep 150ms:</p>
+<pre class="literal-block">
+$ strace -oa.txt hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf d.php
+string(1) &quot;+&quot;
+string(1) &quot;O&quot;
+string(1) &quot;K&quot;
+</pre>
+<p>每次 <tt class="docutils literal">fgets</tt> 只能读到一个字节.</p>
+</div>
+</div>
+<div class="section" id="fgets-bug">
+<h3><a class="toc-backref" href="#id24">4.2&nbsp;&nbsp;&nbsp;fgets bug</a></h3>
+<p><a class="reference external" href="http://php.net/manual/en/function.fgets.php">http://php.net/manual/en/function.fgets.php</a></p>
+<p>php.net上fgets 的文档:</p>
+<pre class="literal-block">
+Reading ends when length - 1 bytes have been read, or a newline (which is included in the return value), or an EOF (whichever comes first). If no length is specified, it will keep reading from the stream until it reaches the end of the line.
+</pre>
+<p>有三种情况这个函数返回:</p>
+<ol class="arabic simple">
+<li>读到1行</li>
+<li>读到eof</li>
+<li>读到(length-1) 字节</li>
+</ol>
+<div class="section" id="id8">
+<h4><a class="toc-backref" href="#id25">4.2.1&nbsp;&nbsp;&nbsp;看实现</a></h4>
+<div class="section" id="id9">
+<h5><a class="toc-backref" href="#id26">4.2.1.1&nbsp;&nbsp;&nbsp;fgets</a></h5>
+<p>implement of fgets hphp/runtime/ext/ext_file.cpp</p>
+<pre class="literal-block">
+Variant f_fgets(const Resource&amp; handle, int64_t length /* = 0 */) {
+  if (length &lt; 0) {
+    throw_invalid_argument(&quot;length (negative): %&quot; PRId64, length);
+    return false;
+  }
+  CHECK_HANDLE(handle, f);
+  String line = f-&gt;readLine(length);
+  if (!line.isNull()) {
+    return line;
+  }
+  return false;
+}
+</pre>
+<p>hphp/runtime/base/file.cpp:readLine:</p>
+<pre class="literal-block">
+1   String File::readLine(int64_t maxlen /* = 0 */) {
+2     size_t current_buf_size = 0;
+3     size_t total_copied = 0;
+4     char *ret = nullptr;
+5     for (;;) {
+6       int64_t avail = bufferedLen();
+7       if (avail &gt; 0) {
+8         int64_t cpysz = 0;
+9         bool done = false;
+10
+11        char *readptr = m_buffer + m_readpos;
+12        const char *eol;
+13        const char *cr;
+14        const char *lf;
+15        cr = (const char *)memchr(readptr, '\r', avail);
+16        lf = (const char *)memchr(readptr, '\n', avail);
+17        if (cr &amp;&amp; lf != cr + 1 &amp;&amp; !(lf &amp;&amp; lf &lt; cr)) {
+18          /* mac */
+19          eol = cr;
+20        } else if ((cr &amp;&amp; lf &amp;&amp; cr == lf - 1) || (lf)) {
+21          /* dos or unix endings */
+22          eol = lf;
+23        } else {
+24          eol = cr;
+25        }
+26
+27        if (eol) {
+28          cpysz = eol - readptr + 1;
+29          done = true;
+30        } else {
+31          cpysz = avail;
+32        }
+33        if (maxlen &gt; 0 &amp;&amp; maxlen &lt;= cpysz) {
+34          cpysz = maxlen;
+35          done = true;
+36        }
+37
+38        current_buf_size += cpysz + 1;
+39        if (ret) {
+40          ret = (char *)realloc(ret, current_buf_size);
+41        } else {
+42          ret = (char *)malloc(current_buf_size);
+43        }
+44        memcpy(ret + total_copied, readptr, cpysz);
+45
+46        m_position += cpysz;
+47        m_readpos += cpysz;
+48        maxlen -= cpysz;
+49        total_copied += cpysz;
+50
+51        if (done) {
+52          break;                              ////////////////////////// 1: eol 或者读到了maxlen
+53        }
+54      } else if (eof()) {
+55        break;                                /////////////////////////  2: eof
+56      } else {
+57        if (m_buffer == nullptr) {
+58          m_buffer = (char *)malloc(CHUNK_SIZE);
+59          m_bufferSize = CHUNK_SIZE;
+60        }
+61        m_writepos = filteredReadToBuffer();
+62        m_readpos = 0;
+63        if (bufferedLen() == 0) {
+64          break;                              /////////////////////////  3: 一次读返回空.
+65        }
+66      }
+67    }
+68
+69    if (total_copied == 0) {
+70      assert(ret == nullptr);
+71      return String();
+72    }
+73
+74    ret[total_copied] = '\0';
+75    return String(ret, total_copied, AttachString);
+76  }
+</pre>
+<p>看这个长函数, 有几个情况会返回, 我在代码中标了1, 2, 3. 根据fgets的定义, 1,2两处返回是合理的, 3不应该返回, 而应该继续读, 这就是 <strong>fgets的bug</strong></p>
+<p>这个函数的另一个问题是, 如果一个socket上发来 <tt class="docutils literal">abc\r\n</tt>, 但是一次读只读到 <tt class="docutils literal">abc\r</tt> 的时候, 它就会返回以 <tt class="docutils literal">\r</tt> 结尾的一行, 这个问题, Redis.php已经针对它做了专门的适配, 这里不讨论:</p>
+<pre class="literal-block">
+protected function sockReadLine() {
+  if (!$this-&gt;checkConnection()) {
+    return false;
+  }
+  $line = fgets($this-&gt;connection);
+  if (substr($line, -2) == &quot;\r\n&quot;) {
+    $line = substr($line, 0, -2);
+  } else if (substr($line, -1) == &quot;\r&quot;) {             //就是这里.
+    $line = substr($line, 0, -1);
+    $lf = fgetc($this-&gt;connection);
+    if ($lf === false) {
+      // A response must terminate with both CR and LF. Refuse to guess.
+      return false;
+    } else if ($lf !== &quot;\n&quot;) {
+      throw new RedisException(&quot;Protocol error: CR not followed by LF&quot;);
+    }
+  }
+
+  return $line;
+}
+</pre>
+</div>
+<div class="section" id="readimpl">
+<h5><a class="toc-backref" href="#id27">4.2.1.2&nbsp;&nbsp;&nbsp;readImpl</a></h5>
+<p>上面的readLine会调用filteredReadToBuffer 来read more bytes, 实际上就是调用readImpl(), 下面我们分析readImpl可能返回空的情况:</p>
+<pre class="literal-block">
+int64_t File::filteredReadToBuffer() {
+  int64_t bytes_read = readImpl(m_buffer, CHUNK_SIZE);
+  if (LIKELY(m_readFilters.empty())) {
+    return bytes_read;
+  }
+</pre>
+<p>readImpl for Socket: hphp/runtime/base/socket.cpp::readImpl:</p>
+<pre class="literal-block">
+1   int64_t Socket::readImpl(char *buffer, int64_t length) {
+2     assert(m_fd);
+3     assert(length &gt; 0);
+4
+5     IOStatusHelper io(&quot;socket::recv&quot;, m_address.c_str(), m_port);
+6
+7     int recvFlags = 0;
+8     if (m_timeout &gt; 0) {
+9       int flags = fcntl(m_fd, F_GETFL, 0);  // ning: we will get into this.
+10      if ((flags &amp; O_NONBLOCK) == 0) {
+11        if (!waitForData()) {
+12          m_eof = true;
+13          return 0;
+14        }
+15        recvFlags = MSG_DONTWAIT; // polled, so no need to wait any more
+16      }
+17    }
+18
+19    int64_t ret = recv(m_fd, buffer, length, recvFlags);
+20    if (ret == 0 || (ret == -1 &amp;&amp; errno != EWOULDBLOCK)) {
+21      m_eof = true;
+22    }
+23    return (ret &lt; 0) ? 0 : ret;
+24  }
+25
+26  bool Socket::waitForData() {
+27    m_timedOut = false;
+28    while (true) {
+29      struct pollfd fds[1];
+30      fds[0].fd = m_fd;
+31      fds[0].events = POLLIN|POLLERR|POLLHUP;
+32      if (poll(fds, 1, m_timeout / 1000)) {
+33        socklen_t lon = sizeof(int);
+34        int valopt;
+35        getsockopt(m_fd, SOL_SOCKET, SO_ERROR, (void*)(&amp;valopt), &amp;lon);
+36        if (valopt == EINTR) continue;
+37        return valopt == 0;
+38      } else {
+39        m_timedOut = true;
+40        return true;
+41      }
+42    }
+43    return false;
+44  }
+</pre>
+<p>Socket::readImpl 会进入11行的waitForData函数(从strace结果看, 这里m_timeout是设为100*1000的):</p>
+<pre class="literal-block">
+recvfrom(7, 0x7fff5be32f00, 1, 66, 0, 0) = -1 EAGAIN (Resource temporarily unavailable)
+fcntl(7, F_GETFL)                       = 0x2 (flags O_RDWR)
+poll([{fd=7, events=POLLIN|POLLERR|POLLHUP, revents=POLLIN}], 1, 100) = 1
+</pre>
+<p>我们可以先不管m_timeout怎么设置的, 这个值设为多大, 或者设为0, 都不影响分析, 看waitForData函数, 如果poll超时后没有收到事件, 就会设置m_timedOut=true, 并且return true.</p>
+<p>所以此时 readImpl 进入 19行recv, 明显是返回 EAGAIN 的:</p>
+<pre class="literal-block">
+poll([{fd=7, events=POLLIN|POLLERR|POLLHUP}], 1, 100) = 0
+recvfrom(7, 0x7f3a3d9e2000, 8192, 64, 0, 0) = -1 EAGAIN (Resource temporarily unavailable)
+</pre>
+<p>EAGAIN就是EWOULDBLOCK, 所以这里没有进入21行, 而是进入23行, 返回 <tt class="docutils literal">ret = 0</tt> .</p>
+</div>
+</div>
+<div class="section" id="id10">
+<h4><a class="toc-backref" href="#id28">4.2.2&nbsp;&nbsp;&nbsp;小结</a></h4>
+<p>所以, 这应该认为是 <a class="reference external" href="File::readLine">File::readLine</a> 的一个bug, 建议的修改是这样:</p>
+<pre class="literal-block">
+$ git diff
+diff --git a/hphp/runtime/base/file.cpp b/hphp/runtime/base/file.cpp
+index b180301..3d216bd 100644
+--- a/hphp/runtime/base/file.cpp
++++ b/hphp/runtime/base/file.cpp
+&#64;&#64; -611,9 +611,9 &#64;&#64; String File::readLine(int64_t maxlen /* = 0 */) {
+       }
+       m_writepos = filteredReadToBuffer();
+       m_readpos = 0;
+-      if (bufferedLen() == 0) {
+-        break;
+-      }
++      //if (bufferedLen() == 0) {
++        //break;
++      //}
+     }
+   }
+</pre>
+<p>这需要重新编译hhvm, 所以我没有测试.</p>
+</div>
+</div>
+</div>
+<div class="section" id="hang">
+<h2><a class="toc-backref" href="#id29">5&nbsp;&nbsp;&nbsp;模拟hang住的情况</a></h2>
+<p>最后, 知道bug的原因, 怎么模拟hang住呢, 我们需要构造合法的返回, 被这个bug的解析代码解析认为符合协议, 同时又解析出错。</p>
+<p>因为fgets在server端sleep 200ms 的时候就会返回当前已经读到的 部分, 构造如下response:</p>
+<pre class="literal-block">
+$10\r\n$123456789\r\n
+  ^
+  |
+  返回 '$1' 后sleep, 此时client读到 '$1' 认为是读到了一行, 并且认为这个response的阵阵大小是1, 接下来读到 '0\r\n', 所以client 会认为服务器返回了 '0' 这个长度为1的字符串.
+  接下来, 下一个get请求来的时候, 会读到 ``$123456789\r\n`` 这一行, 它会认为这个response有123456789这么多字节, 就会一致尝试去读, 当然就一直hang住了.
+</pre>
+<p>模拟这个响应的代码:</p>
+<pre class="literal-block">
+def handle_get(self, argv):
+    key = argv[1]
+    if key == 'special-key-for-hhvm':
+
+        # $10\r\n$123456789\r\n
+        self.request.sendall('$1')
+        time.sleep(.15)
+        self.request.sendall('0\r\n$123456789\r\n')
+
+    elif key in store:
+        self.reply_bulk(store[key])
+    else:
+        self.reply_bulk(None)
+</pre>
+<p>这是一个完全合法的get请求的response, 表达的值为 '$123456789', 客户端测试代码:</p>
+<pre class="literal-block">
+$r = new Redis();
+
+$conn = $r-&gt;connect('127.1', 9999, 0.1 );
+
+$t = $r-&gt;get('special-key-for-hhvm');
+var_dump($t);
+$t = $r-&gt;get('special-key-for-hhvm');
+var_dump($t);
+
+$ strace -oa.txt hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf c.php
+string(1) &quot;0&quot;
+--- 这里hang住
+[Wed Sep 10 11:37:39 2014] [hphp] [52895:7ffc15e5c340:0:000001] []
+Fatal error: Maximum execution time of 30 seconds exceeded
+</pre>
+<p>使用修改了 <tt class="docutils literal">sockReadLine</tt> 后的NRedis代码, 就ok:</p>
+<pre class="literal-block">
+$ strace -oa.txt hhvm_backend/bin/hhvm_backend -c hhvm_backend/conf/hhvm.conf c.php
+string(10) &quot;$123456789&quot;
+string(10) &quot;$123456789&quot;
+</pre>
+</div>
+<div class="section" id="id11">
+<h2><a class="toc-backref" href="#id30">6&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ol class="arabic simple">
+<li>fgets有bug, 修复方法参考正文</li>
+<li>Redis类最好不要用有bug的fgets代码, 自己实现一个sockReadLine即可.</li>
+<li>不排除server端(redis/twemproxy) 也有类似bug的可能性.</li>
+</ol>
+</div>
+<div class="section" id="id12">
+<h2><a class="toc-backref" href="#id31">7&nbsp;&nbsp;&nbsp;更新</a></h2>
+<p>fgets其实没有bug, hhvm在这里的行为和php是一致的, 就是:</p>
+<p>超时后返回已读到的部分, 实际上, 这时候应该通过stream_get_meta_data() 获取是否超时信息:</p>
+<pre class="literal-block">
+$conn = fsockopen('127.1', 9999, $errno, $errstr, 0.1);
+//$conn = fsockopen('127.1', 9999);
+
+fwrite($conn, &quot;*3\r\n$3\r\nSET\r\n$1\r\nk\r\n$1\r\nv\r\n&quot;);
+$r = fgets($conn);
+var_dump($r);
+
+fwrite($conn, &quot;*2\r\n$3\r\nGET\r\n$1\r\nk\r\n&quot;);
+
+$r = fgets($conn);
+var_dump($r);
+$info = stream_get_meta_data($conn);
+var_dump($info);
+
+
+$r = fgets($conn);
+var_dump($r);
+$info = stream_get_meta_data($conn);
+var_dump($info);
+</pre>
+<p>输出如下:</p>
+<pre class="literal-block">
+string(1) &quot;+&quot;
+string(1) &quot;O&quot;
+array(10) {
+  ...
+  [&quot;timed_out&quot;]=&gt;
+  bool(true)
+  [&quot;eof&quot;]=&gt;
+  bool(false)
+  [&quot;wrapper_data&quot;]=&gt;
+  NULL
+}
+string(1) &quot;K&quot;
+array(10) {
+  [&quot;timed_out&quot;]=&gt;
+  bool(true)
+  [&quot;blocked&quot;]=&gt;
+  bool(false)
+  [&quot;eof&quot;]=&gt;
+  bool(false)
+  [&quot;wrapper_data&quot;]=&gt;
+  NULL
+}
+</pre>
+<p>接口会输出timeout.</p>
+<p>所以fgets应该认为没bug, 修改Redis库即可.</p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

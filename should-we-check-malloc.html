@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>我们应该检查malloc的返回值么?</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/should-we-check-malloc.html">2014-10-14 18:53:04</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id5">1&nbsp;&nbsp;&nbsp;我们想要什么</a></li>
+<li><a class="reference internal" href="#id2" id="id6">2&nbsp;&nbsp;&nbsp;现有程序做法</a><ul class="auto-toc">
+<li><a class="reference internal" href="#mysql" id="id7">2.1&nbsp;&nbsp;&nbsp;mysql</a></li>
+<li><a class="reference internal" href="#redis" id="id8">2.2&nbsp;&nbsp;&nbsp;redis</a></li>
+<li><a class="reference internal" href="#nginx" id="id9">2.3&nbsp;&nbsp;&nbsp;nginx</a></li>
+<li><a class="reference internal" href="#lighttpd" id="id10">2.4&nbsp;&nbsp;&nbsp;lighttpd</a></li>
+<li><a class="reference internal" href="#twemproxy" id="id11">2.5&nbsp;&nbsp;&nbsp;twemproxy</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id3" id="id12">3&nbsp;&nbsp;&nbsp;小结</a></li>
+<li><a class="reference internal" href="#id4" id="id13">4&nbsp;&nbsp;&nbsp;参考</a></li>
+</ul>
+</div>
+<p>我们经常纠结这种代码:</p>
+<pre class="literal-block">
+some_small_struct *ptr=(some_small_struct *) malloc(sizeof(some_small_struct));
+ptr-&gt;some_member= ...;
+</pre>
+<ul>
+<li><dl class="first docutils">
+<dt>正方: 检查有用:</dt>
+<dd><ul class="first last simple">
+<li>如果不检查, 没内存时会出现非预期行为.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>反方: 检查没用:</dt>
+<dd><ul class="first last simple">
+<li>因为这是一个小程序, 基本不可能超内存, 我们还需要检查malloc是否成功么?</li>
+<li>linux 上, 如果打开了 <tt class="docutils literal">overcommit</tt>, 基本上所有的alloc都会返回说有内存,
+等到真正写到这片的时候才可能通过oom-killer 杀掉某个(也许是其它)进程.</li>
+<li>linux上, 如果打开了部分swap, alloc通常也会返回有内存,</li>
+<li>就算我们检查, 我们也不能避免栈空间不够之类的错误.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>overcommit参考 man malloc:</p>
+<pre class="literal-block">
+http://linux.die.net/man/3/malloc
+
+By default, Linux follows an optimistic memory allocation strategy. This means that when malloc() returns non-NULL there is no guarantee that the memory really is available. This is a really bad bug. In case it turns out that the system is out of memory, one or more processes will be killed by the infamous OOM killer.
+</pre>
+<p>但是这时候malloc也是可能返回NULL的, 比如 address space is full.</p>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id5">1&nbsp;&nbsp;&nbsp;我们想要什么</a></h2>
+<p>我们的期望分成4级:</p>
+<ol class="arabic">
+<li><p class="first">没内存时, 程序依然能够正常工作, 比如http服务器能拒绝掉部分请求而保证另一部分请求正常.</p>
+</li>
+<li><p class="first">没内存时, 优雅退出, 防止:
+- 因为文件未关闭造成数据丢失   (如果我们写了文件, 未关闭, 操作系统会保证sync到磁盘么  -- 应该是不能保证)
+- socket未关闭导致对端长等待.
+- 比如是一个文件编辑器, 需要保存用户的工作先.</p>
+</li>
+<li><p class="first">没内存时, 通过ASSERT显示core掉</p>
+</li>
+<li><dl class="first docutils">
+<dt>发生非预期异常(可能core).</dt>
+<dd><ul class="first last simple">
+<li>比如alloc了一个NULL, 但是不是alloc的时候报错, 而是往里面写东西的时候报错, 就很难追查了.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<p>很显然, 1是最好的情况, 是一个有尊严的程序员所期望的, 4是一定不能发生的. 2,3是需要权衡的.</p>
+<p>3 是基线, 做到3可能保证出错时知道原因.</p>
+<p>其它:</p>
+<ul class="simple">
+<li>对嵌入式系统: 内存有限, 所以应该总是检查</li>
+<li>对c++: 尽量使用new, 这样有exception.</li>
+</ul>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id6">2&nbsp;&nbsp;&nbsp;现有程序做法</a></h2>
+<p>我们看看一些有名程序的做法</p>
+<div class="section" id="mysql">
+<h3><a class="toc-backref" href="#id7">2.1&nbsp;&nbsp;&nbsp;mysql</a></h3>
+<p>多数地方都做到1:</p>
+<pre class="literal-block">
+HP_INFO *heap_open_from_share(HP_SHARE *share, int mode)
+{
+  HP_INFO *info;
+  DBUG_ENTER(&quot;heap_open_from_share&quot;);
+
+  if (!(info= (HP_INFO*) my_malloc((uint) sizeof(HP_INFO) +
+                  2 * share-&gt;max_key_length,
+                  MYF(MY_ZEROFILL))))
+  {
+    DBUG_RETURN(0);
+  }
+</pre>
+<p>有的地方只能做到4:</p>
+<p>storage/innobase/handler/ha_innodb.cc:</p>
+<pre class="literal-block">
+    field_lengths = (ulint*) my_malloc(sizeof(ulint) * n_fields,
+            MYF(MY_FAE));
+
+    namebuf = (char*) my_malloc((uint) len + 2, MYF(0));
+    memcpy(namebuf, ptr, len);
+
+innobase_rename_table(
+    ...
+    norm_to = (char*) my_malloc(strlen(to) + 64, MYF(0));
+    norm_from = (char*) my_malloc(strlen(from) + 64, MYF(0));
+</pre>
+<p>storage/myisam/myisampack.c:</p>
+<pre class="literal-block">
+static my_bool open_isam_files(PACK_MRG_INFO *mrg, char **names, uint count)
+{
+  mrg-&gt;file=(MI_INFO**) my_malloc(sizeof(MI_INFO*)*count,MYF(MY_FAE));
+</pre>
+</div>
+<div class="section" id="redis">
+<h3><a class="toc-backref" href="#id8">2.2&nbsp;&nbsp;&nbsp;redis</a></h3>
+<p>做到3:</p>
+<pre class="literal-block">
+void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
+    block = zmalloc(sizeof(*block));
+    block-&gt;free = AOF_RW_BUF_BLOCK_SIZE;
+</pre>
+<p>不过在zmalloc里面做到了assert:</p>
+<pre class="literal-block">
+static void zmalloc_default_oom(size_t size) {
+    fprintf(stderr, &quot;zmalloc: Out of memory trying to allocate %zu bytes\n&quot;,
+        size);
+    fflush(stderr);
+    abort();
+}
+
+static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
+
+void *zmalloc(size_t size) {
+    void *ptr = malloc(size+PREFIX_SIZE);
+
+    if (!ptr) zmalloc_oom_handler(size);
+</pre>
+<p>但是在cli等不重要代码里面做到4:</p>
+<pre class="literal-block">
+static void cliInitHelp() {
+    tmp.argv = malloc(sizeof(sds));
+    tmp.argv[0] = sdscatprintf(sdsempty(),&quot;&#64;%s&quot;,commandGroups[i]);
+</pre>
+</div>
+<div class="section" id="nginx">
+<h3><a class="toc-backref" href="#id9">2.3&nbsp;&nbsp;&nbsp;nginx</a></h3>
+<p>alloc 里面打日志, 不是ASSERT (不过ngx_log_error里面应该还会malloc):</p>
+<pre class="literal-block">
+void *
+ngx_alloc(size_t size, ngx_log_t *log)
+{
+    void  *p;
+
+    p = malloc(size);
+    if (p == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, log, ngx_errno,
+                      &quot;malloc(%uz) failed&quot;, size);
+    }
+
+    ngx_log_debug2(NGX_LOG_DEBUG_ALLOC, log, 0, &quot;malloc: %p:%uz&quot;, p, size);
+
+    return p;
+}
+</pre>
+<p>使用时检查(90%的地方都有检查):</p>
+<pre class="literal-block">
+env = ngx_palloc(cycle-&gt;pool, (n + 1) * sizeof(char *));
+if (env == NULL) {
+    return NULL;
+}
+
+overflow_list = ngx_alloc(sizeof(struct pollfd) * rtscf-&gt;overflow_events,
+                          cycle-&gt;log);
+if (overflow_list == NULL) {
+    return NGX_ERROR;
+}
+</pre>
+<p>也有不检查:</p>
+<pre class="literal-block">
+ngx_exec_new_binary(ngx_cycle_t *cycle, char *const *argv)
+    var = ngx_alloc(sizeof(NGINX_VAR)
+                    + cycle-&gt;listening.nelts * (NGX_INT32_LEN + 1) + 2,
+                    cycle-&gt;log);
+
+    p = ngx_cpymem(var, NGINX_VAR &quot;=&quot;, sizeof(NGINX_VAR));
+</pre>
+</div>
+<div class="section" id="lighttpd">
+<h3><a class="toc-backref" href="#id10">2.4&nbsp;&nbsp;&nbsp;lighttpd</a></h3>
+<p>ASSERT</p>
+</div>
+<div class="section" id="twemproxy">
+<h3><a class="toc-backref" href="#id11">2.5&nbsp;&nbsp;&nbsp;twemproxy</a></h3>
+<p>和nginx一样:</p>
+<pre class="literal-block">
+void *
+_nc_alloc(size_t size, const char *name, int line)
+{
+    void *p;
+
+    ASSERT(size != 0);
+
+    p = malloc(size);
+    if (p == NULL) {
+        log_error(&quot;malloc(%zu) failed &#64; %s:%d&quot;, size, name, line);
+    } else {
+        log_verb(&quot;malloc(%zu) at %p &#64; %s:%d&quot;, size, p, name, line);
+    }
+
+    return p;
+}
+</pre>
+</div>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id12">3&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ul>
+<li><p class="first">nginx 和mysql, redis 做的差不多, 尽量检查.</p>
+</li>
+<li><dl class="first docutils">
+<dt>推荐的做法:</dt>
+<dd><ul class="first last simple">
+<li>alloc里面如果有NULL打日志, 上层每次检查, 发现NULL处理错误</li>
+<li>对小的alloc, alloc 后写ASSERT.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id4">
+<h2><a class="toc-backref" href="#id13">4&nbsp;&nbsp;&nbsp;参考</a></h2>
+<ul class="simple">
+<li>讨论: <a class="reference external" href="http://stackoverflow.com/questions/1941323/always-check-malloced-memory">http://stackoverflow.com/questions/1941323/always-check-malloced-memory</a></li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

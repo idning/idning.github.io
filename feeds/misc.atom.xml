@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>ning</title><link href="/" rel="alternate"></link><link href="http://idning.github.io/feeds/misc.atom.xml" rel="self"></link><id>/</id><updated>2014-10-14T18:53:04+08:00</updated><entry><title>我们应该检查malloc的返回值么?</title><link href="/should-we-check-malloc.html" rel="alternate"></link><updated>2014-10-14T18:53:04+08:00</updated><author><name>ning</name></author><id>tag:,2014-10-14:should-we-check-malloc.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;我们想要什么&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;现有程序做法&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mysql" id="id7"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis" id="id8"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#nginx" id="id9"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;nginx&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#lighttpd" id="id10"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;lighttpd&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#twemproxy" id="id11"&gt;2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;twemproxy&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id12"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id13"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;参考&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;我们经常纠结这种代码:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+some_small_struct *ptr=(some_small_struct *) malloc(sizeof(some_small_struct));
+ptr-&amp;gt;some_member= ...;
+&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;正方: 检查有用:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;如果不检查, 没内存时会出现非预期行为.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;反方: 检查没用:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;因为这是一个小程序, 基本不可能超内存, 我们还需要检查malloc是否成功么?&lt;/li&gt;
+&lt;li&gt;linux 上, 如果打开了 &lt;tt class="docutils literal"&gt;overcommit&lt;/tt&gt;, 基本上所有的alloc都会返回说有内存,
+等到真正写到这片的时候才可能通过oom-killer 杀掉某个(也许是其它)进程.&lt;/li&gt;
+&lt;li&gt;linux上, 如果打开了部分swap, alloc通常也会返回有内存,&lt;/li&gt;
+&lt;li&gt;就算我们检查, 我们也不能避免栈空间不够之类的错误.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;overcommit参考 man malloc:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+http://linux.die.net/man/3/malloc
+
+By default, Linux follows an optimistic memory allocation strategy. This means that when malloc() returns non-NULL there is no guarantee that the memory really is available. This is a really bad bug. In case it turns out that the system is out of memory, one or more processes will be killed by the infamous OOM killer.
+&lt;/pre&gt;
+&lt;p&gt;但是这时候malloc也是可能返回NULL的, 比如 address space is full.&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;我们想要什么&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;我们的期望分成4级:&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;没内存时, 程序依然能够正常工作, 比如http服务器能拒绝掉部分请求而保证另一部分请求正常.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;没内存时, 优雅退出, 防止:
+- 因为文件未关闭造成数据丢失   (如果我们写了文件, 未关闭, 操作系统会保证sync到磁盘么  -- 应该是不能保证)
+- socket未关闭导致对端长等待.
+- 比如是一个文件编辑器, 需要保存用户的工作先.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;没内存时, 通过ASSERT显示core掉&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;发生非预期异常(可能core).&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;比如alloc了一个NULL, 但是不是alloc的时候报错, 而是往里面写东西的时候报错, 就很难追查了.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;很显然, 1是最好的情况, 是一个有尊严的程序员所期望的, 4是一定不能发生的. 2,3是需要权衡的.&lt;/p&gt;
+&lt;p&gt;3 是基线, 做到3可能保证出错时知道原因.&lt;/p&gt;
+&lt;p&gt;其它:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;对嵌入式系统: 内存有限, 所以应该总是检查&lt;/li&gt;
+&lt;li&gt;对c++: 尽量使用new, 这样有exception.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;现有程序做法&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;我们看看一些有名程序的做法&lt;/p&gt;
+&lt;div class="section" id="mysql"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id7"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;多数地方都做到1:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+HP_INFO *heap_open_from_share(HP_SHARE *share, int mode)
+{
+  HP_INFO *info;
+  DBUG_ENTER(&amp;quot;heap_open_from_share&amp;quot;);
+
+  if (!(info= (HP_INFO*) my_malloc((uint) sizeof(HP_INFO) +
+                  2 * share-&amp;gt;max_key_length,
+                  MYF(MY_ZEROFILL))))
+  {
+    DBUG_RETURN(0);
+  }
+&lt;/pre&gt;
+&lt;p&gt;有的地方只能做到4:&lt;/p&gt;
+&lt;p&gt;storage/innobase/handler/ha_innodb.cc:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+    field_lengths = (ulint*) my_malloc(sizeof(ulint) * n_fields,
+            MYF(MY_FAE));
+
+    namebuf = (char*) my_malloc((uint) len + 2, MYF(0));
+    memcpy(namebuf, ptr, len);
+
+innobase_rename_table(
+    ...
+    norm_to = (char*) my_malloc(strlen(to) + 64, MYF(0));
+    norm_from = (char*) my_malloc(strlen(from) + 64, MYF(0));
+&lt;/pre&gt;
+&lt;p&gt;storage/myisam/myisampack.c:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static my_bool open_isam_files(PACK_MRG_INFO *mrg, char **names, uint count)
+{
+  mrg-&amp;gt;file=(MI_INFO**) my_malloc(sizeof(MI_INFO*)*count,MYF(MY_FAE));
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="redis"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;做到3:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
+    block = zmalloc(sizeof(*block));
+    block-&amp;gt;free = AOF_RW_BUF_BLOCK_SIZE;
+&lt;/pre&gt;
+&lt;p&gt;不过在zmalloc里面做到了assert:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void zmalloc_default_oom(size_t size) {
+    fprintf(stderr, &amp;quot;zmalloc: Out of memory trying to allocate %zu bytes\n&amp;quot;,
+        size);
+    fflush(stderr);
+    abort();
+}
+
+static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
+
+void *zmalloc(size_t size) {
+    void *ptr = malloc(size+PREFIX_SIZE);
+
+    if (!ptr) zmalloc_oom_handler(size);
+&lt;/pre&gt;
+&lt;p&gt;但是在cli等不重要代码里面做到4:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static void cliInitHelp() {
+    tmp.argv = malloc(sizeof(sds));
+    tmp.argv[0] = sdscatprintf(sdsempty(),&amp;quot;&amp;#64;%s&amp;quot;,commandGroups[i]);
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="nginx"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;nginx&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;alloc 里面打日志, 不是ASSERT (不过ngx_log_error里面应该还会malloc):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void *
+ngx_alloc(size_t size, ngx_log_t *log)
+{
+    void  *p;
+
+    p = malloc(size);
+    if (p == NULL) {
+        ngx_log_error(NGX_LOG_EMERG, log, ngx_errno,
+                      &amp;quot;malloc(%uz) failed&amp;quot;, size);
+    }
+
+    ngx_log_debug2(NGX_LOG_DEBUG_ALLOC, log, 0, &amp;quot;malloc: %p:%uz&amp;quot;, p, size);
+
+    return p;
+}
+&lt;/pre&gt;
+&lt;p&gt;使用时检查(90%的地方都有检查):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+env = ngx_palloc(cycle-&amp;gt;pool, (n + 1) * sizeof(char *));
+if (env == NULL) {
+    return NULL;
+}
+
+overflow_list = ngx_alloc(sizeof(struct pollfd) * rtscf-&amp;gt;overflow_events,
+                          cycle-&amp;gt;log);
+if (overflow_list == NULL) {
+    return NGX_ERROR;
+}
+&lt;/pre&gt;
+&lt;p&gt;也有不检查:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ngx_exec_new_binary(ngx_cycle_t *cycle, char *const *argv)
+    var = ngx_alloc(sizeof(NGINX_VAR)
+                    + cycle-&amp;gt;listening.nelts * (NGX_INT32_LEN + 1) + 2,
+                    cycle-&amp;gt;log);
+
+    p = ngx_cpymem(var, NGINX_VAR &amp;quot;=&amp;quot;, sizeof(NGINX_VAR));
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="lighttpd"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;lighttpd&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;ASSERT&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="twemproxy"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id11"&gt;2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;twemproxy&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;和nginx一样:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void *
+_nc_alloc(size_t size, const char *name, int line)
+{
+    void *p;
+
+    ASSERT(size != 0);
+
+    p = malloc(size);
+    if (p == NULL) {
+        log_error(&amp;quot;malloc(%zu) failed &amp;#64; %s:%d&amp;quot;, size, name, line);
+    } else {
+        log_verb(&amp;quot;malloc(%zu) at %p &amp;#64; %s:%d&amp;quot;, size, p, name, line);
+    }
+
+    return p;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id12"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;nginx 和mysql, redis 做的差不多, 尽量检查.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;推荐的做法:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;alloc里面如果有NULL打日志, 上层每次检查, 发现NULL处理错误&lt;/li&gt;
+&lt;li&gt;对小的alloc, alloc 后写ASSERT.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id13"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;参考&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;讨论: &lt;a class="reference external" href="http://stackoverflow.com/questions/1941323/always-check-malloced-memory"&gt;http://stackoverflow.com/questions/1941323/always-check-malloced-memory&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>我们还需要80列的限制么</title><link href="/do_we_need_80_column_rule.html" rel="alternate"></link><updated>2014-07-21T13:02:07+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-21:do_we_need_80_column_rule.html</id><summary type="html">&lt;p&gt;现在, 我们写代码通常不限制80列. 现在我们的屏幕都很宽, 一般都能放180列到200列. 所以貌似没必要限制80列了&lt;/p&gt;
+&lt;p&gt;但是, 我们经常用diff工具来查看代码, 这样超过80列的代码在diff工具中就不好看了.&lt;/p&gt;
+&lt;p&gt;所以, 我们还是坚持80列原则把.&lt;/p&gt;
+</summary><category term="all"></category></entry></feed>

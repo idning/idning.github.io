@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>cr-ssdb</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/cr-ssdb.html">2014-07-24 15:12:18</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> <a href="/tag/redis.html">redis</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id18">1&nbsp;&nbsp;&nbsp;问题</a></li>
+<li><a class="reference internal" href="#id2" id="id19">2&nbsp;&nbsp;&nbsp;代码</a><ul class="auto-toc">
+<li><a class="reference internal" href="#util" id="id20">2.1&nbsp;&nbsp;&nbsp;util</a></li>
+<li><a class="reference internal" href="#id3" id="id21">2.2&nbsp;&nbsp;&nbsp;请求处理模型</a><ul class="auto-toc">
+<li><a class="reference internal" href="#link" id="id22">2.2.1&nbsp;&nbsp;&nbsp;Link</a></li>
+<li><a class="reference internal" href="#redislink" id="id23">2.2.2&nbsp;&nbsp;&nbsp;RedisLink</a></li>
+<li><a class="reference internal" href="#id4" id="id24">2.2.3&nbsp;&nbsp;&nbsp;命令表</a></li>
+<li><a class="reference internal" href="#id5" id="id25">2.2.4&nbsp;&nbsp;&nbsp;处理模型</a></li>
+<li><a class="reference internal" href="#serv-proc" id="id26">2.2.5&nbsp;&nbsp;&nbsp;serv.proc</a></li>
+<li><a class="reference internal" href="#workerpool" id="id27">2.2.6&nbsp;&nbsp;&nbsp;WorkerPool</a></li>
+<li><a class="reference internal" href="#id6" id="id28">2.2.7&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id7" id="id29">2.3&nbsp;&nbsp;&nbsp;功能</a><ul class="auto-toc">
+<li><a class="reference internal" href="#kv" id="id30">2.3.1&nbsp;&nbsp;&nbsp;kv</a></li>
+<li><a class="reference internal" href="#hash" id="id31">2.3.2&nbsp;&nbsp;&nbsp;hash</a><ul class="auto-toc">
+<li><a class="reference internal" href="#hscan-hkeys" id="id32">2.3.2.1&nbsp;&nbsp;&nbsp;hscan/hkeys的实现</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#queue" id="id33">2.3.3&nbsp;&nbsp;&nbsp;queue</a></li>
+<li><a class="reference internal" href="#zset" id="id34">2.3.4&nbsp;&nbsp;&nbsp;zset</a><ul class="auto-toc">
+<li><a class="reference internal" href="#zrank" id="id35">2.3.4.1&nbsp;&nbsp;&nbsp;zrank</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id8" id="id36">2.3.5&nbsp;&nbsp;&nbsp;名字空间划分</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id9" id="id37">2.4&nbsp;&nbsp;&nbsp;主从相关</a><ul class="auto-toc">
+<li><a class="reference internal" href="#binlog" id="id38">2.4.1&nbsp;&nbsp;&nbsp;binlog</a></li>
+<li><a class="reference internal" href="#binlogqueue" id="id39">2.4.2&nbsp;&nbsp;&nbsp;BinlogQueue</a></li>
+<li><a class="reference internal" href="#id10" id="id40">2.4.3&nbsp;&nbsp;&nbsp;Binlog</a></li>
+<li><a class="reference internal" href="#id11" id="id41">2.4.4&nbsp;&nbsp;&nbsp;主从同步</a></li>
+<li><a class="reference internal" href="#slave" id="id42">2.4.5&nbsp;&nbsp;&nbsp;slave</a></li>
+<li><a class="reference internal" href="#dump" id="id43">2.4.6&nbsp;&nbsp;&nbsp;dump</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id12" id="id44">2.5&nbsp;&nbsp;&nbsp;其它</a><ul class="auto-toc">
+<li><a class="reference internal" href="#incr" id="id45">2.5.1&nbsp;&nbsp;&nbsp;incr 如何保证原子性</a></li>
+<li><a class="reference internal" href="#expire" id="id46">2.5.2&nbsp;&nbsp;&nbsp;如何实现expire</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#benchmark" id="id47">3&nbsp;&nbsp;&nbsp;benchmark</a></li>
+<li><a class="reference internal" href="#id13" id="id48">4&nbsp;&nbsp;&nbsp;问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id14" id="id49">4.1&nbsp;&nbsp;&nbsp;读性能的问题</a></li>
+<li><a class="reference internal" href="#compact" id="id50">4.2&nbsp;&nbsp;&nbsp;如何compact</a></li>
+<li><a class="reference internal" href="#expirekey" id="id51">4.3&nbsp;&nbsp;&nbsp;所有expire的key记录在内存</a></li>
+<li><a class="reference internal" href="#id15" id="id52">4.4&nbsp;&nbsp;&nbsp;兼容问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#del" id="id53">4.4.1&nbsp;&nbsp;&nbsp;del 兼容</a></li>
+<li><a class="reference internal" href="#ttlkey" id="id54">4.4.2&nbsp;&nbsp;&nbsp;ttl一个不存在的key</a></li>
+<li><a class="reference internal" href="#id16" id="id55">4.4.3&nbsp;&nbsp;&nbsp;没有expire命令</a></li>
+<li><a class="reference internal" href="#scan" id="id56">4.4.4&nbsp;&nbsp;&nbsp;scan类</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id17" id="id57">4.4.4.1&nbsp;&nbsp;&nbsp;scan</a></li>
+<li><a class="reference internal" href="#redis-hscan" id="id58">4.4.4.2&nbsp;&nbsp;&nbsp;没有redis 的hscan</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+<style type="text/css">
+      table {
+        width: 30%
+      }
+</style><div class="section" id="id1">
+<h2><a class="toc-backref" href="#id18">1&nbsp;&nbsp;&nbsp;问题</a></h2>
+<ul class="simple">
+<li>请求处理模型, 每个线程一个req?</li>
+<li>如何在kv上实现hash/zset/queue</li>
+<li>如何处理expire/ttl</li>
+<li>如何支持事务, binlog?</li>
+<li>如何主从同步.</li>
+<li>LevelDB读有没有缓存, 如果没有缓存, 那么读性能 &lt; iops</li>
+</ul>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id19">2&nbsp;&nbsp;&nbsp;代码</a></h2>
+<p>代码量大约9000行:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/test/ssdb/src$ cat *.cpp *.h | wc -l
+7223
+
+ning&#64;ning-laptop:~/test/ssdb/src$ cat util/*.cpp util/*.h | wc -l
+2404
+</pre>
+<p>协议解析:</p>
+<pre class="literal-block">
+link.cpp
+link.h
+link_redis.cpp
+link_redis.h
+</pre>
+<p>数据类型:</p>
+<pre class="literal-block">
+t_hash.cpp
+t_hash.h
+t_kv.cpp
+t_kv.h
+t_queue.cpp
+t_queue.h
+t_zset.cpp
+t_zset.h
+proc_hash.cpp
+proc_kv.cpp
+proc_queue.cpp
+proc_zset.cpp
+
+#ttl 也相当于是一种数据类型.
+ttl.cpp
+ttl.h
+</pre>
+<p>主从同步:</p>
+<pre class="literal-block">
+binlog.cpp
+binlog.h
+slave.cpp
+slave.h
+#backend_dump.cpp
+#backend_dump.h
+backend_sync.cpp
+backend_sync.h
+</pre>
+<p>服务框架:</p>
+<pre class="literal-block">
+serv.cpp
+serv.h
+ssdb.cpp
+ssdb.h
+ssdb-server.cpp
+</pre>
+<p>其它:</p>
+<pre class="literal-block">
+include.h
+version.h
+iterator.cpp
+iterator.h
+</pre>
+<div class="section" id="util">
+<h3><a class="toc-backref" href="#id20">2.1&nbsp;&nbsp;&nbsp;util</a></h3>
+<p>和icomet一样:</p>
+<pre class="literal-block">
+config.cpp
+config.h
+daemon.h
+file.h
+ip_filter.h
+log.cpp
+log.h
+strings.h
+</pre>
+<p>epoll:</p>
+<pre class="literal-block">
+fde.cpp
+fde_epoll.cpp
+fde.h
+fde_select.cpp
+</pre>
+<p>bytes.cpp bytes.h Bytes, Buffer 用于实现string的一些操作.</p>
+<p>sorted_set.cpp
+sorted_set.h</p>
+<p>SelectableQueue: 提供一个基于管道实现的Queue, 从而使得这个Queue 可以做Select.</p>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id21">2.2&nbsp;&nbsp;&nbsp;请求处理模型</a></h3>
+<div class="section" id="link">
+<h4><a class="toc-backref" href="#id22">2.2.1&nbsp;&nbsp;&nbsp;Link</a></h4>
+<pre class="literal-block">
+class Link{
+    int sock;
+    bool noblock_;
+    static int min_recv_buf;
+    static int min_send_buf;
+
+    std::vector&lt;Bytes&gt; recv_data; //recv_data 是解析后的bulk链表.
+    Buffer *input;
+    Buffer *output;
+
+    double create_time;
+    double active_time;
+
+    int read();                             //从网络读到input
+    int write();                            //从output写到网络
+    int flush();                            //调用wirte.
+
+    const std::vector&lt;Bytes&gt;* recv();       //从input解析到recv_data
+
+    int send(const Bytes &amp;s1);              //写到output
+    int send(const Bytes &amp;s1, const Bytes &amp;s2);
+    int send(const Bytes &amp;s1, const Bytes &amp;s2, const Bytes &amp;s3);
+    ...
+
+    const std::vector&lt;Bytes&gt;* response();                           //通过read() 和recv() 读取response.
+
+    const std::vector&lt;Bytes&gt;* request(const Bytes &amp;s1);             //铜鼓send() 和flush() 写request.
+    const std::vector&lt;Bytes&gt;* request(const Bytes &amp;s1, const Bytes &amp;s2);
+    ...
+}
+</pre>
+<p>这里:</p>
+<ol class="arabic simple">
+<li>read/recv 是一样的语义, 很容易混淆, write/send也是类似,
+read, write 为内部函数, 如果改为 _read, _write 就好懂些.</li>
+<li>request, response 之类, 使用名词做函数名. 不好.</li>
+</ol>
+</div>
+<div class="section" id="redislink">
+<h4><a class="toc-backref" href="#id23">2.2.2&nbsp;&nbsp;&nbsp;RedisLink</a></h4>
+<p>两个函数, 处理对象是input, output:</p>
+<pre class="literal-block">
+send_resp(Buffer *output, const std::vector&lt;std::string&gt; &amp;resp)  //发送redis格式的响应, resp是一个 string 构成的vector.
+parse_req(Buffer *input)                                         //读redis格式的请求
+recv_req(Buffer *input)                                          //调用parse_req 之后调用convert 转为内部cmd格式.
+</pre>
+<p>parse_req 对input的处理是, 如果一次没有解析到一个完整的命令, 那么input buffer不动, 下次继续.</p>
+</div>
+<div class="section" id="id4">
+<h4><a class="toc-backref" href="#id24">2.2.3&nbsp;&nbsp;&nbsp;命令表</a></h4>
+<p>命令表:</p>
+<pre class="literal-block">
+#define PROC(c, f) {#c, f, 0, proc_##c, 0, 0, 0}
+static Command commands[] = {
+    PROC(get, &quot;r&quot;),
+    PROC(set, &quot;wt&quot;),        //t表示在线程池里面run
+    ...
+    PROC(dump, &quot;b&quot;),        //b表示在后台run
+}
+</pre>
+<p>全局变量:</p>
+<pre class="literal-block">
+static proc_map_t proc_map;
+
+//启动时初始化 这个map
+for(Command *cmd=commands; cmd-&gt;name; cmd++){
+    proc_map[cmd-&gt;name] = cmd;
+}
+</pre>
+<p>收到请求后, Server::proc函数会在proc_map里面查找</p>
+</div>
+<div class="section" id="id5">
+<h4><a class="toc-backref" href="#id25">2.2.4&nbsp;&nbsp;&nbsp;处理模型</a></h4>
+<p>ssdb-server.cpp</p>
+<p>全局:</p>
+<pre class="literal-block">
+Config *conf = NULL;
+SSDB *ssdb = NULL;
+Link *serv_link = NULL;
+IpFilter *ip_filter = NULL;
+
+typedef std::vector&lt;Link *&gt; ready_list_t;
+volatile bool quit = false;
+volatile uint32_t g_ticks = 0;
+</pre>
+<p>main:</p>
+<pre class="literal-block">
+main(){
+    init(); //load cfg, daemon, listen, init ipfilter, init SSDB, signal
+    run(argc, argv);
+}
+</pre>
+<p>run():</p>
+<pre class="literal-block">
+run(){
+    Fdevents fdes;
+    fdes.set(serv_link-&gt;fd(), FDEVENT_IN, 0, serv_link);            //监听socket
+    fdes.set(serv.reader-&gt;fd(), FDEVENT_IN, 0, serv.reader);        //reader.SelectableQueue.fd
+    fdes.set(serv.writer-&gt;fd(), FDEVENT_IN, 0, serv.writer);
+
+    while(!quit){
+        ready_list.clear();
+        ready_list_2.clear();
+
+        events = fdes.wait(50);
+        for(int i=0; i&lt;(int)events-&gt;size(); i++){
+            if(fde-&gt;data.ptr == serv_link){
+                //do accept
+            }else if(fde-&gt;data.ptr == serv.reader || fde-&gt;data.ptr == serv.writer){
+                //从子进程那里收结果, 这里比较复杂
+                proc_result(job, fdes, ready_list_2);
+            }else{
+                if(fde-&gt;events &amp; FDEVENT_IN){
+                    int len = link-&gt;read();                 //用read
+                    ready_list.push_back(link);                         //放到ready_list
+                }else if(fde-&gt;events &amp; FDEVENT_OUT){
+                    int len = link-&gt;write();                //用write
+                    ready_list.push_back(link);                         //放到ready_list
+                }
+            }
+        }
+        for(it = ready_list.begin(); it != ready_list.end(); it ++){
+            Link *link = *it;
+            const Request *req = link-&gt;recv();
+
+            ProcJob job;
+            job.link = link;
+            serv.proc(&amp;job);                        //这里面可能把Job发到一个线程去.
+            if(job.result == PROC_THREAD){
+                fdes.del(link-&gt;fd());
+                continue;
+            }
+            if(job.result == PROC_BACKEND){
+                fdes.del(link-&gt;fd());
+                link_count --;
+                continue;
+            }
+            //这里是直接处理的情况.
+            if(proc_result(job, fdes, ready_list_2) == PROC_ERROR){
+                link_count --;
+            }
+        }
+        ready_list.swap(ready_list_2);
+    }
+}
+</pre>
+<p>所以请求可以在主线程里面处理, 也可能在线程池里面处理, 如果在线程里面处理, 就会返回PROC_THREAD或者PROC_BACKEND, 此时fd被摘掉, 等请求处理完, 发送response后, 再把fd加入epoll.</p>
+<p>TODO: 为什么最后把ready_list_2 里面的元素放到ready_list里面去了, 但是到下一个循环一开始就   <tt class="docutils literal"><span class="pre">ready_list.clear();</span></tt>, 这个clear() 是不是不应该有?</p>
+</div>
+<div class="section" id="serv-proc">
+<h4><a class="toc-backref" href="#id26">2.2.5&nbsp;&nbsp;&nbsp;serv.proc</a></h4>
+<p>这个函数会根据command_table里的标记, 决定是在主线程处理, 还是在线程池处理, 或者新开一个线程处理:</p>
+<pre class="literal-block">
+void Server::proc(ProcJob *job){
+    proc_map_t::iterator it = proc_map.find(req-&gt;at(0));
+    if(it == proc_map.end()){
+        resp.push_back(&quot;client_error&quot;);
+    }else{
+        Command *cmd = it-&gt;second;
+        job-&gt;cmd = cmd;
+        if(cmd-&gt;flags &amp; Command::FLAG_THREAD){              //标记为thread的cmd, 会被分到2个线程池里面去跑
+            if(cmd-&gt;flags &amp; Command::FLAG_WRITE){
+                job-&gt;result = PROC_THREAD;
+                writer-&gt;push(*job);
+                return; /////
+            }else if(cmd-&gt;flags &amp; Command::FLAG_READ){
+                job-&gt;result = PROC_THREAD;
+                reader-&gt;push(*job);
+                return; /////
+            }else{
+                log_error(&quot;bad command config: %s&quot;, cmd-&gt;name);
+            }
+        }
+
+        proc_t p = cmd-&gt;proc;
+        job-&gt;time_wait = 1000 *(millitime() - job-&gt;stime);
+        job-&gt;result = (*p)(this, job-&gt;link, *req, &amp;resp);   //直接在主线程处理.
+        job-&gt;time_proc = 1000 *(millitime() - job-&gt;stime);
+    }
+}
+</pre>
+<p>这里调用cmd-&gt;proc, 就是prox_xxx 函数, 它们都是然后调用 <tt class="docutils literal">SSDB</tt> 类的相应函数:</p>
+<pre class="literal-block">
+static int proc_hdel(Server *serv, Link *link, const Request &amp;req, Response *resp){
+    int ret = serv-&gt;ssdb-&gt;hdel(req[1], req[2]);
+}
+</pre>
+</div>
+<div class="section" id="workerpool">
+<h4><a class="toc-backref" href="#id27">2.2.6&nbsp;&nbsp;&nbsp;WorkerPool</a></h4>
+<p>thread.h 提供线程池(WorkerPool), ssdb里面一个writer 线程池, 一个reader 线程池:</p>
+<pre class="literal-block">
+WorkerPool&lt;ProcWorker, ProcJob&gt; *writer;
+WorkerPool&lt;ProcWorker, ProcJob&gt; *reader;
+
+writer = new WorkerPool&lt;ProcWorker, ProcJob&gt;(&quot;writer&quot;);
+writer-&gt;start(WRITER_THREADS);                                  //1
+reader = new WorkerPool&lt;ProcWorker, ProcJob&gt;(&quot;reader&quot;);
+reader-&gt;start(READER_THREADS);                                  //10
+</pre>
+<p>每个WorkerPool有两个 Queue:</p>
+<pre class="literal-block">
+Queue&lt;JOB&gt; jobs;
+SelectableQueue&lt;JOB&gt; results;
+
+template&lt;class W, class JOB&gt;
+int WorkerPool&lt;W, JOB&gt;::push(JOB job){
+    return this-&gt;jobs.push(job);
+}
+
+template&lt;class W, class JOB&gt;
+int WorkerPool&lt;W, JOB&gt;::pop(JOB *job){
+    return this-&gt;results.pop(job);
+}
+
+template&lt;class W, class JOB&gt;
+void* WorkerPool&lt;W, JOB&gt;::_run_worker(void *arg){
+    while(1){
+        JOB job;
+        tp-&gt;jobs.pop(&amp;job);
+        worker-&gt;proc(&amp;job);
+        tp-&gt;results.push(job);
+    }
+}
+</pre>
+<p>SelectableQueue的fd, 在前面epoll_初始化的时候, 已经把这个fd加入监听, 每次一个job处理完成, 就会向SelectableQueue的fd上写一个字节, 这样主线程就能知道这个Job处理完了</p>
+<p>worker-&gt;porc(&amp;job) 的逻辑:</p>
+<pre class="literal-block">
+int Server::ProcWorker::proc(ProcJob *job){
+    const Request *req = job-&gt;link-&gt;last_recv();
+    Response resp;
+
+    double stime = millitime();
+    proc_t p = job-&gt;cmd-&gt;proc;
+    job-&gt;result = (*p)(job-&gt;serv, job-&gt;link, *req, &amp;resp);
+    double etime = millitime();
+    job-&gt;time_wait = 1000 * (stime - job-&gt;stime);
+    job-&gt;time_proc = 1000 *(etime - stime);
+
+    if(job-&gt;link-&gt;send(resp) == -1){
+        job-&gt;result = PROC_ERROR;
+    }else{
+        log_debug(&quot;w:%.3f,p:%.3f, req: %s, resp: %s&quot;,
+            job-&gt;time_wait, job-&gt;time_proc,
+            serialize_req(*req).c_str(),
+            serialize_req(resp).c_str());
+    }
+    return 0;
+}
+</pre>
+</div>
+<div class="section" id="id6">
+<h4><a class="toc-backref" href="#id28">2.2.7&nbsp;&nbsp;&nbsp;小结</a></h4>
+<p>这种请求处理模型没见过, 觉得很巧妙.</p>
+<p>HERE</p>
+</div>
+</div>
+<div class="section" id="id7">
+<h3><a class="toc-backref" href="#id29">2.3&nbsp;&nbsp;&nbsp;功能</a></h3>
+<table border="1" class="docutils">
+<colgroup>
+<col width="30%" />
+<col width="70%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">redis</th>
+<th class="head">ssdb</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>string</td>
+<td>string</td>
+</tr>
+<tr><td>hash</td>
+<td>hash</td>
+</tr>
+<tr><td>list</td>
+<td>queue(不等于list)</td>
+</tr>
+<tr><td>set</td>
+<td>无</td>
+</tr>
+<tr><td>zset</td>
+<td>zset</td>
+</tr>
+</tbody>
+</table>
+<p>hash的hset, hget 可以O(n)实现,  list 的rpush/lpop也可以O(n) 实现, 但是list的 LINSERT, LINDEX是O(n), 所以ssdb没有实现, 只是实现了可以保持O(n)操作的queue</p>
+<p>如何在kv上实现hash/zset/queue</p>
+<p>kv:</p>
+<pre class="literal-block">
+DEF_PROC(get);
+DEF_PROC(set);
+</pre>
+<p>hash:</p>
+<pre class="literal-block">
+DEF_PROC(hget);
+DEF_PROC(hset);
+</pre>
+<p>zset:</p>
+<pre class="literal-block">
+DEF_PROC(zrank);
+DEF_PROC(zrrank);
+DEF_PROC(zrange);
+</pre>
+<p>queue:</p>
+<pre class="literal-block">
+DEF_PROC(qsize);
+DEF_PROC(qfront);
+DEF_PROC(qback);
+DEF_PROC(qpush);
+</pre>
+<div class="section" id="kv">
+<h4><a class="toc-backref" href="#id30">2.3.1&nbsp;&nbsp;&nbsp;kv</a></h4>
+<p>get:</p>
+<pre class="literal-block">
+static int proc_get(Server *serv, Link *link, const Request &amp;req, Response *resp){
+    if(req.size() &lt; 2){
+        resp-&gt;push_back(&quot;client_error&quot;);
+    }else{
+        std::string val;
+        int ret = serv-&gt;ssdb-&gt;get(req[1], &amp;val);
+        if(ret == 1){
+            resp-&gt;push_back(&quot;ok&quot;);      //找到  这里是ok这个字符串, 后面会转为redis协议.
+            resp-&gt;push_back(val);
+        }else if(ret == 0){
+            resp-&gt;push_back(&quot;not_found&quot;);
+        }else{
+            log_error(&quot;fail&quot;);
+            resp-&gt;push_back(&quot;fail&quot;);
+        }
+    }
+    return 0;
+}
+
+typedef std::vector&lt;std::string&gt; Response;
+</pre>
+</div>
+<div class="section" id="hash">
+<h4><a class="toc-backref" href="#id31">2.3.2&nbsp;&nbsp;&nbsp;hash</a></h4>
+<p>实现了:</p>
+<pre class="literal-block">
+DEF_PROC(hsize);        // O(1)
+DEF_PROC(hget);         // O(1)
+DEF_PROC(hset);         // O(1)
+DEF_PROC(hdel);         // O(1)
+DEF_PROC(hincr);        // O(1)
+DEF_PROC(hdecr);        // O(1)
+DEF_PROC(hexists);      //O(1)
+
+DEF_PROC(hclear);       // O(n)
+DEF_PROC(hscan);        // O(n)
+DEF_PROC(hrscan);       // O(n)
+DEF_PROC(hkeys);        // O(n)
+DEF_PROC(hvals);        // O(n)
+</pre>
+<p><tt class="docutils literal">hkey: {a: b}</tt> 存储结构:</p>
+<pre class="literal-block">
+_hkey : 1           #size = 1
+_hkey_a : b         # hkey.a = b
+</pre>
+<p>hset_one时, 组一个新的key:</p>
+<pre class="literal-block">
+// returns the number of newly added items
+static int hset_one(const SSDB *ssdb, const Bytes &amp;name, const Bytes &amp;key, const Bytes &amp;val, char log_type){
+    ...
+    int ret = 0;
+    std::string dbval;
+    if(ssdb-&gt;hget(name, key, &amp;dbval) == 0){ // not found
+        std::string hkey = encode_hash_key(name, key); ///////////////////////////////组新key.
+        ssdb-&gt;binlogs-&gt;Put(hkey, val.Slice());
+        ssdb-&gt;binlogs-&gt;add(log_type, BinlogCommand::HSET, hkey);
+        ret = 1;
+    }
+}
+
+inline static
+std::string encode_hash_key(const Bytes &amp;name, const Bytes &amp;key){
+    std::string buf;
+    buf.append(1, DataType::HASH);
+    buf.append(1, (uint8_t)name.size());
+    buf.append(name.data(), name.size());
+    buf.append(1, '=');
+    buf.append(key.data(), key.size());
+    return buf;
+}
+</pre>
+<p>专门存size的key, 参考:</p>
+<pre class="literal-block">
+static int incr_hsize(SSDB *ssdb, const Bytes &amp;name, int64_t incr){
+</pre>
+<div class="section" id="hscan-hkeys">
+<h5><a class="toc-backref" href="#id32">2.3.2.1&nbsp;&nbsp;&nbsp;hscan/hkeys的实现</a></h5>
+<p>需要客户端传来, 从那个key scan到哪个key:</p>
+<pre class="literal-block">
+static int proc_hscan(Server *serv, Link *link, const Request &amp;req, Response *resp){
+    uint64_t limit = req[4].Uint64();
+    HIterator *it = serv-&gt;ssdb-&gt;hscan(req[1], req[2], req[3], limit);
+    resp-&gt;push_back(&quot;ok&quot;);
+    while(it-&gt;next()){
+        resp-&gt;push_back(it-&gt;key);
+        resp-&gt;push_back(it-&gt;val);
+    }
+}
+</pre>
+<p>用法应该是:</p>
+<pre class="literal-block">
+hscan hkey a '' 100
+</pre>
+<p>只有ssdb协议支持hscan, 不支持redis的hscan.</p>
+</div>
+</div>
+<div class="section" id="queue">
+<h4><a class="toc-backref" href="#id33">2.3.3&nbsp;&nbsp;&nbsp;queue</a></h4>
+<p>实现了这些命令:</p>
+<pre class="literal-block">
+{STRATEGY_AUTO,         &quot;lpush&quot;,                &quot;qpush_front&quot;,          REPLY_STATUS},
+{STRATEGY_AUTO,         &quot;rpush&quot;,                &quot;qpush_back&quot;,           REPLY_STATUS},
+{STRATEGY_AUTO,         &quot;lpop&quot;,                 &quot;qpop_front&quot;,           REPLY_BULK},
+{STRATEGY_AUTO,         &quot;rpop&quot;,                 &quot;qpop_back&quot;,            REPLY_BULK},
+{STRATEGY_AUTO,         &quot;llen&quot;,                 &quot;qsize&quot;,                        REPLY_INT},
+</pre>
+<p>只能在端上操作, 不能在list中间插入/删除等.</p>
+<pre class="literal-block">
+static uint64_t QFRONT_SEQ = 2;
+static uint64_t QBACK_SEQ  = 3;
+static uint64_t QITEM_MIN_SEQ = 10000;
+static uint64_t QITEM_MAX_SEQ = 9223372036854775807ULL;
+static uint64_t QITEM_SEQ_INIT = QITEM_MAX_SEQ/2;           //4611686018427387903
+</pre>
+<p><tt class="docutils literal">rpush qkey msg</tt> 后, 存储结构如下:</p>
+<pre class="literal-block">
+qkey_2: 4611686018427387903             //front下标
+qkey_3:  4611686018427387904            //end下标
+qkey_4611686018427387904                //msg
+</pre>
+<p>这里 <tt class="docutils literal">qkey_4611686018427387904</tt> 后面这个数字在leveldb key里面是直接存binary格式, 8个字节.</p>
+</div>
+<div class="section" id="zset">
+<h4><a class="toc-backref" href="#id34">2.3.4&nbsp;&nbsp;&nbsp;zset</a></h4>
+<p>每个zset中的元素对应2个key: zset_key, zscore_key:</p>
+<pre class="literal-block">
+k2 = encode_zscore_key(name, key, new_score);
+k0 = encode_zset_key(name, key);
+</pre>
+<p>如下操作:</p>
+<pre class="literal-block">
+127.0.0.1:8888&gt; Zadd zkey 3 a
+(integer) 1
+127.0.0.1:8888&gt; ZSCORE zkey a
+&quot;3&quot;
+</pre>
+<p>存储结构:</p>
+<pre class="literal-block">
+zkey: 1                 #size
+zkey_a_3: ''            #zscore_key
+zkey_a: 3               #zset_key
+</pre>
+<p>每次zset, 先用zset_key 取的score, 构造zscore_key, 删除老记录.</p>
+<p>再写新的zset_key和zscore_key.</p>
+<div class="section" id="zrank">
+<h5><a class="toc-backref" href="#id35">2.3.4.1&nbsp;&nbsp;&nbsp;zrank</a></h5>
+<p>利用zscore_key, 遍历:</p>
+<pre class="literal-block">
+int64_t SSDB::zrank(const Bytes &amp;name, const Bytes &amp;key) const{
+    ZIterator *it = ziterator(this, name, &quot;&quot;, &quot;&quot;, &quot;&quot;, INT_MAX, Iterator::FORWARD);
+    uint64_t ret = 0;
+    while(true){
+        if(it-&gt;next() == false){
+            ret = -1;
+            break;
+        }
+        if(key == it-&gt;key){
+            break;
+        }
+        ret ++;
+    }
+    delete it;
+    return ret;
+}
+</pre>
+<p>zrange类似</p>
+</div>
+</div>
+<div class="section" id="id8">
+<h4><a class="toc-backref" href="#id36">2.3.5&nbsp;&nbsp;&nbsp;名字空间划分</a></h4>
+<p>LevelDB里面, 每种key都有一个前缀:</p>
+<pre class="literal-block">
+class DataType{
+public:
+    static const char SYNCLOG       = 1;
+    static const char KV            = 'k';
+    static const char HASH          = 'h'; // hashmap(sorted by key)
+    static const char HSIZE         = 'H';
+    static const char ZSET          = 's'; // key =&gt; score
+    static const char ZSCORE        = 'z'; // key|score =&gt; &quot;&quot;
+    static const char ZSIZE         = 'Z';
+    static const char QUEUE         = 'q';
+    static const char QSIZE         = 'Q';
+    static const char MIN_PREFIX = HASH;
+    static const char MAX_PREFIX = ZSET;
+};
+</pre>
+</div>
+</div>
+<div class="section" id="id9">
+<h3><a class="toc-backref" href="#id37">2.4&nbsp;&nbsp;&nbsp;主从相关</a></h3>
+<div class="section" id="binlog">
+<h4><a class="toc-backref" href="#id38">2.4.1&nbsp;&nbsp;&nbsp;binlog</a></h4>
+<p>class Binlog
+class BinlogQueue
+class Transaction</p>
+<pre class="literal-block">
+class Transaction{
+private:
+    BinlogQueue *logs;
+public:
+    Transaction(BinlogQueue *logs){
+        this-&gt;logs = logs;
+        logs-&gt;mutex.lock();
+        logs-&gt;begin();
+    }
+
+    ~Transaction(){
+        // it is safe to call rollback after commit
+        logs-&gt;rollback();
+        logs-&gt;mutex.unlock();
+    }
+};
+</pre>
+</div>
+<div class="section" id="binlogqueue">
+<h4><a class="toc-backref" href="#id39">2.4.2&nbsp;&nbsp;&nbsp;BinlogQueue</a></h4>
+<p>整个SSDB只有一个BinlogQueue, 而且和数据存放在同一个leveldb里面:</p>
+<pre class="literal-block">
+ssdb-&gt;binlogs = new BinlogQueue(ssdb-&gt;db);
+</pre>
+<p>启动SSDB时, 申请一个BinlogQueue对象, seek 到最后一条binlog, (最后一条是用 encode_seq_key(UINT64_MAX) )
+然后启动一个线程, 来删Binlog:</p>
+<pre class="literal-block">
+int err = pthread_create(&amp;tid, NULL, &amp;BinlogQueue::log_clean_thread_func, this);
+</pre>
+<p>具体写操作的时候:</p>
+<pre class="literal-block">
+int SSDB::set(const Bytes &amp;key, const Bytes &amp;val, char log_type){
+    Transaction trans(binlogs);                                     //这里开始加锁
+
+    std::string buf = encode_kv_key(key);
+    binlogs-&gt;Put(buf, val.Slice());                                 //这里是真正的写操作.
+    binlogs-&gt;add(log_type, BinlogCommand::KSET, buf);               //这里是记录一条日志, 说我对这个key, 做了一次set操作 (没记录value, 难道同步的时候再去取value?)
+    leveldb::Status s = binlogs-&gt;commit();                          //两个操作一起写
+}
+</pre>
+<p>其实这里 ssdb-&gt;binlogs 相当于存储层, 所有 set/del leveldb 读写操作都是通过 ssdb-&gt;binlog 进行的, 但是Get操作却不是通过ssdb-&gt;binlog() 操作的:</p>
+<pre class="literal-block">
+int64_t SSDB::qsize(const Bytes &amp;name){
+    std::string key = encode_qsize_key(name);
+    std::string val;
+
+    leveldb::Status s;
+    s = db-&gt;Get(leveldb::ReadOptions(), key, &amp;val);
+}
+</pre>
+<p>这就不太统一, 不方便换下面的存储引擎.</p>
+</div>
+<div class="section" id="id10">
+<h4><a class="toc-backref" href="#id40">2.4.3&nbsp;&nbsp;&nbsp;Binlog</a></h4>
+<p>有多种类型:</p>
+<pre class="literal-block">
+class BinlogCommand{
+public:
+    static const char NONE  = 0;
+    static const char KSET  = 1;
+    static const char KDEL  = 2;
+    static const char HSET  = 3;
+    static const char HDEL  = 4;
+    static const char ZSET  = 5;
+    static const char ZDEL  = 6;
+
+    static const char BEGIN  = 7;
+    static const char END    = 8;
+};
+</pre>
+<p>都是只记录key:</p>
+<pre class="literal-block">
+ssdb-&gt;binlogs-&gt;add(log_type, BinlogCommand::HSET, hkey);
+</pre>
+</div>
+<div class="section" id="id11">
+<h4><a class="toc-backref" href="#id41">2.4.4&nbsp;&nbsp;&nbsp;主从同步</a></h4>
+<p>由Master 主动向从数据, 一个Server 有一个BackendSync实例:</p>
+<pre class="literal-block">
+Server::Server(SSDB *ssdb){
+    this-&gt;ssdb = ssdb;
+    backend_sync = new BackendSync(ssdb);
+    ...
+}
+</pre>
+</div>
+<div class="section" id="slave">
+<h4><a class="toc-backref" href="#id42">2.4.5&nbsp;&nbsp;&nbsp;slave</a></h4>
+<pre class="literal-block">
+void Slave::start(){
+    load_status();
+    log_debug(&quot;last_seq: %&quot; PRIu64 &quot;, last_key: %s&quot;,
+        last_seq, hexmem(last_key.data(), last_key.size()).c_str());
+
+    thread_quit = false;
+    int err = pthread_create(&amp;run_thread_tid, NULL, &amp;Slave::_run_thread, this);
+    if(err != 0){
+        log_error(&quot;can't create thread: %s&quot;, strerror(err));
+    }
+}
+</pre>
+<p>启动时load last_seq , 然后连上master, 发一个 sync140 告诉服务器从哪里开始发binlog:</p>
+<pre class="literal-block">
+sprintf(seq_buf, &quot;%&quot; PRIu64 &quot;&quot;, this-&gt;last_seq);
+const char *type = is_mirror? &quot;mirror&quot; : &quot;sync&quot;;
+link-&gt;send(&quot;sync140&quot;, seq_buf, this-&gt;last_key, type);
+</pre>
+<p>当Slave通过sync命令连上来, Master就会从这个socket把最新的更新发给Slave:</p>
+<pre class="literal-block">
+static int proc_sync140(Server *serv, Link *link, const Request &amp;req, Response *resp){
+    serv-&gt;backend_sync-&gt;proc(link);
+    return PROC_BACKEND;
+}
+
+int BackendSync::Client::sync(BinlogQueue *logs){
+    Binlog log;
+    ret = logs-&gt;find_next(expect_seq, &amp;log);
+
+    switch(log.cmd()){
+        case BinlogCommand::KSET:
+        case BinlogCommand::HSET:
+        case BinlogCommand::ZSET:
+            ret = backend-&gt;ssdb-&gt;raw_get(log.key(), &amp;val);
+            if(ret == -1){
+                log_error(&quot;fd: %d, raw_get error!&quot;, link-&gt;fd());
+            }else if(ret == 0){
+                //log_debug(&quot;%s&quot;, hexmem(log.key().data(), log.key().size()).c_str());
+                log_trace(&quot;fd: %d, skip not found: %s&quot;, link-&gt;fd(), log.dumps().c_str());
+            }else{
+                log_trace(&quot;fd: %d, %s&quot;, link-&gt;fd(), log.dumps().c_str());
+                link-&gt;send(log.repr(), val);
+            }
+</pre>
+<p>因为binlog只记录了key, 所以这里会再查一次, 把value查出来一起发过去(需要一次读)</p>
+<p>问题: 基准数据怎么过去呢? =&gt; 可以拷贝.</p>
+</div>
+<div class="section" id="dump">
+<h4><a class="toc-backref" href="#id43">2.4.6&nbsp;&nbsp;&nbsp;dump</a></h4>
+<pre class="literal-block">
+backend_dump.cpp
+backend_dump.h
+</pre>
+<p>有个dump命令:</p>
+<pre class="literal-block">
+PROC(dump, &quot;b&quot;),
+</pre>
+<p>相当于redis 的keys,</p>
+<p>收到这个命令, 服务器新开一个线程, 把所有数据通过一个socket发过来, 问题:</p>
+<ol class="arabic simple">
+<li>非redis 协议</li>
+<li>容易断</li>
+<li>有scan, 应该就不需要这个了 (不过这个简单, 简单一个命令就可以做backup了)</li>
+</ol>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/idning-github/ndb$ printf '*1\r\n$4\r\ndump\r\n' | socat - TCP:localhost:8888,shut-close | xxd
+0000000: 350a 6265 6769 6e0a 0a33 0a73 6574 0a39  5.begin..3.set.9
+0000010: 0a01 0000 0000 001e 953a 0a32 370a 3a95  .........:.27.:.
+0000020: 1e00 0000 0000 0101 6b6b 6579 3a30 3030  ........kkey:000
+0000030: 3030 3234 3833 3631 320a 0a33 0a73 6574  002483612..3.set
+0000040: 0a39 0a01 0000 0000 001e 953b 0a32 370a  .9.........;.27.
+0000050: 3b95 1e00 0000 0000 0101 6b6b 6579 3a30  ;.........kkey:0
+0000060: 3030 3030 3738 3833 3133 310a 0a33 0a73  00007883131..3.s
+0000070: 6574 0a39 0a01 0000 0000 001e 953c 0a32  et.9.........&lt;.2
+0000080: 370a 3c95 1e00 0000 0000 0101 6b6b 6579  7.&lt;.........kkey
+0000090: 3a30 3030 3030 3236 3435 3335 320a 0a33  :000002645352..3
+00000a0: 0a73 6574 0a39 0a01 0000 0000 001e 953d  .set.9.........=
+00000b0: 0a32 370a 3d95 1e00 0000 0000 0101 6b6b  .27.=.........kk
+00000c0: 6579 3a30 3030 3030 3935 3033 3539 380a  ey:000009503598.
+00000d0: 0a33 0a73 6574 0a39 0a01 0000 0000 001e  .3.set.9........
+00000e0: 953e 0a32 370a 3e95 1e00 0000 0000 0101  .&gt;.27.&gt;.........
+00000f0: 6b6b 6579 3a30 3030 3030 3938 3038 3139  kkey:00000980819
+0000100: 360a 0a33 0a73 6574 0a39 0a01 0000 0000  6..3.set.9......
+0000110: 001e 953f 0a32 370a 3f95 1e00 0000 0000  ...?.27.?.......
+0000120: 0101 6b6b 6579 3a30 3030 3030 3238 3232  ..kkey:000002822
+0000130: 3337 360a 0a33 0a73 6574 0a39 0a01 0000  376..3.set.9....
+0000140: 0000 001e 9540 0a32 370a 4095 1e00 0000  .....&#64;.27.&#64;.....
+0000150: 0000 0101 6b6b 6579 3a30 3030 3030 3134  ....kkey:0000014
+0000160: 3936 3935 320a 0a33 0a73 6574 0a39 0a01  96952..3.set.9..
+0000170: 0000 0000 001e 9541 0a32 370a 4195 1e00  .......A.27.A...
+0000180: 0000 0000 0101 6b6b 6579 3a30 3030 3030  ......kkey:00000
+0000190: 3432 3033 3036 370a 0a33 0a73 6574 0a39  4203067..3.set.9
+00001a0: 0a01 0000 0000 001e 9542 0a32 370a 4295  .........B.27.B.
+00001b0: 1e00 0000 0000 0101 6b6b 6579 3a30 3030  ........kkey:000
+00001c0: 3030 3139 3133 3036 320a 0a33 0a73 6574  001913062..3.set
+00001d0: 0a39 0a01 0000 0000 001e 9543 0a32 370a  .9.........C.27.
+00001e0: 4395 1e00 0000 0000 0101 6b6b 6579 3a30  C.........kkey:0
+00001f0: 3030 3030 3637 3432 3136 310a 0a33 0a65  00006742161..3.e
+0000200: 6e64 0a32 0a31 300a 0a                   nd.2.10..
+</pre>
+</div>
+</div>
+<div class="section" id="id12">
+<h3><a class="toc-backref" href="#id44">2.5&nbsp;&nbsp;&nbsp;其它</a></h3>
+<div class="section" id="incr">
+<h4><a class="toc-backref" href="#id45">2.5.1&nbsp;&nbsp;&nbsp;incr 如何保证原子性</a></h4>
+<p>通过Transaction上的锁实现.</p>
+</div>
+<div class="section" id="expire">
+<h4><a class="toc-backref" href="#id46">2.5.2&nbsp;&nbsp;&nbsp;如何实现expire</a></h4>
+<p>ssdb为每个带有过期设置的key, 保存了2个结构:</p>
+<ol class="arabic simple">
+<li>内存里面的一个sorted_set (全量)</li>
+<li>leveldb里面以 EXPIRATION_LIST_KEY 开头的一系列key.</li>
+</ol>
+<p>ssdb 里面保留这个key:</p>
+<pre class="literal-block">
+#define EXPIRATION_LIST_KEY &quot;\xff\xff\xff\xff\xff|EXPIRE_LIST|KV&quot;
+</pre>
+<p>用这个key作为一个大zset(基于ssdb在leveldb上提供的zset), 当需要设置一个key的ttl时, 就向这个zset里面设置某个key的超时时间:</p>
+<pre class="literal-block">
+int ExpirationHandler::set_ttl(const Bytes &amp;key, int ttl){
+    int64_t expired = time_ms() + ttl * 1000;
+    char data[30];
+    int size = snprintf(data, sizeof(data), &quot;%&quot; PRId64, expired);
+    if(size &lt;= 0){
+        log_error(&quot;snprintf return error!&quot;);
+        return -1;
+    }
+
+    Locking l(&amp;mutex);
+    int ret = ssdb-&gt;zset(this-&gt;list_name, key, Bytes(data, size));
+
+}
+</pre>
+<p>同时还会放到一个内存的sorted_set(expiration_keys)里面去:</p>
+<pre class="literal-block">
+expiration_keys.add(key.String(), expired);
+</pre>
+<p>ssdb启动后, 会有一个线程把所有 EXPIRATION_LIST_KEY 这个 zset 里面的所有key扫描出来, 放到内存的 expiration_keys 里.</p>
+<p>回收时, 由一个线程从 expiration_keys 里面取出每个key, 把key和它对应的expire记录删掉:</p>
+<pre class="literal-block">
+if(handler-&gt;expiration_keys.front(&amp;key, &amp;score)){
+    int64_t now = time_ms();
+    if(score &lt;= now){
+        log_debug(&quot;expired %s&quot;, key-&gt;c_str());
+        ssdb-&gt;del(*key);
+        ssdb-&gt;zdel(handler-&gt;list_name, *key);
+        handler-&gt;expiration_keys.pop_front();
+        continue;
+    }
+}
+</pre>
+<p>问题是: 所有的key都要装到内存, 内存会比较大, 而读的时候又没有利用上这个内存.</p>
+</div>
+</div>
+</div>
+<div class="section" id="benchmark">
+<h2><a class="toc-backref" href="#id47">3&nbsp;&nbsp;&nbsp;benchmark</a></h2>
+<p>请看:</p>
+<ul class="simple">
+<li><a class="reference external" href="/ssdb-benchmark.html">ssdb benchmark</a></li>
+</ul>
+</div>
+<div class="section" id="id13">
+<h2><a class="toc-backref" href="#id48">4&nbsp;&nbsp;&nbsp;问题</a></h2>
+<div class="section" id="id14">
+<h3><a class="toc-backref" href="#id49">4.1&nbsp;&nbsp;&nbsp;读性能的问题</a></h3>
+<p>benchmark结果: <strong>100G数据</strong> 时, 读性能稳定在大约5000qps</p>
+</div>
+<div class="section" id="compact">
+<h3><a class="toc-backref" href="#id50">4.2&nbsp;&nbsp;&nbsp;如何compact</a></h3>
+<p>貌似是一个命令. 需要人工调用.</p>
+</div>
+<div class="section" id="expirekey">
+<h3><a class="toc-backref" href="#id51">4.3&nbsp;&nbsp;&nbsp;所有expire的key记录在内存</a></h3>
+<p>如果有10亿条, 每条100字节, 就需要100G+内存.</p>
+</div>
+<div class="section" id="id15">
+<h3><a class="toc-backref" href="#id52">4.4&nbsp;&nbsp;&nbsp;兼容问题</a></h3>
+<div class="section" id="del">
+<h4><a class="toc-backref" href="#id53">4.4.1&nbsp;&nbsp;&nbsp;del 兼容</a></h4>
+<p>因为leveldb 的接口, 删除实际上是一个写操作(写为空串).
+所以删除接口不能返回这个key在是真的删了, 还是本来就不存在.</p>
+<p>所以在删除一个不存在的key时 for redis:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/idning-github/redis/src$ redis-cli -p 2000 del xxx
+(integer) 0
+</pre>
+<p>for ssdb:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/idning-github/redis/src$ redis-cli -p 8888 del xxx
+(integer) 1
+</pre>
+</div>
+<div class="section" id="ttlkey">
+<h4><a class="toc-backref" href="#id54">4.4.2&nbsp;&nbsp;&nbsp;ttl一个不存在的key</a></h4>
+<pre class="literal-block">
+127.0.0.1:8888&gt; ttl k
+(error) ERR
+</pre>
+<p>redis:</p>
+<pre class="literal-block">
+127.0.0.1:5527&gt; ttl k
+(integer) -2
+</pre>
+</div>
+<div class="section" id="id16">
+<h4><a class="toc-backref" href="#id55">4.4.3&nbsp;&nbsp;&nbsp;没有expire命令</a></h4>
+<p>改为通过ttl命令设置expire.</p>
+</div>
+<div class="section" id="scan">
+<h4><a class="toc-backref" href="#id56">4.4.4&nbsp;&nbsp;&nbsp;scan类</a></h4>
+<div class="section" id="id17">
+<h5><a class="toc-backref" href="#id57">4.4.4.1&nbsp;&nbsp;&nbsp;scan</a></h5>
+<p>一次在一个连接上吐回所有key, 而且要全放到内存resp里面再一次吐出:</p>
+<pre class="literal-block">
+static int proc_scan(Server *serv, Link *link, const Request &amp;req, Response *resp){
+    if(req.size() &lt; 4){
+        resp-&gt;push_back(&quot;client_error&quot;);
+    }else{
+        uint64_t limit = req[3].Uint64();
+        KIterator *it = serv-&gt;ssdb-&gt;scan(req[1], req[2], limit);
+        resp-&gt;push_back(&quot;ok&quot;);
+        while(it-&gt;next()){
+            resp-&gt;push_back(it-&gt;key);
+            resp-&gt;push_back(it-&gt;val);
+        }
+        delete it;
+    }
+    return 0;
+}
+</pre>
+</div>
+<div class="section" id="redis-hscan">
+<h5><a class="toc-backref" href="#id58">4.4.4.2&nbsp;&nbsp;&nbsp;没有redis 的hscan</a></h5>
+<p>只有ssdb协议支持hscan, 用法是给出范围.</p>
+<p>支持redis的hgetall, hkeys, hvals</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

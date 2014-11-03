@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li class="active"><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>mongodb 不同数据类型磁盘占用的情况分析</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/mongo-disk-usage.html">2014-02-21 11:52:05</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/mongo.html">mongo</a>
+tags: <a href="/tag/all.html">all</a> <a href="/tag/mongo.html">mongo</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id2">1&nbsp;&nbsp;&nbsp;结论</a></li>
+</ul>
+</div>
+<p>测试代码:</p>
+<pre class="literal-block">
+t1 = db.storage_size;
+
+test = function(cnt, obj, index){
+    t1.drop()
+    t1.ensureIndex(index);
+
+    docs1 = new Array();
+    for (var i = 0; i &lt; cnt; ++ i){
+        docs1[i] = obj;
+    }
+
+    t1.insert(docs1);
+    print('db.stats() ' + cnt + ' ' + tojson(obj));
+    printjson(t1.stats());
+    stats = t1.stats();
+    print( 'NOTICE: ' + cnt + ' ' + tojson(obj) + ' record_size:' +  stats[&quot;avgObjSize&quot;]  + ' index_size: ' + stats[&quot;indexSizes&quot;][&quot;x_1&quot;] / 1000 + ' ' +  stats[&quot;indexSizes&quot;][&quot;xxxxxxxxxx_1&quot;] / 1000 );
+    tojson(t1.stats());
+}
+
+test(1, {x: 1}, {x:1});
+test(1, {x: 1024*1024*1024*8}, {x:1});
+test(1, {x: ''}, {x:1});
+test(1, {x: 'a'}, {x:1});
+test(1, {x: 'aaa'}, {x:1});
+test(1, {x: '好'}, {x:1});
+test(1, {x: '中国'}, {x:1});
+test(1, {x: '北京市'}, {x:1});
+test(1, {x: '我爱北京天安门'}, {x:1});
+
+print( 'NOTICE: ---------------------------- ' );
+
+test(1000, {x: 1}, {x:1});
+test(1000, {x: 1024*1024*1024*8}, {x:1});
+test(1000, {x: ''}, {x:1});
+test(1000, {x: 'a'}, {x:1});
+test(1000, {x: 'aaa'}, {x:1});
+test(1000, {x: '好'}, {x:1});
+test(1000, {x: '中国'}, {x:1});
+test(1000, {x: '北京市'}, {x:1});
+test(1000, {x: '我爱北京天安门'}, {x:1});
+
+print( 'NOTICE: ---------------------------- ' );
+
+test(1000, {xxxxxxxxxx: 1}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: 1024*1024*1024*8}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: ''}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: 'a'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: 'aaa'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '好'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '中国'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '北京市'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '我爱北京天安门'}, {xxxxxxxxxx:1});
+
+...
+</pre>
+<p>结果:</p>
+<pre class="literal-block">
+NOTICE: 1 { &quot;x&quot; : 1 } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : 8589934592 } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : &quot;&quot; } record_size:32 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : &quot;a&quot; } record_size:32 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : &quot;aaa&quot; } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : &quot;好&quot; } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : &quot;中国&quot; } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : &quot;北京市&quot; } record_size:40 index_size: 8.176 NaN
+NOTICE: 1 { &quot;x&quot; : &quot;我爱北京天安门&quot; } record_size:52 index_size: 8.176 NaN
+NOTICE: ----------------------------
+NOTICE: 1000 { &quot;x&quot; : 1 } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : 8589934592 } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;&quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;a&quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaa&quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;好&quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;中国&quot; } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;北京市&quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;我爱北京天安门&quot; } record_size:52.02 index_size: 57.232 NaN
+NOTICE: ----------------------------
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : 1 } record_size:44.012 index_size: NaN 40.88
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : 8589934592 } record_size:44.012 index_size: NaN 40.88
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : &quot;&quot; } record_size:40.008 index_size: NaN 32.704
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : &quot;a&quot; } record_size:40.008 index_size: NaN 32.704
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : &quot;aaa&quot; } record_size:44.012 index_size: NaN 32.704
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : &quot;好&quot; } record_size:44.012 index_size: NaN 32.704
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : &quot;中国&quot; } record_size:48.032 index_size: NaN 40.88
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : &quot;北京市&quot; } record_size:48.032 index_size: NaN 40.88
+NOTICE: 1000 { &quot;xxxxxxxxxx&quot; : &quot;我爱北京天安门&quot; } record_size:60 index_size: NaN 57.232
+NOTICE: ----------------------------
+NOTICE: 1000 { &quot;x&quot; : &quot;&quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;a&quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aa&quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaa&quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaa&quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaa&quot; } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaaa&quot; } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaaaa&quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaaaaa&quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaaaaaa&quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaaaaaaa&quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaaaaaaaa&quot; } record_size:44.012 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;x&quot; : &quot;aaaaaaaaaaaa&quot; } record_size:44.012 index_size: 40.88 NaN
+NOTICE: ----------------------------
+NOTICE: 1000 { &quot;x&quot; : 1 } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &quot;xx&quot; : 1 } record_size:36.008 index_size: NaN NaN
+NOTICE: 1000 { &quot;xxx&quot; : 1 } record_size:36.008 index_size: NaN NaN
+NOTICE: 1000 { &quot;xxxx&quot; : 1 } record_size:36.008 index_size: NaN NaN
+NOTICE: 1000 { &quot;xxxxx&quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &quot;xxxxxx&quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &quot;xxxxxxx&quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &quot;xxxxxxxx&quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &quot;xxxxxxxxx&quot; : 1 } record_size:44.012 index_size: NaN NaN
+</pre>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id2">1&nbsp;&nbsp;&nbsp;结论</a></h2>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>整数:</dt>
+<dd><ul class="first last simple">
+<li>小整数(1) 和长整数(8589934592) 占用字节数一样</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>字符串:</dt>
+<dd><ul class="first last simple">
+<li>字符串按照4字节对齐: aaa, aaaa, aaaaa, aaaaaa 占用存储一样</li>
+<li>key 和value 都是4字节对齐 <tt class="docutils literal">所以这里建议key&lt;4字节即可</tt></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>整数vs字符串:</dt>
+<dd><ul class="first last simple">
+<li>短字符(0,1,2字节)串占用存储小于 整数, 3字节的字符串存储大小和整数一样, 3字节以上字符串存储大于整数.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>中文:</dt>
+<dd><ul class="first last simple">
+<li>每个中文字符(utf8)占用存储3字节.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>key:</dt>
+<dd><ul class="first last simple">
+<li>key越长, 占用存储越大, key长度不影响索引大小.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

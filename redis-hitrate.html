@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>从twemproxy计算 redis hitrate</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/redis-hitrate.html">2014-07-11 11:37:13</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#get" id="id1">1&nbsp;&nbsp;&nbsp;GET</a></li>
+<li><a class="reference internal" href="#hmget" id="id2">2&nbsp;&nbsp;&nbsp;HMGET:</a></li>
+<li><a class="reference internal" href="#hgetall" id="id3">3&nbsp;&nbsp;&nbsp;HGETALL</a></li>
+<li><a class="reference internal" href="#mget" id="id4">4&nbsp;&nbsp;&nbsp;MGET</a></li>
+</ul>
+</div>
+<p>如何从proxy日志中, 理容response的字节数计算命中率:</p>
+<div class="section" id="get">
+<h2><a class="toc-backref" href="#id1">1&nbsp;&nbsp;&nbsp;GET</a></h2>
+<p>key 不存在时:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 get kkk
+(nil)
+$-1..
+</pre>
+<p>key存在时:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 set k v
+OK
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 get k
+&quot;v&quot;
+
+$1..v..
+</pre>
+<p>判断:</p>
+<pre class="literal-block">
+if rsp_len &gt; 5 :
+    hit
+</pre>
+</div>
+<div class="section" id="hmget">
+<h2><a class="toc-backref" href="#id2">2&nbsp;&nbsp;&nbsp;HMGET:</a></h2>
+<p>key 不存在时, 或者请求的field都不存在:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 hmget kkk 1 2
+1) (nil)
+2) (nil)
+
+*2..$-1..$-1..
+</pre>
+<p>key 存在, 请求的field有存在:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 hmset kk 1 xxx
+OK
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 hmget kk 1 2
+1) &quot;xxx&quot;
+2) (nil)
+
+*2..$3..xxx..$-1..
+</pre>
+<p>这样判断:</p>
+<pre class="literal-block">
+nfiled = narg - 2
+if rsp_len &gt; 3+len(str(nfeild))+(5*nfield):
+    hit
+</pre>
+</div>
+<div class="section" id="hgetall">
+<h2><a class="toc-backref" href="#id3">3&nbsp;&nbsp;&nbsp;HGETALL</a></h2>
+<p>key 存在:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 hgetall kk
+1) &quot;1&quot;
+2) &quot;xxx&quot;
+*2..$1..1..$3..xxx..
+</pre>
+<p>key不存在:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ redis-cli -p 4100 hgetall kkk
+(empty list or set)
+
+|*0..|
+</pre>
+<p>判断:</p>
+<pre class="literal-block">
+if rsp_len &gt; 4:
+    hit
+</pre>
+</div>
+<div class="section" id="mget">
+<h2><a class="toc-backref" href="#id4">4&nbsp;&nbsp;&nbsp;MGET</a></h2>
+<p>用的比较少, 不能简单的从rsp_len来判断.</p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

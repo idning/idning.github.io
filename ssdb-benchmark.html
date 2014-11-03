@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>ssdb-benchmark</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/ssdb-benchmark.html">2014-08-13 14:48:03</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#hdd" id="id4">1&nbsp;&nbsp;&nbsp;hdd 测试结果</a></li>
+<li><a class="reference internal" href="#ssd" id="id5">2&nbsp;&nbsp;&nbsp;ssd 测试结果</a></li>
+<li><a class="reference internal" href="#leveldb" id="id6">3&nbsp;&nbsp;&nbsp;LevelDB的问题</a></li>
+<li><a class="reference internal" href="#id1" id="id7">4&nbsp;&nbsp;&nbsp;关于读性能</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id2" id="id8">4.1&nbsp;&nbsp;&nbsp;改进</a></li>
+<li><a class="reference internal" href="#id3" id="id9">4.2&nbsp;&nbsp;&nbsp;注意</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<p>因为小规模benchmark时文件都被cache, IO访问其实只有内存操作而已, 所以测试数据只能说明系统在基本无IO操作时的处理能力.</p>
+<p>为了避免文件被cache, 可以减少机器空闲内存, 或者使操作的数据集远大于内存, 我们的测试机内存64G, 所以测试时, 我们使用大约100G的数据集来进行测试.</p>
+<p>benchmark场景:</p>
+<p>先写, 后读, 采集的数据包括:</p>
+<ol class="arabic simple">
+<li>qps随时间的变化</li>
+<li>进程内存, cpu占用,</li>
+<li>磁盘读写带宽, r/s, w/s, await, %util,</li>
+<li>磁盘占用量.</li>
+</ol>
+<p>为此, 写了这样一个程序用于benchmark和记录结果:</p>
+<pre class="literal-block">
+...
+class LoadThread(threading.Thread):
+    def run(self):
+        global g_qps
+        num = 1000000000
+        #num = 100000
+        cmd = 'redis-benchmark  -p 8888 -t set -n %s -r 100000000000 -d 100' % num
+        p = Popen(cmd, shell=True, stdout=PIPE, bufsize=1024)
+
+        for line in iter(lambda: p.stdout.readline(), ''):
+            line = str(line).strip()
+            #print(&quot;&gt;&gt;&gt; &quot; + line)
+            if line.startswith('SET'):
+                g_qps = line.split()[1]
+
+        cmd = 'redis-benchmark  -p 8888 -t get -n %s -r 100000000000 -d 100' % num
+        p = Popen(cmd, shell=True, stdout=PIPE, bufsize=1024)
+        for line in iter(lambda: p.stdout.readline(), ''):
+            line = str(line).strip()
+            #print(&quot;&gt;&gt;&gt; &quot; + line)
+            if line.startswith('GET'):
+                g_qps = line.split()[1]
+...
+</pre>
+<p>代码在此: <a class="reference external" href="https://github.com/idning/iostat-py/blob/master/ssdb-bench/ssdb-bench.py">https://github.com/idning/iostat-py/blob/master/ssdb-bench/ssdb-bench.py</a></p>
+<div class="section" id="hdd">
+<h2><a class="toc-backref" href="#id4">1&nbsp;&nbsp;&nbsp;hdd 测试结果</a></h2>
+<p>这个测试是手工完成和记录的, 没有图.</p>
+<p>写:</p>
+<pre class="literal-block">
+$ redis-benchmark  -p 8888 -t set -n 1000000000 -r 100000000000 -d 100
+38000
+</pre>
+<p>持续写1000000000条, (93G)</p>
+<p>磁盘写带宽持续70M/s左右, 内存使用会上升到10G左右, 低峰会回落, 12核cpu上, cpu占用约30%(4个核占满)</p>
+<p>qps稳定在3.8w/s, 不会随着写数据增多而变差.</p>
+<p>写完之后, 读:</p>
+<pre class="literal-block">
+$ redis-benchmark  -p 8888 -t get -n 1000000000 -r 100000000000 -d 100
+60~400
+</pre>
+<p>如果能命中热点:</p>
+<pre class="literal-block">
+$ redis-benchmark  -p 8888 -t get -n 1000000000 -r 100000 -d 100
+23803.46
+</pre>
+<p>初始qps只能达到60/s, 逐渐上升到400/s趋于稳定.</p>
+<p>此时磁盘每秒读请求达到150-300r/s (达到磁盘IOPS极限):</p>
+<pre class="literal-block">
+Device:         rrqm/s   wrqm/s     r/s     w/s    rkB/s    wkB/s avgrq-sz avgqu-sz   await  svctm  %util
+sda               0.00     0.00  137.00    0.00 12940.00     0.00   188.91     1.08    7.86   6.86  94.00
+</pre>
+<p>小结:</p>
+<p>ssdb在hdd上的表现:</p>
+<ol class="arabic simple">
+<li>写性能稳定在40000/s左右. 不随着数据集的增大而变差.</li>
+<li>读性能在不能命中热点的情况下, 受限于磁盘的IOPS (400/s)</li>
+</ol>
+<p>hdd上, ssdb适合写多读少的场景.</p>
+</div>
+<div class="section" id="ssd">
+<h2><a class="toc-backref" href="#id5">2&nbsp;&nbsp;&nbsp;ssd 测试结果</a></h2>
+<p>环境:</p>
+<pre class="literal-block">
+/dev/sdb1 on /ssd type ext4 (rw,noatime)
+mem: 48G
+cpu: 12
+ssd: Intel SSD 530 480GB, 2.5in SATA  参数: http://ark.intel.com/products/75336/Intel-SSD-530-Series-480GB-2_5in-SATA-6Gbs-20nm-MLC
+</pre>
+<p>这块SSD 的性能参数:</p>
+<ul class="simple">
+<li>Random Read : 48000 IOPS</li>
+<li>Random Write : 80000 IOPS</li>
+</ul>
+<p>我们实际上是3块ssd做RAID0, fio测试结果:</p>
+<pre class="literal-block">
+$ sudo fio -filename=/dev/sdb -direct=1 -iodepth 1 -thread -rw=randwrite -ioengine=psync -bs=1k -size=200G -numjobs=30 -runtime=1000 -group_repor
+5.7w/s
+
+$rw=randread
+7.3w/s
+</pre>
+<p>ssdb测试结果:</p>
+<img alt="" src="/imgs/stat.log.ssdb.0.png" style="width: 800px;" />
+<p>小结</p>
+<ul class="simple">
+<li>ssd上写性能稳定在3.8wqps, 不会随着写数据增多而变差, 和hdd差不多,</li>
+<li>读性能稳定在5000qps, 明显好与hdd.</li>
+<li>读性能不够, 只能到5000qps, 而此时ssd上的iops大约 5000-7000/s, 此时util%只能到50%, cpu利用率也上不去, 这里可以优化.</li>
+</ul>
+</div>
+<div class="section" id="leveldb">
+<h2><a class="toc-backref" href="#id6">3&nbsp;&nbsp;&nbsp;LevelDB的问题</a></h2>
+<p>LevelDB只有block级别的cache, 所有Key集合是记录在磁盘上, 内存中并没有一个记录key是否存在的hash表或树结构, 所以每次查询, 不管key是否存在, LevelDB都需要到磁盘上去找, 如果block不在缓存中, 就要一层层去找, 是非常耗时的,</p>
+<p>为此, LevelDB增加了bloomfilter支持, 可以过滤掉一些key不存在的情况, 减少对磁盘的访问:</p>
+<pre class="literal-block">
+ssdb-&gt;options.filter_policy = leveldb::NewBloomFilterPolicy(10);
+ssdb-&gt;options.block_cache = leveldb::NewLRUCache(cache_size * 1048576);
+</pre>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id7">4&nbsp;&nbsp;&nbsp;关于读性能</a></h2>
+<p>benchmark显示 <strong>100G数据</strong> 时, 读性能稳定在大约5000 qps</p>
+<ul class="simple">
+<li>自己实现了一个单线程的服务ndb对比, 发现读qps存在和SSDB一样的低效问题, 而且更低(2000), 如下图:</li>
+</ul>
+<img alt="" src="/imgs/stat.log.ndbv0.0.png" style="width: 800px;" />
+<p>原因:</p>
+<ol class="arabic simple">
+<li>ssdb读的时候并未判断expire, 一个读操作只需要一次LevelDB查询, 所以性能较ndb高.</li>
+<li>ssdb是使用单线程去读(并且没有加锁), IO队列上一次只有一个IO请求, 此时avgqu-sz是0.5,
+这样想当于把IO操作串行化了, 根据ssd的基本数据, 平均读延迟是90us左右, 也就是说串行使用最多之能支持 1w/s的读操作, 这和我们测的数据比较接近了.
+多线程的读操作应该有利于更好的利用io调度器(几个io请求可以排队, 一起发给磁盘控制器)</li>
+</ol>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id8">4.1&nbsp;&nbsp;&nbsp;改进</a></h3>
+<p>修改:</p>
+<pre class="literal-block">
+static Command commands[] = {
+-       PROC(get, &quot;r&quot;),
++       PROC(get, &quot;rt&quot;),
+</pre>
+<p>把读放到多线程里面去做, <strong>性能从5000提到15000</strong> , 磁盘r/s 达到23000左右, 日志级别改为error后可以达到16000/s</p>
+<p>读没有用Transaction加锁, 所以这时候已经能同时向IO系统发多个IO请求了:</p>
+<pre class="literal-block">
+int SSDB::get(const Bytes &amp;key, std::string *val) const{
+    std::string buf = encode_kv_key(key);
+    leveldb::Status s = db-&gt;Get(leveldb::ReadOptions(), buf, val);
+    ...
+    return 1;
+}
+</pre>
+<p>调整 <tt class="docutils literal">READER_THREADS = 10</tt> 为5, 20, 50, 发现在我的机器上10貌似是个最佳值,</p>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id9">4.2&nbsp;&nbsp;&nbsp;注意</a></h3>
+<p>coding for ssd 系列 关于多线程read的观点:</p>
+<ol class="arabic simple">
+<li>concurrent read threads can impair the readahead (prefetching buffer) capabilities of SSDs</li>
+<li>A single large read is better than many small concurrent reads
+Concurrent random reads cannot fully make use of the readahead mechanism. In addition, multiple Logical Block Addresses may end up on the same chip, not taking advantage or of the internal parallelism.</li>
+</ol>
+<p><a class="reference external" href="http://codecapsule.com/2014/02/12/coding-for-ssds-part-5-access-patterns-and-system-optimizations/">http://codecapsule.com/2014/02/12/coding-for-ssds-part-5-access-patterns-and-system-optimizations/</a></p>
+</div>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

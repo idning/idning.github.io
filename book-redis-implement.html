@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>redis设计与实现 笔记</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/book-redis-implement.html">2014-09-29 17:39:16</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#c4-hash" id="id4">1&nbsp;&nbsp;&nbsp;c4 hash</a><ul class="auto-toc">
+<li><a class="reference internal" href="#rehash" id="id5">1.1&nbsp;&nbsp;&nbsp;rehash</a></li>
+<li><a class="reference internal" href="#id1" id="id6">1.2&nbsp;&nbsp;&nbsp;渐进式</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#c5-skiplist" id="id7">2&nbsp;&nbsp;&nbsp;c5 跳表(skiplist)</a></li>
+<li><a class="reference internal" href="#c8-object" id="id8">3&nbsp;&nbsp;&nbsp;c8 object(类型和编码)</a></li>
+<li><a class="reference internal" href="#c9" id="id9">4&nbsp;&nbsp;&nbsp;c9 数据库</a></li>
+<li><a class="reference internal" href="#c16-sentinel" id="id10">5&nbsp;&nbsp;&nbsp;c16 sentinel</a></li>
+<li><a class="reference internal" href="#id2" id="id11">6&nbsp;&nbsp;&nbsp;事物</a></li>
+<li><a class="reference internal" href="#lua" id="id12">7&nbsp;&nbsp;&nbsp;lua</a></li>
+<li><a class="reference internal" href="#id3" id="id13">8&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</div>
+<p>读的比较粗, 部分笔记:</p>
+<div class="section" id="c4-hash">
+<h2><a class="toc-backref" href="#id4">1&nbsp;&nbsp;&nbsp;c4 hash</a></h2>
+<div class="section" id="rehash">
+<h3><a class="toc-backref" href="#id5">1.1&nbsp;&nbsp;&nbsp;rehash</a></h3>
+<p>扩展与收缩(rehash) 下面条件满足时:</p>
+<ol class="arabic simple">
+<li>没有在进行bgsave或bgrewriteaof, 并且hash表的负载因子大于1</li>
+<li>在进行bgsave或bgrewriteaof, 并且hash表的负载因子大于5</li>
+</ol>
+<p>因为在bgsave或bgrewriteaof的时候, 有子进程存在, redis会尽量避免进行rehash, 从而避免不必要的内存写入, 节约内存  - 这个分析很赞.</p>
+</div>
+<div class="section" id="id1">
+<h3><a class="toc-backref" href="#id6">1.2&nbsp;&nbsp;&nbsp;渐进式</a></h3>
+<p>每次操作一个桶.</p>
+</div>
+</div>
+<div class="section" id="c5-skiplist">
+<h2><a class="toc-backref" href="#id7">2&nbsp;&nbsp;&nbsp;c5 跳表(skiplist)</a></h2>
+<p>sorted set 的实现:</p>
+<pre class="literal-block">
+方法1: skip list
+方法2: skiplist + hash
+</pre>
+</div>
+<div class="section" id="c8-object">
+<h2><a class="toc-backref" href="#id8">3&nbsp;&nbsp;&nbsp;c8 object(类型和编码)</a></h2>
+<p>几种编码:</p>
+<pre class="literal-block">
+REDIS_ENCODING_RAW 0            // 编码为字符串
+REDIS_ENCODING_INT 1            // 编码为整数
+REDIS_ENCODING_HT 2             // 编码为哈希表
+REDIS_ENCODING_ZIPMAP 3         // 编码为 zipmap
+REDIS_ENCODING_LINKEDLIST 4     // 编码为双端链表
+REDIS_ENCODING_ZIPLIST 5        // 编码为压缩列表
+REDIS_ENCODING_INTSET 6         // 编码为整数集合
+REDIS_ENCODING_SKIPLIST 7       // 编码为跳跃表
+</pre>
+<p>不同类型可能的编码:</p>
+<pre class="literal-block">
+string      REDIS_ENCODING_INT
+string      REDIS_ENCODING_EMBSTR
+string      REDIS_ENCODING_RAW
+list        REDIS_ENCODING_ZIPLIST
+list        REDIS_ENCODING_LINKEDLIST
+hash        REDIS_ENCODING_INTSET
+hash        REDIS_ENCODING_HT
+set         REDIS_ENCODING_INTSET
+set         REDIS_ENCODING_HT
+zset        REDIS_ENCODING_ZIPLIST
+zset        REDIS_ENCODING_SKIPLIST
+</pre>
+<p>object 命令:</p>
+<pre class="literal-block">
+object encoding numberso
+</pre>
+</div>
+<div class="section" id="c9">
+<h2><a class="toc-backref" href="#id9">4&nbsp;&nbsp;&nbsp;c9 数据库</a></h2>
+<p>expire 保存在一个单独的dict里面:</p>
+<pre class="literal-block">
+-----------------------------------------------------------------------
+
+                        +------+
+             ---------&gt; |dict  |
+             |          +======+
+             |          |a     |  -&gt; string val
+             |          +------+
++---------+  |          |b     |  -&gt; string val
+|redisDB  |  |          +------+
++=========+  |          |c     |  -&gt; string val
+|dict     | --          +------+
++---------+
+|expires  | --          +------+
++---------+  |--------&gt; |dict  |
+                        +======+
+                        |a     |  -&gt; longlong 1411987363000
+                        +------+
+                        |b     |  -&gt; longlong 1411987363000
+                        +------+
+</pre>
+<p>p113 主从在复制问题上可能出现不一致:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>从上不会主动淘汰key,</dt>
+<dd><ul class="first last simple">
+<li>不会在cron上尝试删除key</li>
+<li>就算访问到一个已经过期的key, 也不会删除, 而是返回它</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">从库只会从主同步 del命令.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="c16-sentinel">
+<h2><a class="toc-backref" href="#id10">5&nbsp;&nbsp;&nbsp;c16 sentinel</a></h2>
+<p>p229讲的很细致, 不过还是太复杂.</p>
+<p>INFO: 发现slave
+publish: 发现其它sentinel</p>
+<p>p244, sentinel选举是 <strong>raft</strong> 算法 (得看下论文)</p>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id11">6&nbsp;&nbsp;&nbsp;事物</a></h2>
+<ul class="simple">
+<li>watch 其实是一种cas概念(总算懂了)</li>
+<li>redis事物满足ACID</li>
+</ul>
+</div>
+<div class="section" id="lua">
+<h2><a class="toc-backref" href="#id12">7&nbsp;&nbsp;&nbsp;lua</a></h2>
+<ul>
+<li><dl class="first docutils">
+<dt>对于有些lua中执行的命令, 会对输出做一个排序:</dt>
+<dd><ul class="first last simple">
+<li>比如 smember, keys等, 为了保证每次在lua中调用顺序一致.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">如果执行lua超时阻塞, 那么redis 只会接受 shutdown nosave / script kill 命令</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id13">8&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ul>
+<li><p class="first">有的地方比较罗嗦, 比如一个set操作完了之后内存是怎么样的, 不过换句话说, 就是细致.</p>
+</li>
+<li><dl class="first docutils">
+<dt>很多之前不知道的知识点(不过确实很少用到)</dt>
+<dd><ul class="first last simple">
+<li>比如: info/shutdown/publish 这几个命令可以在loading 状态下调用.</li>
+<li>p187, qps的计算: 16个取样, 取平均值.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">关于淘汰: redis 记录访问时间, 从而可以做近似lru</p>
+</li>
+<li><p class="first">v1 链接: <a class="reference external" href="https://github.com/huangz1990/redisbook/">https://github.com/huangz1990/redisbook/</a></p>
+</li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

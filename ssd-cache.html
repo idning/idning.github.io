@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>ssd-cache</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/ssd-cache.html">2014-05-13 06:56:03</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id25">1&nbsp;&nbsp;&nbsp;需求</a><ul class="auto-toc">
+<li><a class="reference internal" href="#why" id="id26">1.1&nbsp;&nbsp;&nbsp;why</a></li>
+<li><a class="reference internal" href="#id2" id="id27">1.2&nbsp;&nbsp;&nbsp;具体需求</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#index" id="id28">2&nbsp;&nbsp;&nbsp;index</a></li>
+<li><a class="reference internal" href="#ssd" id="id29">3&nbsp;&nbsp;&nbsp;ssd 特性</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id3" id="id30">3.1&nbsp;&nbsp;&nbsp;成本</a></li>
+<li><a class="reference internal" href="#id4" id="id31">3.2&nbsp;&nbsp;&nbsp;接口</a></li>
+<li><a class="reference internal" href="#id5" id="id32">3.3&nbsp;&nbsp;&nbsp;比较典型的ssd参数</a></li>
+<li><a class="reference internal" href="#id6" id="id33">3.4&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id8" id="id34">4&nbsp;&nbsp;&nbsp;现有系统调研</a><ul class="auto-toc">
+<li><a class="reference internal" href="#redis" id="id35">4.1&nbsp;&nbsp;&nbsp;基于redis修改</a><ul class="auto-toc">
+<li><a class="reference internal" href="#redis-vm" id="id36">4.1.1&nbsp;&nbsp;&nbsp;redis-vm</a></li>
+<li><a class="reference internal" href="#redis-storage" id="id37">4.1.2&nbsp;&nbsp;&nbsp;redis-storage</a></li>
+<li><a class="reference internal" href="#id9" id="id38">4.1.3&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id10" id="id39">4.2&nbsp;&nbsp;&nbsp;单机存储引擎</a><ul class="auto-toc">
+<li><a class="reference internal" href="#leveldb" id="id40">4.2.1&nbsp;&nbsp;&nbsp;LevelDB</a></li>
+<li><a class="reference internal" href="#rocksdb-facebook" id="id41">4.2.2&nbsp;&nbsp;&nbsp;RocksDB(facebook)</a></li>
+<li><a class="reference internal" href="#berkley-db" id="id42">4.2.3&nbsp;&nbsp;&nbsp;Berkley DB</a></li>
+<li><a class="reference internal" href="#nessdb" id="id43">4.2.4&nbsp;&nbsp;&nbsp;nessDB(国人开发)</a></li>
+<li><a class="reference internal" href="#id11" id="id44">4.2.5&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id12" id="id45">4.3&nbsp;&nbsp;&nbsp;备选项目</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id13" id="id46">4.3.1&nbsp;&nbsp;&nbsp;ssdb</a></li>
+<li><a class="reference internal" href="#id16" id="id47">4.3.2&nbsp;&nbsp;&nbsp;fatcache</a></li>
+<li><a class="reference internal" href="#ardb" id="id48">4.3.3&nbsp;&nbsp;&nbsp;ardb</a></li>
+<li><a class="reference internal" href="#ledisdb" id="id49">4.3.4&nbsp;&nbsp;&nbsp;ledisdb</a></li>
+<li><a class="reference internal" href="#id18" id="id50">4.3.5&nbsp;&nbsp;&nbsp;其它</a></li>
+<li><a class="reference internal" href="#id19" id="id51">4.3.6&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id20" id="id52">4.4&nbsp;&nbsp;&nbsp;成熟分布式存储系统</a><ul class="auto-toc">
+<li><a class="reference internal" href="#tair" id="id53">4.4.1&nbsp;&nbsp;&nbsp;淘宝tair</a></li>
+<li><a class="reference internal" href="#aerospike" id="id54">4.4.2&nbsp;&nbsp;&nbsp;aerospike</a></li>
+<li><a class="reference internal" href="#facebook-apollo" id="id55">4.4.3&nbsp;&nbsp;&nbsp;#facebook Apollo</a></li>
+<li><a class="reference internal" href="#facebook-mcdipper" id="id56">4.4.4&nbsp;&nbsp;&nbsp;#facebook-McDipper</a></li>
+<li><a class="reference internal" href="#ckv" id="id57">4.4.5&nbsp;&nbsp;&nbsp;#腾讯CKV海量分布式存储系统</a></li>
+<li><a class="reference internal" href="#id21" id="id58">4.4.6&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id22" id="id59">4.5&nbsp;&nbsp;&nbsp;其它思路</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id23" id="id60">5&nbsp;&nbsp;&nbsp;小结</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id24" id="id61">5.1&nbsp;&nbsp;&nbsp;关于目前的很多系统</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<style type="text/css">
+      table {
+        width: 30%
+      }
+</style><div class="section" id="id1">
+<h2><a class="toc-backref" href="#id25">1&nbsp;&nbsp;&nbsp;需求</a></h2>
+<div class="section" id="why">
+<h3><a class="toc-backref" href="#id26">1.1&nbsp;&nbsp;&nbsp;why</a></h3>
+<p>用redis内存实在太贵了, 假设要存1T数据双副本:</p>
+<ul class="simple">
+<li>内存: 1000*2 / 64 = 32台机器.</li>
+<li>2T盘机器:  2-4台</li>
+</ul>
+</div>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id27">1.2&nbsp;&nbsp;&nbsp;具体需求</a></h3>
+<ol class="arabic simple">
+<li>数据存放在ssd.</li>
+<li>性能要求: 6台机器的集群10w/s, (单机2w/s)</li>
+<li>有expire功能.</li>
+<li>使用redis协议 (twemproxy, client-lib可以复用)</li>
+<li>数据类型仅支持kv, 以后可以考虑支持hash.</li>
+</ol>
+<p>其它:</p>
+<ul class="simple">
+<li>事务或script支持.</li>
+<li>主从, failover</li>
+<li>集群.</li>
+<li>redis-mgr 部署支持</li>
+</ul>
+</div>
+</div>
+<div class="section" id="index">
+<h2><a class="toc-backref" href="#id28">2&nbsp;&nbsp;&nbsp;index</a></h2>
+<p>主要涉及下面几个方面:</p>
+<ol class="arabic simple">
+<li>ssd特性.</li>
+<li>存储引擎,  如LevelDB, RocksDB, BDB等.</li>
+<li>现有系统的调研和benchmark, 主要关注SSDB和fatcache.</li>
+</ol>
+<p>本文是这个调研系列的目录和结论, 相关调研:</p>
+<ul class="simple">
+<li><a class="reference external" href="/coding-for-ssd.html">coding-for-ssd笔记</a></li>
+<li>LevelDB 调研 TODO</li>
+<li><a class="reference external" href="/cr-ssdb.html">SSDB代码阅读</a></li>
+<li><a class="reference external" href="/ssdb-benchmark.html">SSDB benchmark</a></li>
+<li><a class="reference external" href="/fatcache-cr.html">fatcache 代码阅读</a></li>
+</ul>
+</div>
+<div class="section" id="ssd">
+<h2><a class="toc-backref" href="#id29">3&nbsp;&nbsp;&nbsp;ssd 特性</a></h2>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id30">3.1&nbsp;&nbsp;&nbsp;成本</a></h3>
+<table border="1" class="docutils">
+<colgroup>
+<col width="11%" />
+<col width="18%" />
+<col width="56%" />
+<col width="15%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">--</th>
+<th class="head">国外</th>
+<th class="head">国内</th>
+<th class="head">2T成本</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>ssd</td>
+<td>$0.6/GB</td>
+<td>京东价格(400元/128G=3.1元/GB)</td>
+<td>6000</td>
+</tr>
+<tr><td>hdd:</td>
+<td>$0.12/GB</td>
+<td>京东价格(400元/1T=0.4元/GB)</td>
+<td>800</td>
+</tr>
+</tbody>
+</table>
+<ul class="simple">
+<li>实际上, 我们买服务器的时候, 价格会更便宜些, 不过还是这个数量级.</li>
+<li>考虑到一台1U服务器价格 在3-5w, 使用2T ssd带来的成本上升: 5200/30000 = 18%左右, 并不算太贵, 加之后续电费等消耗, 可以认为使用ssd带来的成本上升小于15%</li>
+<li>当然, 我们不能用ssd来存文件之类的大/冷的数据, 这是明显的浪费.</li>
+</ul>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id31">3.2&nbsp;&nbsp;&nbsp;接口</a></h3>
+<p>目前ssd主要2种接口:</p>
+<ul>
+<li><p class="first">sata</p>
+</li>
+<li><dl class="first docutils">
+<dt>pci-e, 性能更高.</dt>
+<dd><ul class="first last">
+<li><dl class="first docutils">
+<dt>典型产品如:</dt>
+<dd><ul class="first last simple">
+<li>Fusion-io ioScale Gen2  (w: 4w, r:5w)</li>
+<li>Fusion-io ioMemory (w: 32w, r:19w)</li>
+<li>华为ES3000 (w: 10w,  r:15w)</li>
+<li>MemblazeQ520 (w:7w, r:3w)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>sata 带宽6Gbps, pci-e 常见带宽 3.2G*8 = 24Gbps.</p>
+<img alt="" src="/imgs/fusionio.png" style="width: 310px;" />
+</div>
+<div class="section" id="id5">
+<h3><a class="toc-backref" href="#id32">3.3&nbsp;&nbsp;&nbsp;比较典型的ssd参数</a></h3>
+<table border="1" class="docutils">
+<colgroup>
+<col width="33%" />
+<col width="20%" />
+<col width="20%" />
+<col width="27%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">Product</th>
+<th class="head">Intel SSD 320</th>
+<th class="head">Intel SSD 530</th>
+<th class="head">ioMemory PX600</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>Components</td>
+<td>MLC</td>
+<td>MLC</td>
+<td>MLC</td>
+</tr>
+<tr><td>Launch Date</td>
+<td>2011</td>
+<td>2013</td>
+<td>&nbsp;</td>
+</tr>
+<tr><td>Sequential Read</td>
+<td>270 MB/s</td>
+<td>540 MB/s</td>
+<td>2700 MB/s</td>
+</tr>
+<tr><td>Sequential Write</td>
+<td>220 MB/s</td>
+<td>490 MB/s</td>
+<td>1500MB/s</td>
+</tr>
+<tr><td>Random Read (8GB Span)</td>
+<td>39,500 IOPS</td>
+<td>48,000 IOPS</td>
+<td>196,000 IOPS</td>
+</tr>
+<tr><td>Random Write (8GB Span)</td>
+<td>23,000 IOPS</td>
+<td>80,000 IOPS</td>
+<td>320,000 IOPS</td>
+</tr>
+<tr><td>Latency - Read</td>
+<td>75 us</td>
+<td>80 us</td>
+<td>92 us</td>
+</tr>
+<tr><td>Latency - Write</td>
+<td>90 us</td>
+<td>80 us</td>
+<td>15 us</td>
+</tr>
+<tr><td>interface</td>
+<td>SATA 6.0 Gb/s</td>
+<td>SATA 6.0 Gb/s</td>
+<td>PCI-Express 2.0 x8</td>
+</tr>
+</tbody>
+</table>
+<p>数据来源:</p>
+<ul class="simple">
+<li>Intel-SSD-320: <a class="reference external" href="http://ark.intel.com/products/56569/Intel-SSD-320-Series-600GB-2_5in-SATA-3Gbs-25nm-ML">http://ark.intel.com/products/56569/Intel-SSD-320-Series-600GB-2_5in-SATA-3Gbs-25nm-ML</a></li>
+<li>Intel-SSD-530: <a class="reference external" href="http://ark.intel.com/products/75336/Intel-SSD-530-Series-480GB-2_5in-SATA-6Gbs-20nm-MLC">http://ark.intel.com/products/75336/Intel-SSD-530-Series-480GB-2_5in-SATA-6Gbs-20nm-MLC</a></li>
+<li>Fusion-io: <a class="reference external" href="http://www.fusionio.com/data-sheets/iomemory-px600-atomic-series/">http://www.fusionio.com/data-sheets/iomemory-px600-atomic-series/</a></li>
+</ul>
+<p>notes:</p>
+<ul>
+<li><p class="first">这里选的 Fusion-io ioMemory系列, 写可以达到32w/s, 写延迟只有15us, 很明显写操作都是先写buffer.</p>
+</li>
+<li><dl class="first docutils">
+<dt>对三块Intel-SSD-530 做raid0后, 用fio进行了测试, 数据和标称数据差不多:</dt>
+<dd><ul class="first last simple">
+<li>random-write: 5.5w/s</li>
+<li>random-read: 7.3w/s</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id6">
+<h3><a class="toc-backref" href="#id33">3.4&nbsp;&nbsp;&nbsp;小结</a></h3>
+<ul>
+<li><p class="first">随机读性能好</p>
+</li>
+<li><dl class="first docutils">
+<dt>随机写性能较差</dt>
+<dd><ul class="first last">
+<li><p class="first">写放大: 写一个字节也会导致整个page的read-modify-write</p>
+</li>
+<li><p class="first">应该尽量避免small-write</p>
+</li>
+<li><dl class="first docutils">
+<dt>很多ssd会通过 <tt class="docutils literal">hybrid <span class="pre">log-block</span> mapping</tt> 来做写merge. 从而减轻写放大,</dt>
+<dd><ul class="first last simple">
+<li>这相当于把Log-Structure的一些算法在ssd控制器这一层实现了, 从而实现较高的随机写性能.</li>
+<li>但是即便有了 <tt class="docutils literal">hybrid <span class="pre">log-block</span> mapping</tt>, 也应该尽量避免small-write(因为需要多次操作映射关系表)</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>ssd在大量写压力下, 性能可能恶化到8000iops.</dt>
+<dd><ul class="first last simple">
+<li>因为很多update, GC可能跟不上, 如果每次写操作需要做一次erase整个block, 就悲剧了.</li>
+<li>正常情况下, GC利用后台的时间, 可以完成erase工作.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">顺序读写和hdd在同一量级.</p>
+</li>
+<li><p class="first">寿命有限</p>
+</li>
+</ul>
+<p>ssd可以通过下面这些方式调优:</p>
+<ul class="simple">
+<li>调整page/block的大小, 较小的擦除块可以得到较高的wqps.</li>
+<li>gc策略: 可以通过不同的算法优化, 这是ssd控制器FTL的核心技术.</li>
+<li>Flash Translation Layer (FTL) 上做 hybrid log-block mapping 优化随机写.</li>
+<li>使用 <tt class="docutils literal">TRIM</tt> 命令, 会有少量优化.</li>
+</ul>
+<p>详细参考: <a class="reference external" href="/coding-for-ssd.html">coding-for-ssd笔记</a></p>
+</div>
+</div>
+<div class="section" id="id8">
+<h2><a class="toc-backref" href="#id34">4&nbsp;&nbsp;&nbsp;现有系统调研</a></h2>
+<p>针对我们的需求, 调研了一些现有的系统, 主要分三类:</p>
+<ul class="simple">
+<li>基于redis的修改如redis-vm.</li>
+<li>单机引擎如Berkley DB, LevelDB.</li>
+<li>一些和我们需求接近的现有系统, 如ssdb, fatcache等.</li>
+<li>成熟产品, 如淘宝tair, aerospike 等.</li>
+</ul>
+<div class="section" id="redis">
+<h3><a class="toc-backref" href="#id35">4.1&nbsp;&nbsp;&nbsp;基于redis修改</a></h3>
+<div class="section" id="redis-vm">
+<h4><a class="toc-backref" href="#id36">4.1.1&nbsp;&nbsp;&nbsp;redis-vm</a></h4>
+<ul class="simple">
+<li><a class="reference external" href="http://antirez.com/news/52">http://antirez.com/news/52</a></li>
+<li><a class="reference external" href="http://blog.nosqlfan.com/html/1047.html">http://blog.nosqlfan.com/html/1047.html</a></li>
+</ul>
+<p>redis在2.2-2.4曾经做过vm功能, 来将内存扩展到磁盘, 但是不久就被废弃了, 原因主要是造成性能不稳定.</p>
+<p>存在的问题:</p>
+<ul class="simple">
+<li>slow restart: 重启太慢</li>
+<li>slow saving: 保存数据太慢</li>
+<li>slow replication: 上面两条导致 replication 太慢</li>
+<li>complex code: 代码过于复杂</li>
+<li>2.4 之后就已经从redis代码中移除了.</li>
+</ul>
+<p>作者的观点:</p>
+<ul class="simple">
+<li>have Redis do what it does best - very quickly serve data from RAM.</li>
+<li>估计当时的测试, 使用的磁盘都是hdd, 那当然性能糟糕, 如果换成ssd应该会好些.</li>
+</ul>
+</div>
+<div class="section" id="redis-storage">
+<h4><a class="toc-backref" href="#id37">4.1.2&nbsp;&nbsp;&nbsp;redis-storage</a></h4>
+<ul>
+<li><p class="first">把leveldb嵌入到redis.</p>
+</li>
+<li><p class="first">完成度较高, 新增了一些rl_开头的命令:</p>
+<pre class="literal-block">
+rl系列命令：(同时操作redis和leveldb系列命令)
+=======string数据操作======
+rl_get key            (从redis或leveldb取值, 优先顺序：redis &gt; leveldb)
+rl_getset key         (返回同rl_get, 当leveldb有值，redis无值时，会回写到redis)
+...
+</pre>
+</li>
+<li><p class="first">读: 先从redis读取, 如果redis没有，则到leveldb读取。</p>
+</li>
+<li><p class="first">写: 先写到leveldb中，写成功了，再写到redis中</p>
+</li>
+<li><dl class="first docutils">
+<dt>问题:</dt>
+<dd><ul class="first last">
+<li><p class="first">这个项目的目的是把redis的内存扩大2-5倍, 把redis作为leveldb的cache+store. 两份storage很诡异.</p>
+</li>
+<li><dl class="first docutils">
+<dt>作者设计的时候, 应该是考虑到兼容redis, 客户端尽量不需要改动, 冷key会自动淘汰,</dt>
+<dd><ul class="first last simple">
+<li>但是实际上提供了两套命令, 客户端需要根据情况, 指定只写redis/只写leveldb还是双写. 就很麻烦.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">没有expire支持, leveldb过大后, 怎么办?</p>
+</li>
+<li><p class="first">完全没有考虑到主从的设计.</p>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>参考:</p>
+<ul class="simple">
+<li><a class="reference external" href="https://github.com/qiye/redis-storage">https://github.com/qiye/redis-storage</a></li>
+<li><a class="reference external" href="http://www.guangla.com/post/2014-03-17/40061277735">http://www.guangla.com/post/2014-03-17/40061277735</a>  (shenzhe)</li>
+</ul>
+</div>
+<div class="section" id="id9">
+<h4><a class="toc-backref" href="#id38">4.1.3&nbsp;&nbsp;&nbsp;小结</a></h4>
+<p>基于redis的改进, 主要有这么几种:</p>
+<ol class="arabic simple">
+<li>增加新命令</li>
+<li>在key被淘汰时写磁盘</li>
+<li>key一直在内存, 把某些value放磁盘(redis-vm的实现方案)</li>
+</ol>
+<p>如果基于redis来实现, 存在下面一些问题:</p>
+<ol class="arabic simple">
+<li>主从同步很可能被破坏(现有全量同步机制需要重新改写)</li>
+<li>重启时加载数据的机制.</li>
+<li>不能支持全部命令, 容易造成混淆.</li>
+<li>不能被主流所接受</li>
+</ol>
+<p>如果不基于redis代码来做:</p>
+<ol class="arabic simple">
+<li>主从同步需要重做</li>
+<li>sentinel机制需要重做.</li>
+</ol>
+</div>
+</div>
+<div class="section" id="id10">
+<h3><a class="toc-backref" href="#id39">4.2&nbsp;&nbsp;&nbsp;单机存储引擎</a></h3>
+<div class="section" id="leveldb">
+<h4><a class="toc-backref" href="#id40">4.2.1&nbsp;&nbsp;&nbsp;LevelDB</a></h4>
+<p>LevelDB是BigTable的单机存储, <tt class="docutils literal"><span class="pre">LSM-Tree</span></tt> 思想, 写操作都转化为顺序写.</p>
+<p>特点:</p>
+<ul>
+<li><p class="first">KV引擎</p>
+</li>
+<li><p class="first">支持SCAN(iteration)</p>
+</li>
+<li><p class="first">Snappy压缩</p>
+</li>
+<li><dl class="first docutils">
+<dt>随机读写能达到 10w/s 的性能</dt>
+<dd><ul class="first last simple">
+<li>这里性能是小数据量下, 还不刷盘的情况</li>
+<li>实际写能到10w, 读取决于存储介质.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">支持Bloom Filter, 能在一定程度上优化读性能.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="rocksdb-facebook">
+<h4><a class="toc-backref" href="#id41">4.2.2&nbsp;&nbsp;&nbsp;RocksDB(facebook)</a></h4>
+<ul class="simple">
+<li>基于LevelDB改进</li>
+<li>更好的利用多核等</li>
+<li>代码包比LevelDB复杂.</li>
+</ul>
+</div>
+<div class="section" id="berkley-db">
+<h4><a class="toc-backref" href="#id42">4.2.3&nbsp;&nbsp;&nbsp;Berkley DB</a></h4>
+<ul>
+<li><p class="first">历史悠久的嵌入式数据库</p>
+</li>
+<li><p class="first">支持事务, 细粒度锁.</p>
+</li>
+<li><dl class="first docutils">
+<dt>支持多种算法</dt>
+<dd><ul class="first last simple">
+<li>B+树</li>
+<li>Hash</li>
+<li>Heap(更节约空间)</li>
+<li>Recno</li>
+<li>Queue(定长record)</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">对一些老的UNIX数据库, 如dbm, ndbm接口兼容.</p>
+</li>
+</ul>
+<p><a class="reference external" href="http://docs.oracle.com/cd/E17076_02/html/programmer_reference/am_conf.html">http://docs.oracle.com/cd/E17076_02/html/programmer_reference/am_conf.html</a></p>
+</div>
+<div class="section" id="nessdb">
+<h4><a class="toc-backref" href="#id43">4.2.4&nbsp;&nbsp;&nbsp;nessDB(国人开发)</a></h4>
+<ul>
+<li><p class="first">支持事务 <strong>特点</strong></p>
+</li>
+<li><dl class="first docutils">
+<dt>自己实现存储引擎, 不是基于LevelDB</dt>
+<dd><ul class="first last simple">
+<li>3.0 提供 Buffered-Tree index (Toku的FT-Tree)</li>
+<li>作者是TokuDB的贡献者.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">2011-2014持续开发, 目测代码质量很高.</p>
+</li>
+<li><p class="first">本身是一个库.</p>
+</li>
+<li><dl class="first docutils">
+<dt>还提供一个服务端，支持Redis的 PING, SET, MSET, GET, MGET, DEL, EXISTS, INFO, SHUTDOWN 命令，</dt>
+<dd><ul class="first last simple">
+<li>现在已经专注于实现引擎, 不提供server功能了.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">整个引擎基于LSM-Tree思想开发，对随机写非常友好。为提高随机读，nessDB使用了Level LRU和Bloom Filter策略。</p>
+</li>
+<li><p class="first">引擎是自己开发的, 还需要时间验证.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id11">
+<h4><a class="toc-backref" href="#id44">4.2.5&nbsp;&nbsp;&nbsp;小结</a></h4>
+<ul class="simple">
+<li>较老的存储引擎都基于B+树或Hash实现, 写性能差.</li>
+<li>较新的存储引擎基于LSM-Tree, Log Structed Hash, FT-Tree之类新的数据结构, 针对写进行优化, 写性能能得到很大改善</li>
+<li>读操作主要取决于底层磁盘能提供的 <strong>随机读IOPS</strong> , 通过Bloom Filter等能有一定的优化.</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id12">
+<h3><a class="toc-backref" href="#id45">4.3&nbsp;&nbsp;&nbsp;备选项目</a></h3>
+<div class="section" id="id13">
+<h4><a class="toc-backref" href="#id46">4.3.1&nbsp;&nbsp;&nbsp;ssdb</a></h4>
+<ul>
+<li><p class="first">ssdb 是一个基于leveldb的kv存储, 提供兼容redis的协议</p>
+</li>
+<li><p class="first">支持String, Hash, Zset, Queue几种数据结构.</p>
+</li>
+<li><p class="first">支持Expire和主从同步</p>
+</li>
+<li><p class="first">ssd上写性能稳定在3.8wqps, 不会随着写数据增多而变差, 和hdd差不多,</p>
+</li>
+<li><p class="first">读性能稳定在5000qps, 不能充分发挥硬件性能, 这主要是由于读操作是单线程顺序执行.</p>
+</li>
+<li><dl class="first docutils">
+<dt>主要问题:</dt>
+<dd><ul class="first last simple">
+<li>读性能问题(多线程可达到15000)</li>
+<li>所有expire的key记录在内存</li>
+<li>兼容问题(expire/ttl/del都有问题, scan类设计上和redis不同)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>详细参考:</p>
+<ul class="simple">
+<li><a class="reference external" href="/cr-ssdb.html">SSDB代码阅读笔记</a></li>
+<li><a class="reference external" href="/ssdb-benchmark.html">SSDB benchmark</a></li>
+</ul>
+</div>
+<div class="section" id="id16">
+<h4><a class="toc-backref" href="#id47">4.3.2&nbsp;&nbsp;&nbsp;fatcache</a></h4>
+<ul>
+<li><p class="first">Memcache on SSD</p>
+</li>
+<li><p class="first">Log-Structure Hash结构.</p>
+</li>
+<li><p class="first">不能持久化(元数据不落盘, 重启后数据丢失)</p>
+</li>
+<li><p class="first">性能不错, Initial performance results with fatcache 100K sets/sec, 40K gets/sec on a single SSD</p>
+</li>
+<li><p class="first">读不命中时效率高(所有key记录在内存中)</p>
+</li>
+<li><p class="first">写裸盘. 需要root.</p>
+</li>
+<li><dl class="first docutils">
+<dt>主要问题:</dt>
+<dd><ul class="first last">
+<li><p class="first">不持久化</p>
+</li>
+<li><dl class="first docutils">
+<dt>key都放在内存, 如果10亿条的话, 每条key 32字节, 就需要32G. 此时存的数据(100字节/kv) 大约100G.</dt>
+<dd><ul class="first last simple">
+<li>所以这适合value较大的情况, 比如1K, 这样32G内存就能管理1T数据.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>详细参考: <a class="reference external" href="/fatcache-cr.html">fatcache代码阅读笔记</a></p>
+</div>
+<div class="section" id="ardb">
+<h4><a class="toc-backref" href="#id48">4.3.3&nbsp;&nbsp;&nbsp;ardb</a></h4>
+<p><a class="reference external" href="https://github.com/yinqiwen/ardb">https://github.com/yinqiwen/ardb</a></p>
+<ul class="simple">
+<li>Full redis-protocol compatible</li>
+<li>Most redis commands supported, and a few new commands</li>
+<li>Replication compatible with Redis 2.6/2.8</li>
+<li>Auto failover support by redis-sentinel</li>
+<li>存储引擎支持  LevelDB/LMDB/RocksDB</li>
+<li>空间索引.</li>
+<li>代码量5w, 很难想象是一个人的作品. (HUST)</li>
+</ul>
+<p>看上去很不错, c++实现.</p>
+</div>
+<div class="section" id="ledisdb">
+<h4><a class="toc-backref" href="#id49">4.3.4&nbsp;&nbsp;&nbsp;ledisdb</a></h4>
+<ul class="simple">
+<li>go 实现(金山 siddontang)</li>
+<li><a class="reference external" href="https://github.com/siddontang/ledisdb">https://github.com/siddontang/ledisdb</a></li>
+<li>支持多种引擎: LevelDB, goleveldb, LMDB, RocksDB, BoltDB.</li>
+<li>支持expiration</li>
+<li>比GoRedis完善</li>
+<li>写的很细心</li>
+<li>lua</li>
+<li>redis 协议 +rest协议</li>
+</ul>
+<p>设计:</p>
+<ul class="simple">
+<li><a class="reference external" href="http://siddontang.com/2014/05/10/ledisdb-introduction/">http://siddontang.com/2014/05/10/ledisdb-introduction/</a></li>
+<li><a class="reference external" href="http://siddontang.com/2014/05/30/ledisdb-design-1/">http://siddontang.com/2014/05/30/ledisdb-design-1/</a></li>
+<li><a class="reference external" href="http://siddontang.com/2014/06/14/ledisdb-design-2/">http://siddontang.com/2014/06/14/ledisdb-design-2/</a></li>
+</ul>
+</div>
+<div class="section" id="id18">
+<h4><a class="toc-backref" href="#id50">4.3.5&nbsp;&nbsp;&nbsp;其它</a></h4>
+<ul>
+<li><dl class="first docutils">
+<dt>memcachedb</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://gitorious.org/mdb/memcachedb/source/9f2e5415e4d9017889caf61c100a9b8652825319">https://gitorious.org/mdb/memcachedb/source/9f2e5415e4d9017889caf61c100a9b8652825319</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>redis-leveldb</dt>
+<dd><ul class="first last simple">
+<li>不是基于redis的代码,</li>
+<li><a class="reference external" href="https://github.com/KDr2/redis-leveldb">https://github.com/KDr2/redis-leveldb</a></li>
+<li>redis-protocol compatible</li>
+<li>libev, cpp实现.</li>
+<li>2000行代码, 简单实现的玩具, 代码中各种printf直接输出到终端. 代码质量差</li>
+<li>没有expire, 主从同步,</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>seqdb</dt>
+<dd><ul class="first last simple">
+<li>提供sql接口的kv.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>GoRedis</dt>
+<dd><ul class="first last simple">
+<li>go实现, (陌陌)</li>
+<li>存储引擎使用RocksDB, redis接口.</li>
+<li>不支持expire</li>
+<li>slaveof-proxy为两个redis建立自定义的主从同步，包含限速、断线重试等。</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>rdisk 是一个hackathon项目, 提供兼容redis的协议.</dt>
+<dd><ul class="first last simple">
+<li>libuv做服务</li>
+<li>rangel 解析</li>
+<li>tokyocabinet 作为存储引擎(作为.so嵌入)</li>
+<li><a class="reference external" href="https://github.com/Moodstocks/redisk">https://github.com/Moodstocks/redisk</a></li>
+<li>是一个不错的开始</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>lycadb</dt>
+<dd><ul class="first last simple">
+<li>An experiment with InnoDB storage for a Redis-like key/value store</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>redis-land-go</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="https://github.com/xjdrew/redis-land-go">https://github.com/xjdrew/redis-land-go</a></li>
+<li>旁路监听，把redis数据存盘到leveldb</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id19">
+<h4><a class="toc-backref" href="#id51">4.3.6&nbsp;&nbsp;&nbsp;小结</a></h4>
+<ul class="simple">
+<li>有很多尝试做兼容redis的磁盘存储的项目,</li>
+<li>在设计实现上都存在或多或少的问题.</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id20">
+<h3><a class="toc-backref" href="#id52">4.4&nbsp;&nbsp;&nbsp;成熟分布式存储系统</a></h3>
+<div class="section" id="tair">
+<h4><a class="toc-backref" href="#id53">4.4.1&nbsp;&nbsp;&nbsp;淘宝tair</a></h4>
+<ul>
+<li><p class="first">淘宝开发的分布式 key/value 存储系统</p>
+</li>
+<li><dl class="first docutils">
+<dt>模块</dt>
+<dd><ul class="first last simple">
+<li>config-server (master+slave)</li>
+<li>data server (存储节点)</li>
+<li>客户端保存路由表, 有local cache</li>
+<li>一致性hash+数据迁移</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>存储引擎</dt>
+<dd><ul class="first last simple">
+<li>mdb: 缓存, 支持kv,</li>
+<li>rdb: redis内存结构, kv, list, set, zset.</li>
+<li>ldb: 基于leveldb.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">需要专用的 client lib.</p>
+</li>
+<li><p class="first">支持多副本, 多版本.</p>
+</li>
+<li><dl class="first docutils">
+<dt>规模(2011):</dt>
+<dd><ul class="first last simple">
+<li>共有20多个集群，400多台的服务器，其中300多台是cache的，每台提供22G的内存。其他的是持久化的Tair集群。</li>
+<li>存放了数百亿条记录，每秒百万级别的请求数。</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p><a class="reference external" href="http://code.taobao.org/p/tair/wiki/intro/">http://code.taobao.org/p/tair/wiki/intro/</a></p>
+</div>
+<div class="section" id="aerospike">
+<h4><a class="toc-backref" href="#id54">4.4.2&nbsp;&nbsp;&nbsp;aerospike</a></h4>
+<ul>
+<li><p class="first">商业产品, 开源.</p>
+</li>
+<li><dl class="first docutils">
+<dt>三层:</dt>
+<dd><ul class="first last simple">
+<li>client 感知数据存在哪里</li>
+<li>Distribution Layer</li>
+<li>Data Storage Layer: 单机引擎.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">API形式: 不是简单的key/value, 每个key需要指定 (namespace, set, key), 应该是为了控制锁粒度.</p>
+</li>
+<li><p class="first">Indexes are always stored in RAM.</p>
+</li>
+<li><p class="first">数据类型: map, list, integer, string, blob.</p>
+</li>
+<li><p class="first">可配 expire</p>
+</li>
+<li><p class="first">支持lua.</p>
+</li>
+<li><p class="first">支持Secondary indexes, 不是简单kv, 更像mongo</p>
+</li>
+<li><p class="first">支持Hot Analytics (distributed aggregations or indexed map-reduce)</p>
+</li>
+</ul>
+<p><a class="reference external" href="https://github.com/aerospike/aerospike-server">https://github.com/aerospike/aerospike-server</a></p>
+</div>
+<div class="section" id="facebook-apollo">
+<h4><a class="toc-backref" href="#id55">4.4.3&nbsp;&nbsp;&nbsp;#facebook Apollo</a></h4>
+<p><a class="reference external" href="http://www.infoq.com/news/2014/06/facebook-apollo">http://www.infoq.com/news/2014/06/facebook-apollo</a></p>
+<ul class="simple">
+<li>Paxos-like NoSQL database</li>
+<li>C++</li>
+<li>低延迟, 特别是Flash and in-memory</li>
+<li>不是简单kv, 支持数据结构:  maps, queues, trees</li>
+<li>分布式, 有shard概念, 每个shard内基于RocksDB.</li>
+<li>Apollo isn't currently being used in production at Facebook</li>
+<li>The company is also looking at using Apollo as a reliable queuing system</li>
+<li>是分布式的ssdb</li>
+<li>还没开源.</li>
+</ul>
+</div>
+<div class="section" id="facebook-mcdipper">
+<h4><a class="toc-backref" href="#id56">4.4.4&nbsp;&nbsp;&nbsp;#facebook-McDipper</a></h4>
+<p><a class="reference external" href="https://www.facebook.com/notes/facebook-engineering/mcdipper-a-key-value-cache-for-flash-storage/10151347090423920">https://www.facebook.com/notes/facebook-engineering/mcdipper-a-key-value-cache-for-flash-storage/10151347090423920</a></p>
+<p>Compared with memory, flash provides up to 20 times the capacity per server and still supports tens of thousands of operations per second,</p>
+<ul class="simple">
+<li>大约12年5月上线.</li>
+<li>cache替换策略: LRU或者FIFO</li>
+<li>you can enable bloom filters to avoid unnecessary reads</li>
+<li>主要用于图片服务器的缓存(cdn上) 后端是HayStack.</li>
+<li>We serve over 150 Gb/s from McDipper forward caches in our CDN.</li>
+<li>是一个cdn用的cache存储. memcache协议.</li>
+<li>不开源.</li>
+</ul>
+</div>
+<div class="section" id="ckv">
+<h4><a class="toc-backref" href="#id57">4.4.5&nbsp;&nbsp;&nbsp;#腾讯CKV海量分布式存储系统</a></h4>
+<p>(闭源, 这里参考一个ppt)</p>
+<p><a class="reference external" href="http://www.csdn.net/article/2014-03-11/2818723">http://www.csdn.net/article/2014-03-11/2818723</a></p>
+<p>高性能、低延时、持久化、分布式KV存储服务, 日请求数: 超过万亿次 (那得看多少套集群)</p>
+<p>与Memcached和Redis等开源NoSQL相比，CKV具有以下优点.</p>
+<ul>
+<li><p class="first">内存+SSD, 99%命中率(取决于应用)</p>
+</li>
+<li><p class="first">可以扩展到1PB</p>
+</li>
+<li><p class="first">单表 千万qps</p>
+</li>
+<li><p class="first">单台Cache服务器千兆网络环境支持50万/秒的访问，万兆网络环境支持超过100万/秒的访问 &lt;redis也10个实例, 也可以做到&gt;</p>
+</li>
+<li><p class="first">双机热备，主备切换对业务透明. redis一样.</p>
+</li>
+<li><dl class="first docutils">
+<dt>扩容: 需要停写</dt>
+<dd><ul class="first last simple">
+<li>扩容过程如下：Master将禁止shard2数据写访问命令发送给Access</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>规模: 近万台服务器</dt>
+<dd><ul class="first last simple">
+<li>万台, 每天万亿请求, 那就是说1亿/台, 每台只相当于1000qps.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id21">
+<h4><a class="toc-backref" href="#id58">4.4.6&nbsp;&nbsp;&nbsp;小结</a></h4>
+<ul class="simple">
+<li>这里的几个系统, 都是类似GFS的架构, config-server + data server + 智能client</li>
+<li>支持动态数据迁移和路由更新.</li>
+<li>它们都有各自的接口, 相对来说比较复杂.</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id22">
+<h3><a class="toc-backref" href="#id59">4.5&nbsp;&nbsp;&nbsp;其它思路</a></h3>
+<ul>
+<li><dl class="first docutils">
+<dt>HBase/Cassendra/MySQL on ssd?</dt>
+<dd><ul class="first last simple">
+<li>可以利用现有hbase等系统良好的扩展性, 性能上也能有所保证</li>
+<li>接口不兼容.</li>
+<li>过于复杂.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id23">
+<h2><a class="toc-backref" href="#id60">5&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ul>
+<li><dl class="first docutils">
+<dt>为了避免随机写, 现在很多存储引擎都是Write-optimized的, 基于LSM的思想来开发, 比如:</dt>
+<dd><ul class="first last simple">
+<li>fatcache/Riak: Log-Structure Hash table</li>
+<li>RethinkDB: Log-Structure B-tree</li>
+<li>LevelDB, Cassendra, HBase: Log-Structure merge tree.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">LevelDB 平均每次读大约需要1.3-1.5次IO, Log-Structure Hash 只需要1次, 但是不能scan.</p>
+</li>
+<li><p class="first">ssdb/ardb/nessDB/ledisdb 都是国人做的, 很赞, 值得持续关注.</p>
+</li>
+<li><p class="first">可以否决基于redis做的改造.</p>
+</li>
+<li><p class="first">基于LevelDB或者RocksDB封装提供redis协议比较简单, 难点主要是expire/replication/failover的实现.</p>
+</li>
+</ul>
+<div class="section" id="id24">
+<h3><a class="toc-backref" href="#id61">5.1&nbsp;&nbsp;&nbsp;关于目前的很多系统</a></h3>
+<p>无论对redis改造或者是重新实现, 在数据结构/expire/主从同步上, 都延用了redis的做法, 比如:</p>
+<ul>
+<li><p class="first">支持富数据结构</p>
+</li>
+<li><p class="first">expire信息放在内存</p>
+</li>
+<li><p class="first">主从断掉全量同步.</p>
+</li>
+<li><dl class="first docutils">
+<dt>依然有rdb, 整个库占了1T磁盘, rdb出来也占1T =&gt; 这些设计可能没考虑1T这个数据量级, 只考虑100G这个量级.</dt>
+<dd><ul class="first last simple">
+<li>比如ardb依然使用rdb做同步.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">甚至有的还会把磁盘操作计入aof, 再加上aof_rewrite,</p>
+</li>
+</ul>
+<p>由于数据规模变大(60G=&gt;600G的级别) 这些设计就存在问题.</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="2%" />
+<col width="11%" />
+<col width="4%" />
+<col width="16%" />
+<col width="17%" />
+<col width="24%" />
+<col width="25%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">&nbsp;</th>
+<th class="head">&nbsp;</th>
+<th class="head">代码</th>
+<th class="head">特点</th>
+<th class="head">expire</th>
+<th class="head">repl</th>
+<th class="head">其它</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>2</td>
+<td>redis-storage</td>
+<td>&nbsp;</td>
+<td>redis+特定命令</td>
+<td>无</td>
+<td>无</td>
+<td>专注于使内存成为磁盘的cache</td>
+</tr>
+<tr><td>3</td>
+<td>ssdb</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>单独key存储</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<tr><td>3</td>
+<td>ardb</td>
+<td>5w</td>
+<td>cpp, 复杂, 地理索引</td>
+<td>&nbsp;</td>
+<td><ul class="first last simple">
+<li>存储:</li>
+<li>同步: ?</li>
+<li>切换: ?</li>
+</ul>
+</td>
+<td>兼容性好, 沿用redis, 依然支持rdb</td>
+</tr>
+<tr><td>3</td>
+<td>ledisdb(go)
+金山</td>
+<td>2w</td>
+<td>&nbsp;</td>
+<td>单独key存储, 定期elim</td>
+<td><ul class="first last simple">
+<li>存储: 自定义binlog,fid+offset</li>
+<li>同步: 从拉,全量+增量</li>
+<li>切换: 全量同步</li>
+</ul>
+</td>
+<td>&nbsp;</td>
+</tr>
+<tr><td>2</td>
+<td>GoRedis</td>
+<td>2w</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

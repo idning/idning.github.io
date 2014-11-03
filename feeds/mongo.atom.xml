@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>ning</title><link href="/" rel="alternate"></link><link href="http://idning.github.io/feeds/mongo.atom.xml" rel="self"></link><id>/</id><updated>2014-02-21T11:52:05+08:00</updated><entry><title>mongodb 不同数据类型磁盘占用的情况分析</title><link href="/mongo-disk-usage.html" rel="alternate"></link><updated>2014-02-21T11:52:05+08:00</updated><author><name>ning</name></author><id>tag:,2014-02-21:mongo-disk-usage.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id2"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;测试代码:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+t1 = db.storage_size;
+
+test = function(cnt, obj, index){
+    t1.drop()
+    t1.ensureIndex(index);
+
+    docs1 = new Array();
+    for (var i = 0; i &amp;lt; cnt; ++ i){
+        docs1[i] = obj;
+    }
+
+    t1.insert(docs1);
+    print('db.stats() ' + cnt + ' ' + tojson(obj));
+    printjson(t1.stats());
+    stats = t1.stats();
+    print( 'NOTICE: ' + cnt + ' ' + tojson(obj) + ' record_size:' +  stats[&amp;quot;avgObjSize&amp;quot;]  + ' index_size: ' + stats[&amp;quot;indexSizes&amp;quot;][&amp;quot;x_1&amp;quot;] / 1000 + ' ' +  stats[&amp;quot;indexSizes&amp;quot;][&amp;quot;xxxxxxxxxx_1&amp;quot;] / 1000 );
+    tojson(t1.stats());
+}
+
+test(1, {x: 1}, {x:1});
+test(1, {x: 1024*1024*1024*8}, {x:1});
+test(1, {x: ''}, {x:1});
+test(1, {x: 'a'}, {x:1});
+test(1, {x: 'aaa'}, {x:1});
+test(1, {x: '好'}, {x:1});
+test(1, {x: '中国'}, {x:1});
+test(1, {x: '北京市'}, {x:1});
+test(1, {x: '我爱北京天安门'}, {x:1});
+
+print( 'NOTICE: ---------------------------- ' );
+
+test(1000, {x: 1}, {x:1});
+test(1000, {x: 1024*1024*1024*8}, {x:1});
+test(1000, {x: ''}, {x:1});
+test(1000, {x: 'a'}, {x:1});
+test(1000, {x: 'aaa'}, {x:1});
+test(1000, {x: '好'}, {x:1});
+test(1000, {x: '中国'}, {x:1});
+test(1000, {x: '北京市'}, {x:1});
+test(1000, {x: '我爱北京天安门'}, {x:1});
+
+print( 'NOTICE: ---------------------------- ' );
+
+test(1000, {xxxxxxxxxx: 1}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: 1024*1024*1024*8}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: ''}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: 'a'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: 'aaa'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '好'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '中国'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '北京市'}, {xxxxxxxxxx:1});
+test(1000, {xxxxxxxxxx: '我爱北京天安门'}, {xxxxxxxxxx:1});
+
+...
+&lt;/pre&gt;
+&lt;p&gt;结果:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+NOTICE: 1 { &amp;quot;x&amp;quot; : 1 } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : 8589934592 } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : &amp;quot;&amp;quot; } record_size:32 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : &amp;quot;a&amp;quot; } record_size:32 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : &amp;quot;aaa&amp;quot; } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : &amp;quot;好&amp;quot; } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : &amp;quot;中国&amp;quot; } record_size:36 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : &amp;quot;北京市&amp;quot; } record_size:40 index_size: 8.176 NaN
+NOTICE: 1 { &amp;quot;x&amp;quot; : &amp;quot;我爱北京天安门&amp;quot; } record_size:52 index_size: 8.176 NaN
+NOTICE: ----------------------------
+NOTICE: 1000 { &amp;quot;x&amp;quot; : 1 } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : 8589934592 } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;&amp;quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;a&amp;quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaa&amp;quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;好&amp;quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;中国&amp;quot; } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;北京市&amp;quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;我爱北京天安门&amp;quot; } record_size:52.02 index_size: 57.232 NaN
+NOTICE: ----------------------------
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : 1 } record_size:44.012 index_size: NaN 40.88
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : 8589934592 } record_size:44.012 index_size: NaN 40.88
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : &amp;quot;&amp;quot; } record_size:40.008 index_size: NaN 32.704
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : &amp;quot;a&amp;quot; } record_size:40.008 index_size: NaN 32.704
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : &amp;quot;aaa&amp;quot; } record_size:44.012 index_size: NaN 32.704
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : &amp;quot;好&amp;quot; } record_size:44.012 index_size: NaN 32.704
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : &amp;quot;中国&amp;quot; } record_size:48.032 index_size: NaN 40.88
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : &amp;quot;北京市&amp;quot; } record_size:48.032 index_size: NaN 40.88
+NOTICE: 1000 { &amp;quot;xxxxxxxxxx&amp;quot; : &amp;quot;我爱北京天安门&amp;quot; } record_size:60 index_size: NaN 57.232
+NOTICE: ----------------------------
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;&amp;quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;a&amp;quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aa&amp;quot; } record_size:32 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaa&amp;quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaa&amp;quot; } record_size:36.008 index_size: 32.704 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaa&amp;quot; } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaaa&amp;quot; } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaaaa&amp;quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaaaaa&amp;quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaaaaaa&amp;quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaaaaaaa&amp;quot; } record_size:40.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaaaaaaaa&amp;quot; } record_size:44.012 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;x&amp;quot; : &amp;quot;aaaaaaaaaaaa&amp;quot; } record_size:44.012 index_size: 40.88 NaN
+NOTICE: ----------------------------
+NOTICE: 1000 { &amp;quot;x&amp;quot; : 1 } record_size:36.008 index_size: 40.88 NaN
+NOTICE: 1000 { &amp;quot;xx&amp;quot; : 1 } record_size:36.008 index_size: NaN NaN
+NOTICE: 1000 { &amp;quot;xxx&amp;quot; : 1 } record_size:36.008 index_size: NaN NaN
+NOTICE: 1000 { &amp;quot;xxxx&amp;quot; : 1 } record_size:36.008 index_size: NaN NaN
+NOTICE: 1000 { &amp;quot;xxxxx&amp;quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &amp;quot;xxxxxx&amp;quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &amp;quot;xxxxxxx&amp;quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &amp;quot;xxxxxxxx&amp;quot; : 1 } record_size:40.008 index_size: NaN NaN
+NOTICE: 1000 { &amp;quot;xxxxxxxxx&amp;quot; : 1 } record_size:44.012 index_size: NaN NaN
+&lt;/pre&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id2"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;整数:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;小整数(1) 和长整数(8589934592) 占用字节数一样&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;字符串:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;字符串按照4字节对齐: aaa, aaaa, aaaaa, aaaaaa 占用存储一样&lt;/li&gt;
+&lt;li&gt;key 和value 都是4字节对齐 &lt;tt class="docutils literal"&gt;所以这里建议key&amp;lt;4字节即可&lt;/tt&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;整数vs字符串:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;短字符(0,1,2字节)串占用存储小于 整数, 3字节的字符串存储大小和整数一样, 3字节以上字符串存储大于整数.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;中文:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;每个中文字符(utf8)占用存储3字节.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;key:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;key越长, 占用存储越大, key长度不影响索引大小.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+</summary><category term="all"></category><category term="mongo"></category></entry></feed>

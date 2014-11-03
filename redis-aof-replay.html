@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>redis-aof-replay</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/redis-aof-replay.html">2014-02-27 09:44:50</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#aof" id="id13">1&nbsp;&nbsp;&nbsp;简单的重放aof</a><ul class="auto-toc">
+<li><a class="reference internal" href="#aofredis" id="id14">1.1&nbsp;&nbsp;&nbsp;重放aof到redis实例</a></li>
+<li><a class="reference internal" href="#aoftwemproxy" id="id15">1.2&nbsp;&nbsp;&nbsp;重放aof到twemproxy</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id1" id="id16">2&nbsp;&nbsp;&nbsp;各种命令的aof格式</a><ul class="auto-toc">
+<li><a class="reference internal" href="#mset" id="id17">2.1&nbsp;&nbsp;&nbsp;mset</a></li>
+<li><a class="reference internal" href="#del-key" id="id18">2.2&nbsp;&nbsp;&nbsp;del 删除多个key</a></li>
+<li><a class="reference internal" href="#id2" id="id19">2.3&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id3" id="id20">3&nbsp;&nbsp;&nbsp;aof解析</a></li>
+<li><a class="reference internal" href="#aof-replay" id="id21">4&nbsp;&nbsp;&nbsp;实现aof-replay</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id4" id="id22">4.1&nbsp;&nbsp;&nbsp;功能和注意</a></li>
+<li><a class="reference internal" href="#tail-f" id="id23">4.2&nbsp;&nbsp;&nbsp;tail -f</a><ul class="auto-toc">
+<li><a class="reference internal" href="#fdselect" id="id24">4.2.1&nbsp;&nbsp;&nbsp;尝试在fd上做select</a></li>
+<li><a class="reference internal" href="#poll" id="id25">4.2.2&nbsp;&nbsp;&nbsp;用poll 呢?</a></li>
+<li><a class="reference internal" href="#id5" id="id26">4.2.3&nbsp;&nbsp;&nbsp;tail -f 怎么做的</a></li>
+<li><a class="reference internal" href="#id6" id="id27">4.2.4&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#twemproxypipeline" id="id28">4.3&nbsp;&nbsp;&nbsp;twemproxy对pipeline支持不好和性能</a><ul class="auto-toc">
+<li><a class="reference internal" href="#safe" id="id29">4.3.1&nbsp;&nbsp;&nbsp;safe模式</a></li>
+<li><a class="reference internal" href="#id7" id="id30">4.3.2&nbsp;&nbsp;&nbsp;测试几种方式的性能</a><ul class="auto-toc">
+<li><a class="reference internal" href="#bench" id="id31">4.3.2.1&nbsp;&nbsp;&nbsp;阻塞式简单bench</a><ul class="auto-toc">
+<li><a class="reference internal" href="#gprof" id="id32">4.3.2.1.1&nbsp;&nbsp;&nbsp;gprof结果</a></li>
+<li><a class="reference internal" href="#write-read" id="id33">4.3.2.1.2&nbsp;&nbsp;&nbsp;阻塞改为直接write/read</a></li>
+<li><a class="reference internal" href="#pipeline" id="id34">4.3.2.1.3&nbsp;&nbsp;&nbsp;改成pipeline:</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id8" id="id35">4.3.2.2&nbsp;&nbsp;&nbsp;异步bench</a></li>
+<li><a class="reference internal" href="#redis-benchmark" id="id36">4.3.2.3&nbsp;&nbsp;&nbsp;redis-benchmark 的实现</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id9" id="id37">4.3.3&nbsp;&nbsp;&nbsp;小结</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id10" id="id38">4.3.3.1&nbsp;&nbsp;&nbsp;具体实现</a></li>
+<li><a class="reference internal" href="#update-2014-03-13-10-13-19" id="id39">4.3.3.2&nbsp;&nbsp;&nbsp;update &#64;2014-03-13 10:13:19</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id11" id="id40">4.4&nbsp;&nbsp;&nbsp;其它</a><ul class="auto-toc">
+<li><a class="reference internal" href="#clean" id="id41">4.4.1&nbsp;&nbsp;&nbsp;clean脚本</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id12" id="id42">5&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</div>
+<div class="section" id="aof">
+<h2><a class="toc-backref" href="#id13">1&nbsp;&nbsp;&nbsp;简单的重放aof</a></h2>
+<div class="section" id="aofredis">
+<h3><a class="toc-backref" href="#id14">1.1&nbsp;&nbsp;&nbsp;重放aof到redis实例</a></h3>
+<p>aof 文件有个优势:</p>
+<p>因为它的格式是和协议一致, 重放非常简单, 直接用如下命令即可:</p>
+<pre class="literal-block">
+cat data/appendonly.aof | nc localhost 22003
++OK
++OK
++OK
++OK
++OK
++OK
++OK
++OK
+</pre>
+<p>或者用 <tt class="docutils literal"><span class="pre">redis-cli</span></tt> 提供的pipe功能:</p>
+<pre class="literal-block">
+$ cat data/appendonly.aof | redis-cli --pipe  -h 127.0.0.5 -p 22003
+All data transferred. Waiting for the last reply...
+Last reply received from server.
+errors: 0, replies: 115
+</pre>
+<p>时间消耗, 在我的pc上 300M需要 120s, 速度大约2M/s, (6w条/s), 每天单进程可以重放156G(5亿条):</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis-mgr$ ll /home/ning/Desktop/t/appendonly.aof
+787171 -rw-r--r-- 1 ning ning 371M 2014-02-26 22:56 /home/ning/Desktop/t/appendonly.aof
+
+ning&#64;ning-laptop:~/idning-github/redis-mgr$ time cat /home/ning/Desktop/t/appendonly.aof | redis-cli --pipe -h 127.0.0.5 -p 22003
+All data transferred. Waiting for the last reply...
+Last reply received from server.
+errors: 0, replies: 7339651
+
+real    1m58.729s
+user    0m8.700s
+sys 0m1.780s
+</pre>
+<p>实现: pipe功能就是简单的 把STDIN 的内容写到soket:</p>
+<pre class="literal-block">
+ssize_t nread = read(STDIN_FILENO,obuf,sizeof(obuf));
+ssize_t nwritten = write(fd,obuf+obuf_pos,obuf_len);
+</pre>
+</div>
+<div class="section" id="aoftwemproxy">
+<h3><a class="toc-backref" href="#id15">1.2&nbsp;&nbsp;&nbsp;重放aof到twemproxy</a></h3>
+<p>上面的方法不能通过twemproxy重放:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:/tmp/r/redis-22001$ cat data/appendonly.aof | redis-cli --pipe  -h 127.0.0.5 -p 24000
+All data transferred. Waiting for the last reply...
+
+No replies for 30 seconds: exiting.
+errors: 1, replies: 0
+</pre>
+<p>原因:</p>
+<ul class="simple">
+<li>proxy does not support mset/select ....</li>
+</ul>
+<p>为了把它变成一个迁移工具, pipe工具性能已经满足要求, 功能上需要增加支持:</p>
+<ol class="arabic">
+<li><p class="first">兼容proxy(去掉select, 处理mset)</p>
+</li>
+<li><p class="first"><tt class="docutils literal"><span class="pre">--filter</span></tt> : key filter (这里需要解析命令)</p>
+</li>
+<li><p class="first"><tt class="docutils literal"><span class="pre">--rewrite</span></tt></p>
+</li>
+<li><dl class="first docutils">
+<dt><tt class="docutils literal"><span class="pre">--tail</span></tt> 支持 <tt class="docutils literal">tail <span class="pre">-f</span></tt></dt>
+<dd><ul class="first last simple">
+<li>最后发的echo命令要去掉</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<ol class="arabic simple" start="6">
+<li><tt class="docutils literal"><span class="pre">--check</span></tt> check any command not supported</li>
+</ol>
+</div>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id16">2&nbsp;&nbsp;&nbsp;各种命令的aof格式</a></h2>
+<p>测试:</p>
+<pre class="literal-block">
+#key-value
+redis-cli -h 127.0.0.5 -p 22001 SET key0 v0
+redis-cli -h 127.0.0.5 -p 22001 GETSET key0 v0
+redis-cli -h 127.0.0.5 -p 22001 APPEND key0 v_a
+redis-cli -h 127.0.0.5 -p 22001 STRLEN key0
+#expire
+redis-cli -h 127.0.0.5 -p 22001 EXPIRE key0 5
+sleep 6
+redis-cli -h 127.0.0.5 -p 22001 SETEX key0 5 v_a
+sleep 6
+#counter
+redis-cli -h 127.0.0.5 -p 22001 INCR key1
+#hash
+redis-cli -h 127.0.0.5 -p 22001 HSET key3 h3 val3
+#list
+redis-cli -h 127.0.0.5 -p 22001 LPUSH key4 v4
+redis-cli -h 127.0.0.5 -p 22001 LPOP key4
+#set
+redis-cli -h 127.0.0.5 -p 22001 SADD key5 v5
+</pre>
+<p>对应关系如下:</p>
+<pre class="literal-block">
+----------------------------------------------------------------------------------------------------------------
+
+#key-value
+redis-cli -h 127.0.0.5 -p 22001 SET key0 v0
+                                                        *3
+                                                        $3
+                                                        SET
+                                                        $4
+                                                        key0
+                                                        $2
+                                                        v0
+
+redis-cli -h 127.0.0.5 -p 22001 GETSET key0 v0
+                                                        *3
+                                                        $6
+                                                        GETSET
+                                                        $4
+                                                        key0
+                                                        $2
+                                                        v0
+
+redis-cli -h 127.0.0.5 -p 22001 APPEND key0 v_a
+                                                        *3
+                                                        $6
+                                                        APPEND
+                                                        $4
+                                                        key0
+                                                        $3
+                                                        v_a
+
+redis-cli -h 127.0.0.5 -p 22001 STRLEN key0 &lt;nothing&gt;
+
+redis-cli -h 127.0.0.5 -p 22001 EXPIRE key0 5           (转变为PEXPIREAT)
+
+                                                        *3
+                                                        $9
+                                                        PEXPIREAT
+                                                        $4
+                                                        key0
+                                                        $13
+                                                        1393467438683
+
+sleep 6                                                 (5s后被删除)
+
+                                                        *2
+                                                        $3
+                                                        DEL
+                                                        $4
+                                                        key0
+
+redis-cli -h 127.0.0.5 -p 22001 SETEX key0 5 v_a        (SETEX转成两个命令)
+                                                        *3
+                                                        $3
+                                                        SET
+                                                        $4
+                                                        key0
+                                                        $3
+                                                        v_a
+
+                                                        *3
+                                                        $9
+                                                        PEXPIREAT
+                                                        $4
+                                                        key0
+                                                        $13
+                                                        1393467444711
+
+sleep 6
+                                                        *2
+                                                        $3
+                                                        DEL
+                                                        $4
+                                                        key0
+
+redis-cli -h 127.0.0.5 -p 22001 INCR key1               &lt;INCR记录的是变化, 不是结果&gt;
+                                                        *2
+                                                        $4
+                                                        INCR
+                                                        $4
+                                                        key1
+
+redis-cli -h 127.0.0.5 -p 22001 HSET key3 h3 val3
+                                                        *4
+                                                        $4
+                                                        HSET
+                                                        $4
+                                                        key3
+                                                        $2
+                                                        h3
+                                                        $4
+                                                        val3
+
+redis-cli -h 127.0.0.5 -p 22001 LPUSH key4 v4
+                                                        *3
+                                                        $5
+                                                        LPUSH
+                                                        $4
+                                                        key4
+                                                        $2
+                                                        v4
+
+redis-cli -h 127.0.0.5 -p 22001 LPOP key4
+                                                        *2
+                                                        $4
+                                                        LPOP
+                                                        $4
+                                                        key4
+
+redis-cli -h 127.0.0.5 -p 22001 SADD key5 v5
+                                                        *3
+                                                        $4
+                                                        SADD
+                                                        $4
+                                                        key5
+                                                        $2
+                                                        v5
+</pre>
+<div class="section" id="mset">
+<h3><a class="toc-backref" href="#id17">2.1&nbsp;&nbsp;&nbsp;mset</a></h3>
+<pre class="literal-block">
+$redis-cli -h 127.0.0.5 -p 22000 mset k1 v1 k2 v2
+
+                                                            mset
+                                                            $2
+                                                            k1
+                                                            $2
+                                                            v1
+                                                            $2
+                                                            k2
+                                                            $2
+                                                            v2
+</pre>
+</div>
+<div class="section" id="del-key">
+<h3><a class="toc-backref" href="#id18">2.2&nbsp;&nbsp;&nbsp;del 删除多个key</a></h3>
+<ol class="arabic simple">
+<li>不是记录3个del命令, 而是记录一个命令</li>
+<li>只要del生效(能删掉任何一条记录), 就会记录对命令中所有key的删除.</li>
+</ol>
+<pre class="literal-block">
+$ redis-cli -h 127.0.0.5 -p 22001 set key1 3
+OK
+                                                                        *3
+                                                                        $3
+                                                                        set
+                                                                        $4
+                                                                        key1
+                                                                        $1
+                                                                        3
+
+$ redis-cli -h 127.0.0.5 -p 22001 set key2 3
+OK
+
+                                                                        *3
+                                                                        $3
+                                                                        set
+                                                                        $4
+                                                                        key2
+                                                                        $1
+                                                                        3
+
+#注意这里删除3个key, 只有2个key存在的情况下, 记录的aof是在一个del命令中删除3个key
+$ redis-cli -h 127.0.0.5 -p 22001 del key1 key2 key3
+(integer) 2
+                                                                        *4
+                                                                        $3
+                                                                        del
+                                                                        $4
+                                                                        key1
+                                                                        $4
+                                                                        key2
+                                                                        $4
+                                                                        key3
+
+$ redis-cli -h 127.0.0.5 -p 22001 del key1 key2 key3
+(integer) 0
+$ redis-cli -h 127.0.0.5 -p 22001 del key1 key2 key3
+(integer) 0
+                                                                        这里没有对应的aof
+</pre>
+</div>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id19">2.3&nbsp;&nbsp;&nbsp;小结</a></h3>
+<ol class="arabic simple">
+<li>aof 中记录的命令可能是大写/小写. 用户怎么用就是怎么记录.</li>
+<li>mset, del比较记录的也是原始操作.</li>
+<li>incr等, 也是记录操作, 而不是记录结果.</li>
+</ol>
+</div>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id20">3&nbsp;&nbsp;&nbsp;aof解析</a></h2>
+<p>aof解析非常简单, 从 <tt class="docutils literal"><span class="pre">redis-check-aof</span></tt> 中就可以看出来:</p>
+<pre class="literal-block">
+off_t process(FILE *fp) {
+    long argc;
+    off_t pos = 0;
+    int i, multi = 0;
+    char *str;
+
+    while(1) {
+        if (!multi) pos = ftello(fp);
+        if (!readArgc(fp, &amp;argc)) break;
+
+        for (i = 0; i &lt; argc; i++) {
+            readString(fp,&amp;str);
+        }
+    }
+}
+</pre>
+<p>redis中解析, load aof 是这个函数:</p>
+<pre class="literal-block">
+/* Replay the append log file. On error REDIS_OK is returned. On non fatal
+ * error (the append only file is zero-length) REDIS_ERR is returned. On
+ * fatal error an error Message is logged and the program exists. */
+int loadAppendOnlyFile(char *filename) {
+</pre>
+</div>
+<div class="section" id="aof-replay">
+<h2><a class="toc-backref" href="#id21">4&nbsp;&nbsp;&nbsp;实现aof-replay</a></h2>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id22">4.1&nbsp;&nbsp;&nbsp;功能和注意</a></h3>
+<p>points:</p>
+<ol class="arabic simple">
+<li>remove all <tt class="docutils literal">select</tt> / <tt class="docutils literal">multi</tt></li>
+<li>change <tt class="docutils literal">MSET/MSETNX/DEL</tt> to many <tt class="docutils literal">SET/SETNX/DEL</tt> cmd;</li>
+<li><tt class="docutils literal"><span class="pre">--filter</span></tt> : filter key by prefix</li>
+<li><tt class="docutils literal"><span class="pre">--orig</span></tt>, <tt class="docutils literal"><span class="pre">--rewrite</span></tt>, rewrite key.</li>
+<li>follow aof modification like <tt class="docutils literal">tail <span class="pre">-f</span></tt></li>
+<li><tt class="docutils literal"><span class="pre">--check</span></tt> check any command not supported</li>
+</ol>
+<p>问题:</p>
+<ol class="arabic simple">
+<li>如果解析到multi(后面可能有一个回滚, 不能简单丢弃multi)</li>
+<li>测试可以通过回回放一个现有库, 然后对比</li>
+</ol>
+</div>
+<div class="section" id="tail-f">
+<h3><a class="toc-backref" href="#id23">4.2&nbsp;&nbsp;&nbsp;tail -f</a></h3>
+<p>这里要实现tail -f 的功能, 需要一个readline 的功能(因为fgets在EOF的时候直接返回, 不能用fgets)</p>
+<p>对 <tt class="docutils literal">read</tt> 做了几个测试, 发现:</p>
+<ul class="simple">
+<li>如果fd是文件, 文件在变化的情况下, 用read() 系统调用, 如果到达文件尾, 会直接返回, 而不会等待.</li>
+<li>如果fd是网络, read() 如果没有可读, 就会阻塞.</li>
+</ul>
+<div class="section" id="fdselect">
+<h4><a class="toc-backref" href="#id24">4.2.1&nbsp;&nbsp;&nbsp;尝试在fd上做select</a></h4>
+<p>tail -f 有这样的逻辑, 但是我试了, select 就算在文件尾也总是返回可读. 查了一下:</p>
+<p><a class="reference external" href="http://stackoverflow.com/questions/11901884/how-can-select-wait-on-regular-file-descriptors-non-sockets">http://stackoverflow.com/questions/11901884/how-can-select-wait-on-regular-file-descriptors-non-sockets</a></p>
+<pre class="literal-block">
+Disk files are always ready to read (but the read might return 0 bytes if you're already at the end of the file), so you can't use select() on a disk file to find out when new data is added to the file.
+</pre>
+<p>POSIX says:</p>
+<pre class="literal-block">
+File descriptors associated with regular files shall always select true for ready to read, ready to write, and error conditions.
+</pre>
+</div>
+<div class="section" id="poll">
+<h4><a class="toc-backref" href="#id25">4.2.2&nbsp;&nbsp;&nbsp;用poll 呢?</a></h4>
+<p>这里有一个详细的测试: <a class="reference external" href="http://www.greenend.org.uk/rjk/tech/poll.html">http://www.greenend.org.uk/rjk/tech/poll.html</a></p>
+<p>依然显示 对于regular file, 在到达EOF时, poll总是返回POLLIN.</p>
+<p>这就是说, select/poll 只对 pipes/sockets 这样会发生阻塞读写的介质有效.</p>
+</div>
+<div class="section" id="id5">
+<h4><a class="toc-backref" href="#id26">4.2.3&nbsp;&nbsp;&nbsp;tail -f 怎么做的</a></h4>
+<p>看源码:</p>
+<ul class="simple">
+<li>coreutils-8.12/src/tail.c 用了 <tt class="docutils literal">inotify</tt></li>
+<li>coreutils-8.12/src/tail.c 在用pipe方式 的时候(作为另一个程序的输出的下游), 用了 <tt class="docutils literal">select</tt></li>
+<li>比较老的版本(7.4) 用sleep</li>
+</ul>
+<p>用sleep的:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning/langtest/c$ tail --version
+tail (GNU coreutils) 7.4
+
+ning&#64;ning-laptop:~/idning/langtest/c$ strace tail -f common.h
+execve(&quot;/usr/bin/tail&quot;, [&quot;tail&quot;, &quot;-f&quot;, &quot;common.h&quot;], [/* 69 vars */]) = 0
+brk(0)                                  = 0xd1a000
+...
+nanosleep({1, 0}, NULL)                 = 0
+fstat(3, {st_mode=S_IFREG|0644, st_size=635, ...}) = 0
+nanosleep({1, 0}, NULL)                 = 0
+fstat(3, {st_mode=S_IFREG|0644, st_size=635, ...}) = 0
+nanosleep({1, 0}, NULL)                 = 0
+fstat(3, {st_mode=S_IFREG|0644, st_size=635, ...}) = 0
+</pre>
+<p>用sleep的代码:</p>
+<pre class="literal-block">
+/* Tail NFILES files forever, or until killed.
+   The pertinent information for each file is stored in an entry of F.
+   Loop over each of them, doing an fstat to see if they have changed size,
+   and an occasional open/fstat to see if any dev/ino pair has changed.
+   If none of them have changed size in one iteration, sleep for a
+   while and try again.  Continue until the user interrupts us.  */
+
+
+static void tail_forever (struct File_spec *f, int nfiles, double sleep_interval)
+{
+
+    ...
+
+    if (fstat (fd, &amp;stats) != 0)
+    {
+      f[i].fd = -1;
+      f[i].errnum = errno;
+      error (0, errno, &quot;%s&quot;, name);
+      continue;
+    }
+
+      if (f[i].mode == stats.st_mode
+      &amp;&amp; (! S_ISREG (stats.st_mode) || f[i].size == stats.st_size)
+      &amp;&amp; timespec_cmp (f[i].mtime, get_stat_mtime (&amp;stats)) == 0)
+    {
+        //not change
+    }
+    change
+</pre>
+</div>
+<div class="section" id="id6">
+<h4><a class="toc-backref" href="#id27">4.2.4&nbsp;&nbsp;&nbsp;小结</a></h4>
+<p>通过sleep实现tail -f</p>
+</div>
+</div>
+<div class="section" id="twemproxypipeline">
+<h3><a class="toc-backref" href="#id28">4.3&nbsp;&nbsp;&nbsp;twemproxy对pipeline支持不好和性能</a></h3>
+<p><tt class="docutils literal"><span class="pre">redis-cli</span> <span class="pre">--pipe</span></tt> 是使用pipeline 模式的, 只要server端可写, 就会不停的写,</p>
+<p>但是twemproxy总是尽最大能力的读, 把消息放在内存中, 这样消息都会堆在twemproxy, 并且超时.</p>
+<p>这个问题的讨论见: <a class="reference external" href="https://github.com/twitter/twemproxy/issues/203">https://github.com/twitter/twemproxy/issues/203</a></p>
+<p>解决方法:</p>
+<ol class="arabic">
+<li><p class="first">safe模式, 一条一条写，写成功再写下一条.</p>
+</li>
+<li><dl class="first docutils">
+<dt>batch模式, 为了保证尽量写成功, 此时需要</dt>
+<dd><ul class="first last">
+<li><p class="first">加大twemproxy 的timeout.</p>
+</li>
+<li><dl class="first docutils">
+<dt>有某种block机制, 确保不会有大量请求堆在twemproxy.</dt>
+<dd><p class="first last">比如客户端计数, 发出的req - 收到的resp &lt; 1024</p>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<div class="section" id="safe">
+<h4><a class="toc-backref" href="#id29">4.3.1&nbsp;&nbsp;&nbsp;safe模式</a></h4>
+<p>用redisCommandArgv:</p>
+<pre class="literal-block">
+while(1){
+    msg = readMsg(fp);
+    reply = redisCommandArgv(context, msg-&gt;argc, (const char **)msg-&gt;argv, msg-&gt;argvlen);
+    freeReplyObject(reply);
+    freeMsg(msg);
+}
+</pre>
+<p>发现性能不好: 后端为twemproxy时大约7000/s, 后端为redis大约10000/s.</p>
+</div>
+<div class="section" id="id7">
+<h4><a class="toc-backref" href="#id30">4.3.2&nbsp;&nbsp;&nbsp;测试几种方式的性能</a></h4>
+<div class="section" id="bench">
+<h5><a class="toc-backref" href="#id31">4.3.2.1&nbsp;&nbsp;&nbsp;阻塞式简单bench</a></h5>
+<p>直接调用redisCommand 性能如何:</p>
+<pre class="literal-block">
+$ cat bench1.c
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+
+#include &quot;hiredis.h&quot;
+
+int main(void) {
+    unsigned int i;
+    redisContext *c;
+    redisReply *reply;
+
+    struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+    c = redisConnectWithTimeout((char*)&quot;127.0.0.5&quot;, 22000, timeout);
+    if (c-&gt;err) {
+        printf(&quot;Connection error: %s\n&quot;, c-&gt;errstr);
+        exit(1);
+    }
+    for(i=0; i&lt;100*1000; i++){
+        reply = redisCommand(c,&quot;SET %s %s&quot;, &quot;foo&quot;, &quot;hello world&quot;);
+        freeReplyObject(reply);
+    }
+    return 0;
+}
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ cc bench1.c -I ./ -L ./ -l hiredis   (或cc bench1.c libhiredis.a)
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ time ./a.out
+
+real        0m6.945s
+user        0m0.710s
+sys 0m1.710s
+</pre>
+<p>100*1000/6.9 = 1.4w/s</p>
+<div class="section" id="gprof">
+<h6><a class="toc-backref" href="#id32">4.3.2.1.1&nbsp;&nbsp;&nbsp;gprof结果</a></h6>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ cc bench1.c libhiredis.a -pg
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ ./a.out
+$ gprof  ./a.out ./gmon.out  | vim -
+
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls  Ts/call  Ts/call  name
+ 22.23      0.04     0.04                             redisReaderGetReply
+ 16.67      0.07     0.03                             redisvFormatCommand
+ 11.12      0.09     0.02                             redisGetReply
+ 11.12      0.11     0.02                             sdscatlen
+  5.56      0.12     0.01                             main
+  5.56      0.13     0.01                             redisBufferRead
+  5.56      0.14     0.01                             redisBufferWrite
+  5.56      0.15     0.01                             sdsIncrLen
+  5.56      0.16     0.01                             sdsempty
+  5.56      0.17     0.01                             sdsnewlen
+  2.78      0.18     0.01                             sdsMakeRoomFor
+  2.78      0.18     0.01                             sdsRemoveFreeSpace
+</pre>
+<p>总共7s, 为啥self seconds 加起来不是7s</p>
+</div>
+<div class="section" id="write-read">
+<h6><a class="toc-backref" href="#id33">4.3.2.1.2&nbsp;&nbsp;&nbsp;阻塞改为直接write/read</a></h6>
+<p>依然很慢:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ cat bench3.c
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;assert.h&gt;
+
+#include &quot;hiredis.h&quot;
+
+int main(void) {
+    unsigned int i;
+    redisContext *c;
+    redisReply *reply;
+    int ret;
+
+    struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+    c = redisConnectWithTimeout((char*)&quot;127.0.0.5&quot;, 22000, timeout);
+    if (c-&gt;err) {
+        printf(&quot;Connection error: %s\n&quot;, c-&gt;errstr);
+        exit(1);
+    }
+
+    char *cmd = &quot;*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$9\r\nbarbarbar\r\n&quot;;
+    int len = strlen(cmd);
+
+    char buf[1024];
+    for(i=0; i&lt;100*1000; i++){
+        ret = write(c-&gt;fd, cmd, len);
+        assert(len == ret);
+
+        /*fprintf(stderr, &quot;read\n&quot;);*/
+        ret = read(c-&gt;fd, buf, 5);
+        assert(5 == ret);
+
+        buf[5] = 0;
+        /*fprintf(stderr, &quot;%d: %s\n&quot;, i, buf);*/
+        /*assert(0 == strcmp(buf, &quot;+OK\r\n&quot;));*/
+    }
+    return 0;
+}
+</pre>
+<p>还是要5s. (2w/s)</p>
+</div>
+<div class="section" id="pipeline">
+<h6><a class="toc-backref" href="#id34">4.3.2.1.3&nbsp;&nbsp;&nbsp;改成pipeline:</a></h6>
+<pre class="literal-block">
+for(i=0; i&lt;100*1000; i++){
+    ret = twrite(c-&gt;fd, cmd, len);
+    assert(len == ret);
+
+}
+for(i=0; i&lt;100*1000; i++){
+    ret = tread(c-&gt;fd, buf, 5);
+    assert(5 == ret);
+}
+</pre>
+<p>只需要0.4s</p>
+</div>
+</div>
+<div class="section" id="id8">
+<h5><a class="toc-backref" href="#id35">4.3.2.2&nbsp;&nbsp;&nbsp;异步bench</a></h5>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ cat bench2.c
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;signal.h&gt;
+#include &quot;hiredis.h&quot;
+#include &quot;async.h&quot;
+#include &quot;adapters/ae.h&quot;
+
+/* Put event loop in the global scope, so it can be explicitly stopped */
+static aeEventLoop *loop;
+
+void setCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    if (reply == NULL) return;
+    int * pi = (int*) privdata;
+
+    printf(&quot;argv[%d]: %s\n&quot;, *pi, reply-&gt;str);
+
+    (*pi)++;
+    if (*pi &gt; 100*1000)
+        exit(0);
+
+    redisAsyncCommand(c, setCallback, (char*)pi, &quot;SET thekey %s&quot;, &quot;xxxxxxxxxxxxxx&quot;);
+}
+
+void connectCallback(const redisAsyncContext *c, int status) {
+    if (status != REDIS_OK) {
+        printf(&quot;Error: %s\n&quot;, c-&gt;errstr);
+        return;
+    }
+    printf(&quot;Connected...\n&quot;);
+}
+void disconnectCallback(const redisAsyncContext *c, int status) {
+    if (status != REDIS_OK) {
+        printf(&quot;Error: %s\n&quot;, c-&gt;errstr);
+        return;
+    }
+    printf(&quot;Disconnected...\n&quot;);
+}
+
+int main() {
+    signal(SIGPIPE, SIG_IGN);
+
+    redisAsyncContext *c = redisAsyncConnect(&quot;127.0.0.1&quot;, 6379);
+    if (c-&gt;err) {
+        /* Let *c leak for now... */
+        printf(&quot;Error: %s\n&quot;, c-&gt;errstr);
+        return 1;
+    }
+
+    loop = aeCreateEventLoop(1000);
+    redisAeAttach(loop, c);
+    redisAsyncSetConnectCallback(c,connectCallback);
+    redisAsyncSetDisconnectCallback(c,disconnectCallback);
+
+    int i = 0;
+    redisAsyncCommand(c, setCallback, (char*)&amp;i, &quot;SET thekey %s&quot;, &quot;xxxxxxxxxxxxxx&quot;);
+    aeMain(loop);
+    return 0;
+}
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ cc -I../../src ../../src/ae.o ../../src/zmalloc.o bench2.c libhiredis.a ../jemalloc/lib/libjemalloc.a -lpthread
+</pre>
+<p>still 6s.(差不多还是2w/s)</p>
+</div>
+<div class="section" id="redis-benchmark">
+<h5><a class="toc-backref" href="#id36">4.3.2.3&nbsp;&nbsp;&nbsp;redis-benchmark 的实现</a></h5>
+<p>异步.</p>
+<p>创建一些client, 每个client注册如下事件:</p>
+<blockquote>
+aeCreateFileEvent(config.el,c-&gt;context-&gt;fd,AE_WRITABLE,writeHandler,c);</blockquote>
+<p>writeHandler:</p>
+<pre class="literal-block">
+static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+    client c = privdata;
+    REDIS_NOTUSED(el);
+    REDIS_NOTUSED(fd);
+    REDIS_NOTUSED(mask);
+
+    /* Initialize request when nothing was written. */
+    if (c-&gt;written == 0) {
+        /* Enforce upper bound to number of requests. */
+        if (config.requests_issued++ &gt;= config.requests) {
+            freeClient(c);
+            return;
+        }
+
+        /* Really initialize: randomize keys and set start time. */
+        if (config.randomkeys) randomizeClientKey(c);
+        c-&gt;start = ustime();
+        c-&gt;latency = -1;
+    }
+
+    if (sdslen(c-&gt;obuf) &gt; c-&gt;written) {
+        void *ptr = c-&gt;obuf+c-&gt;written;
+        int nwritten = write(c-&gt;context-&gt;fd,ptr,sdslen(c-&gt;obuf)-c-&gt;written);
+        if (nwritten == -1) {
+            if (errno != EPIPE)
+                fprintf(stderr, &quot;Writing to socket: %s\n&quot;, strerror(errno));
+            freeClient(c);
+            return;
+        }
+        c-&gt;written += nwritten;
+        if (sdslen(c-&gt;obuf) == c-&gt;written) {
+            aeDeleteFileEvent(config.el,c-&gt;context-&gt;fd,AE_WRITABLE);
+            aeCreateFileEvent(config.el,c-&gt;context-&gt;fd,AE_READABLE,readHandler,c);
+        }
+    }
+}
+</pre>
+<p>每写成功一个消息, 去掉AE_WRITABLE, 加上AE_READABLE:</p>
+<pre class="literal-block">
+static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+    if (sdslen(c-&gt;obuf) == c-&gt;written) {
+        aeDeleteFileEvent(config.el,c-&gt;context-&gt;fd,AE_WRITABLE);
+        aeCreateFileEvent(config.el,c-&gt;context-&gt;fd,AE_READABLE,readHandler,c);
+    }
+}
+</pre>
+<p>在read完之后, 重新用激活可写事件:</p>
+<pre class="literal-block">
+if (c-&gt;pending == 0) {
+    clientDone(c); //里面会加AE_WRITABLE
+    break;
+}
+</pre>
+<p>redis-benchmark 默认是不用pipeline 的. 写一个, 读一个, 但是是用异步api.</p>
+<p>如果pipeline模式benchmark, 它在准备数据的时候就一次性把多个命令写道obuf里面去:</p>
+<pre class="literal-block">
+for (j = 0; j &lt; config.pipeline; j++)
+    c-&gt;obuf = sdscatlen(c-&gt;obuf,cmd,len);
+c-&gt;pending = config.pipeline;
+</pre>
+<p>发现用redis-benchmark性能能达到5w左右, 后来发现是因为redis-benchmark默认-c 50, 就是50个client并发, 如果用-c 1的话, 性能还是比较差:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis/src$ time redis-benchmark -h 127.0.0.5 -p 22000 -c 1 -t set -n 100000
+====== SET ======
+  100000 requests completed in 8.64 seconds
+  1 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+99.99% &lt;= 1 milliseconds
+100.00% &lt;= 2 milliseconds
+100.00% &lt;= 3 milliseconds
+100.00% &lt;= 7 milliseconds
+11579.44 requests per second
+
+
+
+real        0m8.651s
+user        0m0.570s
+sys 0m2.390s
+</pre>
+<p>大约8s, (1.2w/s)</p>
+</div>
+</div>
+<div class="section" id="id9">
+<h4><a class="toc-backref" href="#id37">4.3.3&nbsp;&nbsp;&nbsp;小结</a></h4>
+<ol class="arabic simple">
+<li>为什么这里的非阻塞调用benchmark性能很差?</li>
+<li>问什么redis-benmark的写法, 性能好?</li>
+</ol>
+<p>三种方式:</p>
+<ol class="arabic simple">
+<li>阻塞: 慢</li>
+<li>自己的非阻塞写法: 慢</li>
+<li>redis-benchmark写法: 慢</li>
+<li>redis-cli的pipe写法: 快</li>
+</ol>
+<p>TODO: <strong>这里的原因, 还是不清楚..</strong></p>
+<p>难道是, 如果read系统调用时, 数据准备好, 则很快, 没准备好, 则很慢.</p>
+<p>同样都是发送, 等待响应, 解析响应.</p>
+<p>貌似只能理解为用阻塞方式等待响应很耗时.</p>
+<p>这个问题, 可以把服务器抽象为一个简单的echo-server, 此时客户端一问一答的形式, 最大能达到多大的qps.</p>
+<p>用strace发现一个共同点: 2,3都是用epoll异步, 一次epoll_wait 做一次write, 在epoll_wait, 再一次read:</p>
+<pre class="literal-block">
+epoll_ctl(3, EPOLL_CTL_MOD, 4, {EPOLLIN, {u32=4, u64=4}}) = 0
+epoll_ctl(3, EPOLL_CTL_DEL, 4, {0, {u32=4, u64=4}}) = 0
+epoll_ctl(3, EPOLL_CTL_ADD, 4, {EPOLLOUT, {u32=4, u64=4}}) = 0
+epoll_wait(3, {{EPOLLOUT, {u32=4, u64=4}}}, 10240, 240) = 1
+write(4, &quot;*3\r\n$3\r\nSET\r\n$16\r\nkey:__rand_int&quot;..., 45) = 45
+epoll_ctl(3, EPOLL_CTL_DEL, 4, {0, {u32=4, u64=4}}) = 0
+epoll_ctl(3, EPOLL_CTL_ADD, 4, {EPOLLIN, {u32=4, u64=4}}) = 0
+epoll_wait(3, {{EPOLLIN, {u32=4, u64=4}}}, 10240, 239) = 1
+read(4, &quot;+OK\r\n&quot;, 16384)               = 5
+</pre>
+<p>4是用pool, 而且一个pool就能做一次read, 一次write:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis/src$ strace ./redis-cli  -h 127.0.0.5 -p 22000 --replay ~/Desktop/t/appendonly.aof
+poll([{fd=3, events=POLLIN|POLLOUT}], 1, 1000) = 1 ([{fd=3, revents=POLLIN|POLLOUT}])
+read(3, &quot;+OK\r\n&quot;, 16384)               = 5
+read(3, 0x7fff7d548f10, 16384)          = -1 EAGAIN (Resource temporarily unavailable)
+write(3, &quot;*3\r\n$3\r\nSET\r\n$13\r\nkkk-100000756\r&quot;..., 53) = 53
+poll([{fd=3, events=POLLIN|POLLOUT}], 1, 1000) = 1 ([{fd=3, revents=POLLIN|POLLOUT}])
+read(3, &quot;+OK\r\n&quot;, 16384)               = 5
+read(3, 0x7fff7d548f10, 16384)          = -1 EAGAIN (Resource temporarily unavailable)
+write(3, &quot;*3\r\n$3\r\nSET\r\n$13\r\nkkk-100000757\r&quot;..., 53) = 53
+</pre>
+<div class="section" id="id10">
+<h5><a class="toc-backref" href="#id38">4.3.3.1&nbsp;&nbsp;&nbsp;具体实现</a></h5>
+<p>当前我的写法相当于长度为1的pipe, 本质和 <tt class="docutils literal"><span class="pre">redis-cli</span></tt> 写法一样. 性能挺好(5w/s)</p>
+</div>
+<div class="section" id="update-2014-03-13-10-13-19">
+<h5><a class="toc-backref" href="#id39">4.3.3.2&nbsp;&nbsp;&nbsp;update &#64;2014-03-13 10:13:19</a></h5>
+<p>后来发现, 我当时写的--replay 有bug, 相当于用了长度为 100左右的pipe. 所以表现的性能很好. 代码是在这个commit:</p>
+<p><a class="reference external" href="https://github.com/idning/redis/commit/b122ab0c749f2a93bb514ae07ba73739690ab46e">https://github.com/idning/redis/commit/b122ab0c749f2a93bb514ae07ba73739690ab46e</a></p>
+<p>修改了这个bug后:</p>
+<p><a class="reference external" href="https://github.com/idning/redis/commit/b956e2cf92feb510f7d1a2f158a8eafe907d9ae1">https://github.com/idning/redis/commit/b956e2cf92feb510f7d1a2f158a8eafe907d9ae1</a></p>
+<p>发现如果定义pipe长度是1, 性能就在1w左右. 改为10, 就在5w左右(laptop测试)</p>
+<p>如果用线上机器:</p>
+<pre class="literal-block">
+pipesize    1    10  100  1000
+loclhost:   1w   4w  5w   5w
+online:     0.3  1w  10w  12w
+</pre>
+<p>线上pipeline为1时, 只有0.3, 原因是线上网络RTT大, (这么看每个请求3ms), 用的是压力较大的线上机器.</p>
+</div>
+</div>
+</div>
+<div class="section" id="id11">
+<h3><a class="toc-backref" href="#id40">4.4&nbsp;&nbsp;&nbsp;其它</a></h3>
+<div class="section" id="clean">
+<h4><a class="toc-backref" href="#id41">4.4.1&nbsp;&nbsp;&nbsp;clean脚本</a></h4>
+<p>需要一个脚本, 如果重放到一半出错, 需要清除所有前缀为xxx的key</p>
+</div>
+</div>
+</div>
+<div class="section" id="id12">
+<h2><a class="toc-backref" href="#id42">5&nbsp;&nbsp;&nbsp;小结</a></h2>
+<p>code:</p>
+<pre class="literal-block">
+https://github.com/idning/redis/blob/replay/src/redis-cli.c
+https://github.com/cen-li/redis/blob/redis-2.8.3_replay-aof/src/redis-replay-aof.c
+</pre>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>
