@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>redis-data-migrate</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/redis-data-migrate.html">2014-11-02 11:41:38</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id7">1&nbsp;&nbsp;&nbsp;为什么要设计这样的扩容方式</a></li>
+<li><a class="reference internal" href="#id2" id="id8">2&nbsp;&nbsp;&nbsp;怎么实现</a></li>
+<li><a class="reference internal" href="#id3" id="id9">3&nbsp;&nbsp;&nbsp;问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#aof" id="id10">3.1&nbsp;&nbsp;&nbsp;aof不是幂等的</a></li>
+<li><a class="reference internal" href="#id4" id="id11">3.2&nbsp;&nbsp;&nbsp;切流量时的不一致</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id5" id="id12">4&nbsp;&nbsp;&nbsp;实现</a><ul class="auto-toc">
+<li><a class="reference internal" href="#redis-mgr" id="id13">4.1&nbsp;&nbsp;&nbsp;redis-mgr 集成</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id6" id="id14">5&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</div>
+<p>在 <a class="reference external" href="/redis-instance-migrate.html">这篇blog</a> 里面提到2种扩容:</p>
+<ol class="arabic simple">
+<li>一个是 redis-mgr 中redis实例的迁移, 迁到一个内存大的机器</li>
+<li>另外一个是新搭建集群, 把数据迁移过去.</li>
+</ol>
+<p>这里考虑第二种思路.</p>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id7">1&nbsp;&nbsp;&nbsp;为什么要设计这样的扩容方式</a></h2>
+<ol class="arabic">
+<li><p class="first">简单可依赖</p>
+</li>
+<li><dl class="first docutils">
+<dt>从架构上, 这不需要像redis-cluster那样复杂的重新设计, 用现有的redis就可以完成扩容,</dt>
+<dd><ul class="first last simple">
+<li>不需要升级redis服务端, 也不需要升级client端(redis-cluster需要client支持)</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>这套方案可以用于:</dt>
+<dd><ul class="first last simple">
+<li>从单机redis迁移到 redis-mgr / twemproxy 管理的 集群.</li>
+<li>从一种集群架构迁移到另一种, 比如迁移到官方redis3.0 集群</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ol>
+<p>总之, 就算redis3.0 的cluster 成熟以后, 还是需要这样的一套迁移方案.</p>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id8">2&nbsp;&nbsp;&nbsp;怎么实现</a></h2>
+<p>mysql 的主从同步是基于binlog, redis主从是一个op buf, mongo主从同步是oplog.</p>
+<p>redis里的aof就是类似binlog, 记录每个操作的log</p>
+<p>所以, 我们可以利用aof, 把它当作binlog, 用于做迁移, 具体的迁移我们在mysql, mongo里面都多次用过了, 分三步:</p>
+<ol class="arabic simple">
+<li>迁移基准数据</li>
+<li>追增量</li>
+<li>追上后, 上层切流量.</li>
+</ol>
+<p>redis的aof包含了基准数据和增量, 所以我们只需要把旧集群中redis实例上的aof重放到新集群, 重放追上时修改上层, 把入口换为新集群即可.</p>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id9">3&nbsp;&nbsp;&nbsp;问题</a></h2>
+<div class="section" id="aof">
+<h3><a class="toc-backref" href="#id10">3.1&nbsp;&nbsp;&nbsp;aof不是幂等的</a></h3>
+<p>aof不像binlog那样可以重做 <tt class="docutils literal">redolog</tt>, binlog 记录的操作是 <tt class="docutils literal">幂等(idempotent)</tt> 的, 意味着如果失败了, 可以重做一次.</p>
+<p>这是因为binlog记录的是操作的结果, 比如:</p>
+<pre class="literal-block">
+op                  log
+---------------------------
+set x 0             x = 0
+incr x              x = 1
+incr x              x = 2
+</pre>
+<p>但是redis的aof记录的是操作:</p>
+<pre class="literal-block">
+op                  log
+---------------------------
+set x 0             x = 0
+incr x              incr x
+incr x              incr x
+</pre>
+<p>这就是说, 如果我们在重放aof的过程中出错(比如网络中断):</p>
+<ul class="simple">
+<li>不能继续(不好找到上次同步到哪),</li>
+<li>也不能重新重放一次, (incr两次, 值就错了)</li>
+</ul>
+<p>只能清除目标集群的数据重新迁移一次 ( <tt class="docutils literal"><span class="pre">redis-mgr</span></tt> 里面有 <tt class="docutils literal"><span class="pre">clean-keys</span></tt> 命令按照前缀清除)</p>
+<p>不过, 好在redis单实例的afo数据都不大, 一般10G左右, 重放大约20min就能完成, 出错的概率也很小. (这也是redis可以这样做, 而其他持久存储比如mysql, mongo必须支持断点同步的原因)</p>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id11">3.2&nbsp;&nbsp;&nbsp;切流量时的不一致</a></h3>
+<p>前面说的步骤是:</p>
+<ol class="arabic simple">
+<li>追aof</li>
+<li>追上后, 切流量.</li>
+</ol>
+<p>追aof是一个动态的过程, 追上后, 新的写操作马上就来, 所以这里追上的意思是说, 新的写入马上会被消化掉.</p>
+<p>但是考虑这样一种场景:</p>
+<p>假设client上做对x做两次set(一个机器上做两次, 或者两个app-server上分别做):</p>
+<pre class="literal-block">
+client          old_cluster         new_cluster
+-----------------------------------------------
+set x 1(a)      set x 1(客户操作)
+-----------------------------------------------&gt; 切流量到new_cluster
+set x 2(b)                          set x 2 (客户操作)
+                                    set x 1 (b 操作被重放到 new_cluster)
+</pre>
+<p>a操作还没同步到new_cluster, 流量就已经切到了new_cluster, 这时候对同一个key的更新, 会被老集群上的操作覆盖掉.</p>
+<p>解决:</p>
+<ul class="simple">
+<li>这个短暂的不一致, 对多数业务, 是能容忍的(很少有业务会高速更新同一个key)</li>
+<li>如果非要达到一致, 当追aof追上后, app-server停写, 等待彻底追上(此时老集群的aof不会有更新了), 然后再切流量.</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id5">
+<h2><a class="toc-backref" href="#id12">4&nbsp;&nbsp;&nbsp;实现</a></h2>
+<p>有两份代码:</p>
+<ul class="simple">
+<li>推荐 <a class="reference external" href="https://github.com/cen-li/redis/blob/redis-2.8.3_replay-aof/src/redis-replay-aof.c">https://github.com/cen-li/redis/blob/redis-2.8.3_replay-aof/src/redis-replay-aof.c</a></li>
+<li>写着玩: <a class="reference external" href="https://github.com/idning/redis/blob/replay/src/redis-cli.c">https://github.com/idning/redis/blob/replay/src/redis-cli.c</a></li>
+</ul>
+<p>原理就是不断的看aof文件是否有更新, 有更新的话写到目标集群, 支持 按前缀过滤, 加前缀, 换前缀之类的操作.</p>
+<div class="section" id="redis-mgr">
+<h3><a class="toc-backref" href="#id13">4.1&nbsp;&nbsp;&nbsp;redis-mgr 集成</a></h3>
+<p><tt class="docutils literal"><span class="pre">redis-mgr</span></tt> 里面集成了一个命令来方便操作:</p>
+<pre class="literal-block">
+#从cluster1迁移到cluster5
+./bin/deploy.py cluster1 replay_aof cluster5 'prefix_'
+</pre>
+</div>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id14">5&nbsp;&nbsp;&nbsp;小结</a></h2>
+<p>文档: <a class="reference external" href="https://github.com/idning/redis-mgr/blob/master/doc/scalablity.rst">https://github.com/idning/redis-mgr/blob/master/doc/scalablity.rst</a></p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

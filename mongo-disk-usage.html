@@ -47,7 +47,10 @@ tags: <a href="/tag/all.html">all</a> <a href="/tag/mongo.html">mongo</a> </div>
 		<div><div class="contents topic" id="table-of-contents">
 <p class="topic-title first">Table of Contents</p>
 <ul class="auto-toc simple">
-<li><a class="reference internal" href="#id1" id="id2">1&nbsp;&nbsp;&nbsp;结论</a></li>
+<li><a class="reference internal" href="#id1" id="id2">1&nbsp;&nbsp;&nbsp;结论</a><ul class="auto-toc">
+<li><a class="reference internal" href="#mongolong" id="id3">1.1&nbsp;&nbsp;&nbsp;mongo中如何存long</a></li>
+</ul>
+</li>
 </ul>
 </div>
 <p>测试代码:</p>
@@ -208,6 +211,12 @@ NOTICE: 1000 { &quot;xxxxxxxxx&quot; : 1 } record_size:44.012 index_size: NaN Na
 </dl>
 </li>
 </ol>
+<div class="section" id="mongolong">
+<h3><a class="toc-backref" href="#id3">1.1&nbsp;&nbsp;&nbsp;mongo中如何存long</a></h3>
+<p>mongo中所有的数字都是都是按照 double (8 byte) 存的,</p>
+<p>int64 的范围中, 2^52 以下表达为double是不损失精度的, 2^52以上, 表达为double就会丢失精度, 所以如果需要存int64, 就需要显示使用NumberLong(&quot;2090845886852&quot;)</p>
+<p>注意int64是带符号的.</p>
+</div>
 </div>
 </div>
 		<div>

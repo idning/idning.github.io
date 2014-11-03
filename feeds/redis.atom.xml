@@ -1,5 +1,141 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>ning</title><link href="/" rel="alternate"></link><link href="http://idning.github.io/feeds/redis.atom.xml" rel="self"></link><id>/</id><updated>2014-09-29T17:39:16+08:00</updated><entry><title>redis设计与实现 笔记</title><link href="/book-redis-implement.html" rel="alternate"></link><updated>2014-09-29T17:39:16+08:00</updated><author><name>ning</name></author><id>tag:,2014-09-29:book-redis-implement.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>ning</title><link href="/" rel="alternate"></link><link href="http://idning.github.io/feeds/redis.atom.xml" rel="self"></link><id>/</id><updated>2014-11-02T11:41:38+08:00</updated><entry><title>redis-data-migrate</title><link href="/redis-data-migrate.html" rel="alternate"></link><updated>2014-11-02T11:41:38+08:00</updated><author><name>ning</name></author><id>tag:,2014-11-02:redis-data-migrate.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id7"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;为什么要设计这样的扩容方式&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id8"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;怎么实现&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id9"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#aof" id="id10"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;aof不是幂等的&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id11"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;切流量时的不一致&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id12"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;实现&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-mgr" id="id13"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis-mgr 集成&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id14"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;在 &lt;a class="reference external" href="/redis-instance-migrate.html"&gt;这篇blog&lt;/a&gt; 里面提到2种扩容:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;一个是 redis-mgr 中redis实例的迁移, 迁到一个内存大的机器&lt;/li&gt;
+&lt;li&gt;另外一个是新搭建集群, 把数据迁移过去.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这里考虑第二种思路.&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;为什么要设计这样的扩容方式&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;简单可依赖&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;从架构上, 这不需要像redis-cluster那样复杂的重新设计, 用现有的redis就可以完成扩容,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不需要升级redis服务端, 也不需要升级client端(redis-cluster需要client支持)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;这套方案可以用于:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;从单机redis迁移到 redis-mgr / twemproxy 管理的 集群.&lt;/li&gt;
+&lt;li&gt;从一种集群架构迁移到另一种, 比如迁移到官方redis3.0 集群&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;总之, 就算redis3.0 的cluster 成熟以后, 还是需要这样的一套迁移方案.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id8"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;怎么实现&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;mysql 的主从同步是基于binlog, redis主从是一个op buf, mongo主从同步是oplog.&lt;/p&gt;
+&lt;p&gt;redis里的aof就是类似binlog, 记录每个操作的log&lt;/p&gt;
+&lt;p&gt;所以, 我们可以利用aof, 把它当作binlog, 用于做迁移, 具体的迁移我们在mysql, mongo里面都多次用过了, 分三步:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;迁移基准数据&lt;/li&gt;
+&lt;li&gt;追增量&lt;/li&gt;
+&lt;li&gt;追上后, 上层切流量.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;redis的aof包含了基准数据和增量, 所以我们只需要把旧集群中redis实例上的aof重放到新集群, 重放追上时修改上层, 把入口换为新集群即可.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id9"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="aof"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;aof不是幂等的&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;aof不像binlog那样可以重做 &lt;tt class="docutils literal"&gt;redolog&lt;/tt&gt;, binlog 记录的操作是 &lt;tt class="docutils literal"&gt;幂等(idempotent)&lt;/tt&gt; 的, 意味着如果失败了, 可以重做一次.&lt;/p&gt;
+&lt;p&gt;这是因为binlog记录的是操作的结果, 比如:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+op                  log
+---------------------------
+set x 0             x = 0
+incr x              x = 1
+incr x              x = 2
+&lt;/pre&gt;
+&lt;p&gt;但是redis的aof记录的是操作:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+op                  log
+---------------------------
+set x 0             x = 0
+incr x              incr x
+incr x              incr x
+&lt;/pre&gt;
+&lt;p&gt;这就是说, 如果我们在重放aof的过程中出错(比如网络中断):&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;不能继续(不好找到上次同步到哪),&lt;/li&gt;
+&lt;li&gt;也不能重新重放一次, (incr两次, 值就错了)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;只能清除目标集群的数据重新迁移一次 ( &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;redis-mgr&lt;/span&gt;&lt;/tt&gt; 里面有 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;clean-keys&lt;/span&gt;&lt;/tt&gt; 命令按照前缀清除)&lt;/p&gt;
+&lt;p&gt;不过, 好在redis单实例的afo数据都不大, 一般10G左右, 重放大约20min就能完成, 出错的概率也很小. (这也是redis可以这样做, 而其他持久存储比如mysql, mongo必须支持断点同步的原因)&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id11"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;切流量时的不一致&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;前面说的步骤是:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;追aof&lt;/li&gt;
+&lt;li&gt;追上后, 切流量.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;追aof是一个动态的过程, 追上后, 新的写操作马上就来, 所以这里追上的意思是说, 新的写入马上会被消化掉.&lt;/p&gt;
+&lt;p&gt;但是考虑这样一种场景:&lt;/p&gt;
+&lt;p&gt;假设client上做对x做两次set(一个机器上做两次, 或者两个app-server上分别做):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+client          old_cluster         new_cluster
+-----------------------------------------------
+set x 1(a)      set x 1(客户操作)
+-----------------------------------------------&amp;gt; 切流量到new_cluster
+set x 2(b)                          set x 2 (客户操作)
+                                    set x 1 (b 操作被重放到 new_cluster)
+&lt;/pre&gt;
+&lt;p&gt;a操作还没同步到new_cluster, 流量就已经切到了new_cluster, 这时候对同一个key的更新, 会被老集群上的操作覆盖掉.&lt;/p&gt;
+&lt;p&gt;解决:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;这个短暂的不一致, 对多数业务, 是能容忍的(很少有业务会高速更新同一个key)&lt;/li&gt;
+&lt;li&gt;如果非要达到一致, 当追aof追上后, app-server停写, 等待彻底追上(此时老集群的aof不会有更新了), 然后再切流量.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id12"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;实现&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;有两份代码:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;推荐 &lt;a class="reference external" href="https://github.com/cen-li/redis/blob/redis-2.8.3_replay-aof/src/redis-replay-aof.c"&gt;https://github.com/cen-li/redis/blob/redis-2.8.3_replay-aof/src/redis-replay-aof.c&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;写着玩: &lt;a class="reference external" href="https://github.com/idning/redis/blob/replay/src/redis-cli.c"&gt;https://github.com/idning/redis/blob/replay/src/redis-cli.c&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;原理就是不断的看aof文件是否有更新, 有更新的话写到目标集群, 支持 按前缀过滤, 加前缀, 换前缀之类的操作.&lt;/p&gt;
+&lt;div class="section" id="redis-mgr"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id13"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis-mgr 集成&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;redis-mgr&lt;/span&gt;&lt;/tt&gt; 里面集成了一个命令来方便操作:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+#从cluster1迁移到cluster5
+./bin/deploy.py cluster1 replay_aof cluster5 'prefix_'
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id14"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;文档: &lt;a class="reference external" href="https://github.com/idning/redis-mgr/blob/master/doc/scalablity.rst"&gt;https://github.com/idning/redis-mgr/blob/master/doc/scalablity.rst&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>redis设计与实现 笔记</title><link href="/book-redis-implement.html" rel="alternate"></link><updated>2014-09-29T17:39:16+08:00</updated><author><name>ning</name></author><id>tag:,2014-09-29:book-redis-implement.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
 &lt;li&gt;&lt;a class="reference internal" href="#c4-hash" id="id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;c4 hash&lt;/a&gt;&lt;ul class="auto-toc"&gt;
@@ -5529,6 +5665,242 @@ online:     0.3  1w  10w  12w
 &lt;pre class="literal-block"&gt;
 https://github.com/idning/redis/blob/replay/src/redis-cli.c
 https://github.com/cen-li/redis/blob/redis-2.8.3_replay-aof/src/redis-replay-aof.c
+&lt;/pre&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>redis-mgr 中redis实例的迁移</title><link href="/redis-instance-migrate.html" rel="alternate"></link><updated>2014-02-11T10:29:10+08:00</updated><author><name>ning</name></author><id>tag:,2014-02-11:redis-instance-migrate.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;两种方法:&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-mgr" id="id5"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;redis-mgr中如何操作&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id6"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;实现细节:主从同步的步骤&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id7"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;两种扩容思路:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;一个是 redis-mgr 中redis实例的迁移, 迁到一个内存大的机器&lt;/li&gt;
+&lt;li&gt;另外一个是新搭建集群, 把数据迁移过去.&lt;/li&gt;
+&lt;li&gt;和2类似, 把旧集群中某个业务(一定前缀)的数据迁移到新集群.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这里说的是思路1&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;两种方法:&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;冷迁移&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;步骤&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic simple"&gt;
+&lt;li&gt;拷贝rdb/aof文件,&lt;/li&gt;
+&lt;li&gt;搭建新的master-slave&lt;/li&gt;
+&lt;li&gt;更新twemproxy配置 重启&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;问题&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;丢失部分到老master/slave的写&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;热迁移&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;场景:&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic simple"&gt;
+&lt;li&gt;集群维护(如部分机器下线)&lt;/li&gt;
+&lt;li&gt;集群扩容, 如2*32 实例原来部署在16 机器上,  可以扩容到 32/64 机器上.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;步骤, 假设老的master/slave 为m,s, 新的为n1, n2&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic simple"&gt;
+&lt;li&gt;搭建n1, n1 SLAVEOF m, 等待同步完成.&lt;/li&gt;
+&lt;li&gt;kill s&lt;/li&gt;
+&lt;li&gt;kill m, n1成为master.&lt;/li&gt;
+&lt;li&gt;搭建n2, n2 SLAVEOF n1&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;如果服务down了, 起不来(主从都down了起不来的可能性较小), 只能使用冷迁移&lt;/p&gt;
+&lt;p&gt;下面是热迁移的方法.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="redis-mgr"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;redis-mgr中如何操作&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;config中写操作步骤:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+cluster0 = {
+    'migrate' : [
+        'host1:port' =&amp;gt; 'host2:port'
+    ],
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;直接修改 cluster 中redis 这一节的配置.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;通过命令:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+./bin/deploy.py cluster0 migrate xxxx  xxx
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;最后选择了3.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;实现细节:主从同步的步骤&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;通过观察 现在 集群中杀掉从库重启后, 通过redis 的INFO命令观察主/从的表现:&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;slave 启动, load 本地的aof文件, load完成后:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+used_memory_peak_human CHANGE FROM 2.32G to 2.33G
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;收到sentinel 发来的SLAVEOF命令:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+master_host CHANGE FROM  to 127.0.0.5
+master_port CHANGE FROM  to 22000
+master_link_status CHANGE FROM  to down
+slave_repl_offset CHANGE FROM  to -1
+&lt;/pre&gt;
+&lt;p&gt;此时 master 这边的状态变化:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+slave0 CHANGE FROM  to ip=127.0.0.5,port=23000,state=wait_bgsave,offset=0,lag=0
+&lt;/pre&gt;
+&lt;p&gt;master 开始做一次bgsave.  slave 等待bgsave(wait_bgsave)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;master bgsave 完成, 开始传送数据:&lt;/p&gt;
+&lt;p&gt;master:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+slave0 CHANGE FROM ip=127.0.0.5,port=23000,state=wait_bgsave,offset=0,lag=0 to ip=127.0.0.5,port=23000,state=send_bulk,offset=0,lag=0
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;rdb 传送完成后, slave load 获得的数据:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+master_sync_left_bytes CHANGE FROM 47165401 to 0
+mem_fragmentation_ratio CHANGE FROM 1.01 to 1.21
+used_memory_human CHANGE FROM 2.33G to 18.79M
+
+
+开始load 新的db:
+used_memory_human CHANGE FROM 18.79M to 116.79M
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;load完成:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+aof_rewrite_in_progress CHANGE FROM 0 to 1
+master_link_status CHANGE FROM down to up
+slave_repl_offset CHANGE FROM -1 to 995178543
+used_memory_human CHANGE FROM 2.29G to 2.33G
+loading CHANGE FROM 1 to 0
+&lt;/pre&gt;
+&lt;p&gt;此时:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+slave0 CHANGE FROM ip=127.0.0.5,port=23000,state=send_bulk,offset=0,lag=0 to ip=127.0.0.5,port=23000,state=online,offset=0,lag=1
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;所以:&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;基准数据同步完成的标志&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;master 上看对应slave的 &lt;tt class="docutils literal"&gt;status=online&lt;/tt&gt;&lt;/li&gt;
+&lt;li&gt;slave 上看 &lt;tt class="docutils literal"&gt;master_link_status = up&lt;/tt&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;实时同步跟上的标志&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;从master 上看 &lt;tt class="docutils literal"&gt;lag=0&lt;/tt&gt;&lt;/li&gt;
+&lt;li&gt;master 的 &lt;tt class="docutils literal"&gt;master_repl_offset&lt;/tt&gt; : 和slave 的 &lt;tt class="docutils literal"&gt;slave_repl_offset&lt;/tt&gt;  一致&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;进度信息获取:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;slave 的内存/master 的内存&lt;/li&gt;
+&lt;li&gt;db0:keys 在master/slave 上对比.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;最终实现了下面命令:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+migrate src dst : migrate a redis instance to another machine
+&lt;/pre&gt;
+&lt;p&gt;步骤:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+pre_check,
+force_src_be_slave,
+deploy_dst,
+add_dst_as_slave,
+cleanup,
+sentinel_reset,
+update_config,
+&lt;/pre&gt;
+&lt;p&gt;使用方法:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./bin/deploy.py cluster0 migrate cluster0-22000:127.0.0.5:23000:/tmp/r/redis-23000 cluster0-22000:127.0.0.5:50015:/tmp/r/redis-50015
+...
+2014-02-27 19:21:58,667 [MainThread] [INFO] deploy [redis:127.0.0.5:50015]
+2014-02-27 19:21:59,774 [MainThread] [INFO] [redis:127.0.0.5:50015] start ok in 0.19 seconds
+2014-02-27 19:21:59,775 [MainThread] [NOTICE] add_dst_as_slave
+2014-02-27 19:21:59,790 [MainThread] [INFO] [redis:127.0.0.5:50015] /home/ning/idning-github/redis/src/redis-cli -h 127.0.0.5 -p 50015 SLAVEOF 127.0.0.5 22000
+OK
+2014-02-27 19:21:59,801 [MainThread] [INFO] [redis:127.0.0.5:50015]: {'used_memory': '342432', 'master_link_status': 'down', 'slave_repl_offset': '-1'}
+2014-02-27 19:22:00,811 [MainThread] [INFO] [redis:127.0.0.5:50015]: {'used_memory': '342464', 'master_link_status': 'down', 'slave_repl_offset': '-1'}
+2014-02-27 19:22:01,820 [MainThread] [INFO] [redis:127.0.0.5:50015]: {'used_memory': '363456', 'master_link_status': 'up', 'slave_repl_offset': '5998625'}
+2014-02-27 19:22:01,821 [MainThread] [NOTICE] cleanup
+2014-02-27 19:22:02,156 [MainThread] [INFO] [redis:127.0.0.5:23000] stop ok in 0.11 seconds
+2014-02-27 19:22:02,156 [MainThread] [NOTICE] sentinel_reset
+2014-02-27 19:22:02,165 [MainThread] [NOTICE] update_config
+2014-02-27 19:22:02,166 [MainThread] [INFO] AppendConfig:cluster0['migration'] = []
+2014-02-27 19:22:02,166 [MainThread] [INFO] AppendConfig:cluster0['migration'].append('cluster0-22000:127.0.0.5:23000:/tmp/r/redis-23000=&amp;gt;cluster0-22000:127.0.0.5:50015:/tmp/r/redis-50015')
+&lt;/pre&gt;
+&lt;p&gt;它会修改conf.py, 在末尾增加替换信息:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+cluster0['migration'] = []
+cluster0['migration'].append('cluster0-22000:127.0.0.5:23000:/tmp/r/redis-23000=&amp;gt;cluster0-22000:127.0.0.5:50015:/tmp/r/redis-50015')
+&lt;/pre&gt;
+&lt;p&gt;当下一次用redis-mgr操作这个集群时, 老的instace信息就会被新instance替代:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ ./bin/deploy.py cluster0 status
+2014-02-27 19:24:24,815 [MainThread] [NOTICE] start running: ./bin/deploy.py -v cluster0 status
+2014-02-27 19:24:24,820 [MainThread] [NOTICE] status redis
+2014-02-27 19:24:24,825 [MainThread] [INFO] [redis:127.0.0.5:22000] uptime 29815 seconds
+2014-02-27 19:24:24,831 [MainThread] [INFO] [redis:127.0.0.5:50015] uptime 145 seconds
+...
+2014-02-27 19:24:24,893 [MainThread] [NOTICE] status master-slave
+cluster0-22000 [redis:127.0.0.5:22000] &amp;lt;- 127.0.0.5:50015
+cluster0-22001 [redis:127.0.0.5:22001] &amp;lt;- 127.0.0.5:23001
+cluster0-22002 [redis:127.0.0.5:22002] &amp;lt;- 127.0.0.5:23002
+cluster0-22003 [redis:127.0.0.5:22003] &amp;lt;- 127.0.0.5:23003
 &lt;/pre&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry></feed>
