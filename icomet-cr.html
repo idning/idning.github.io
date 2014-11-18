@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>icomet-cr</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/icomet-cr.html">2014-04-23 16:18:23</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id5">1&nbsp;&nbsp;&nbsp;代码量</a></li>
+<li><a class="reference internal" href="#utils" id="id6">2&nbsp;&nbsp;&nbsp;utils</a><ul class="auto-toc">
+<li><a class="reference internal" href="#config" id="id7">2.1&nbsp;&nbsp;&nbsp;config</a></li>
+<li><a class="reference internal" href="#log" id="id8">2.2&nbsp;&nbsp;&nbsp;log</a></li>
+<li><a class="reference internal" href="#id2" id="id9">2.3&nbsp;&nbsp;&nbsp;其它</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#comet" id="id10">3&nbsp;&nbsp;&nbsp;comet逻辑</a><ul class="auto-toc">
+<li><a class="reference internal" href="#comet-server-cpp-main" id="id11">3.1&nbsp;&nbsp;&nbsp;comet-server.cpp main()</a></li>
+<li><a class="reference internal" href="#server-cpp-server-h" id="id12">3.2&nbsp;&nbsp;&nbsp;server.cpp server.h</a><ul class="auto-toc">
+<li><a class="reference internal" href="#pub" id="id13">3.2.1&nbsp;&nbsp;&nbsp;pub</a></li>
+<li><a class="reference internal" href="#sub" id="id14">3.2.2&nbsp;&nbsp;&nbsp;sub</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#channel-cpp-pub" id="id15">3.3&nbsp;&nbsp;&nbsp;channel.cpp (pub端)</a></li>
+<li><a class="reference internal" href="#subscriber-cpp-subscriber-h" id="id16">3.4&nbsp;&nbsp;&nbsp;subscriber.cpp subscriber.h</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id3" id="id17">4&nbsp;&nbsp;&nbsp;问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#k" id="id18">4.1&nbsp;&nbsp;&nbsp;1000K 连接的测试.</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id4" id="id19">5&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</div>
+<p>icomet是ideawu的作品, 基于libevent 的evhttp框架做的comet服务.</p>
+<p><a class="reference external" href="https://github.com/ideawu/icomet">https://github.com/ideawu/icomet</a></p>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id5">1&nbsp;&nbsp;&nbsp;代码量</a></h2>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/test/icomet/src$ find . -name '*.cpp' | xargs cat | wc -l
+2116
+ning&#64;ning-laptop:~/test/icomet/src$ find . -name '*.h' | xargs cat | wc -l
+982
+</pre>
+</div>
+<div class="section" id="utils">
+<h2><a class="toc-backref" href="#id6">2&nbsp;&nbsp;&nbsp;utils</a></h2>
+<div class="section" id="config">
+<h3><a class="toc-backref" href="#id7">2.1&nbsp;&nbsp;&nbsp;config</a></h3>
+<ul>
+<li><p class="first">支持名字空间的config</p>
+</li>
+<li><dl class="first docutils">
+<dt>支持保存到文件(dump)</dt>
+<dd><ul class="first last simple">
+<li>注释也会读入, 并记录行号, dump的时候可以保留注释, 这不错.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>是否支持默认值和覆盖?</dt>
+<dd><ul class="first last simple">
+<li>不支持.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>数组支持, 需要解析的时候特别解析:</dt>
+<dd><ul class="first last simple">
+<li>allow xx</li>
+<li>allow xxx</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>注释里面说是是c的cfg这样:</p>
+<pre class="literal-block">
+struct config *cfg, *c;
+
+cfg = cfg_load_file(&quot;cfg_test.conf&quot;);
+if(!cfg){
+    return 0;
+}
+printf(&quot;proxy.php.host = %s\n&quot;, cfg_getstr(cfg, &quot;proxy.php.host&quot;));
+printf(&quot;proxy.php.port = %d\n&quot;, cfg_getnum(cfg, &quot;proxy.php.port&quot;));
+</pre>
+<p>实际上, 格式较怪异:</p>
+<pre class="literal-block">
+# 有效行以 \t* 开头
+proxy :
+    php =
+        host = 127.0.0.1
+        port = 8088
+    py :
+        host = 127.0.0.1
+        port = 8080
+</pre>
+<p>实际用起来还是有点费劲:</p>
+<pre class="literal-block">
+{
+    Config *cc = (Config *)conf-&gt;get(&quot;admin&quot;);
+    if(cc != NULL){
+        std::vector&lt;Config *&gt; *children = &amp;cc-&gt;children;
+        std::vector&lt;Config *&gt;::iterator it;
+        for(it = children-&gt;begin(); it != children-&gt;end(); it++){
+            if((*it)-&gt;key != &quot;allow&quot;){
+                continue;
+            }
+            const char *ip = (*it)-&gt;str();
+            log_info(&quot;    allow %s&quot;, ip);
+            ip_filter-&gt;add_allow(ip);
+        }
+    }
+}
+</pre>
+</div>
+<div class="section" id="log">
+<h3><a class="toc-backref" href="#id8">2.2&nbsp;&nbsp;&nbsp;log</a></h3>
+<p>和自己习惯不一样:</p>
+<pre class="literal-block">
+static const int LEVEL_NONE     = (-1);
+static const int LEVEL_MIN      = 0;
+static const int LEVEL_FATAL    = 0;
+static const int LEVEL_ERROR    = 1;
+static const int LEVEL_WARN     = 2;
+static const int LEVEL_INFO     = 3;
+static const int LEVEL_DEBUG    = 4;
+static const int LEVEL_TRACE    = 5;
+static const int LEVEL_MAX      = 5;
+</pre>
+<p>支持按照文件大小切日志-能按小时切最好</p>
+<p>可以设置写的时候加锁:</p>
+<pre class="literal-block">
+if(this-&gt;mutex){
+    pthread_mutex_lock(this-&gt;mutex);
+}
+fwrite(buf, len, 1, this-&gt;fp);
+fflush(this-&gt;fp);
+
+stats.w_curr += len;
+stats.w_total += len;
+if(rotate_size &gt; 0 &amp;&amp; stats.w_curr &gt; rotate_size){
+    this-&gt;rotate();
+}
+if(this-&gt;mutex){
+    pthread_mutex_unlock(this-&gt;mutex);
+}
+</pre>
+<p>因为 这里用的是 <tt class="docutils literal">FILE *</tt>, 不能直接append.</p>
+</div>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id9">2.3&nbsp;&nbsp;&nbsp;其它</a></h3>
+<p>daemon.h
+file.h
+ip_filter.h 黑白名单,
+list.h 链表 c++还需要这个么?:</p>
+<pre class="literal-block">
+template &lt;class T&gt;
+class LinkedList{
+</pre>
+<p>strings.h 提供trim(), hexmem() parse_ip_port() 函数
+objpool.h 因为用范型, 所以很有用的对象池, 可惜c用不了, icomet里面没用.</p>
+</div>
+</div>
+<div class="section" id="comet">
+<h2><a class="toc-backref" href="#id10">3&nbsp;&nbsp;&nbsp;comet逻辑</a></h2>
+<div class="section" id="comet-server-cpp-main">
+<h3><a class="toc-backref" href="#id11">3.1&nbsp;&nbsp;&nbsp;comet-server.cpp main()</a></h3>
+<pre class="literal-block">
+Server *serv = NULL;
+void pub_handler(struct evhttp_request *req, void *arg){
+    CHECK_AUTH();
+    serv-&gt;pub(req, true);
+}
+
+void timer_cb(evutil_socket_t sig, short events, void *user_data){ //每秒一次.
+    rand();
+    serv-&gt;check_timeout();
+}
+
+int main(int argc, char **argv){
+    //读取配置
+    serv = new Server();
+    // /pub?cname=abc&amp;content=hi
+    evhttp_set_cb(admin_http, &quot;/pub&quot;, pub_handler, NULL);
+
+    // /sub?cname=abc&amp;cb=jsonp&amp;token=&amp;seq=123&amp;noop=123
+    evhttp_set_cb(front_http, &quot;/sub&quot;, poll_handler, NULL);
+
+}
+</pre>
+<p>为啥把pub 放在admin_http上</p>
+</div>
+<div class="section" id="server-cpp-server-h">
+<h3><a class="toc-backref" href="#id12">3.2&nbsp;&nbsp;&nbsp;server.cpp server.h</a></h3>
+<p>used_channels 所有已用channel链表
+cname_channels 每个channel有一个名字, 用map存name-&gt;channel的关系.</p>
+<pre class="literal-block">
+Channel* Server::new_channel(const std::string &amp;cname){
+    if(used_channels.size &gt;= ServerConfig::max_channels){
+        return NULL;
+    }
+    log_debug(&quot;new channel: %s&quot;, cname.c_str());
+
+    Channel *channel = new Channel();
+    channel-&gt;serv = this;
+    channel-&gt;name = cname;
+    channel-&gt;create_token();
+
+    add_presence(PresenceOnline, channel-&gt;name);
+
+    used_channels.push_back(channel);
+    cname_channels[channel-&gt;name] = channel;
+
+    return channel;
+}
+</pre>
+<p>check_timeout 每秒对每个channel上的每个sub, 检查是否过了一段时间的idle, 如果是idle, 就回复这个sub没有更新(noop()方法):</p>
+<pre class="literal-block">
+int Server::check_timeout(){
+    //log_debug(&quot;&lt;&quot;);
+    LinkedList&lt;Channel *&gt;::Iterator it = used_channels.iterator();
+    while(Channel *channel = it.next()){
+        if(channel-&gt;subs.size == 0){
+            if(--channel-&gt;idle &lt; 0){
+                this-&gt;free_channel(channel);
+            }
+            continue;
+        }
+        if(channel-&gt;idle &lt; ServerConfig::channel_idles){
+            channel-&gt;idle = ServerConfig::channel_idles;
+        }
+
+        LinkedList&lt;Subscriber *&gt;::Iterator it2 = channel-&gt;subs.iterator();
+        while(Subscriber *sub = it2.next()){
+            if(++sub-&gt;idle &lt;= ServerConfig::polling_idles){
+                continue;
+            }
+            sub-&gt;idle = 0;
+            sub-&gt;noop();
+        }
+    }
+    //log_debug(&quot;&gt;&quot;);
+    return 0;
+}
+</pre>
+<p>这个方法效率极低.</p>
+<div class="section" id="pub">
+<h4><a class="toc-backref" href="#id13">3.2.1&nbsp;&nbsp;&nbsp;pub</a></h4>
+<pre class="literal-block">
+int Server::pub(struct evhttp_request *req, bool encoded){
+    channel = this-&gt;get_channel_by_name(cname);
+    // response to publisher
+    evhttp_add_header(req-&gt;output_headers, &quot;Content-Type&quot;, &quot;text/javascript; charset=utf-8&quot;);
+    struct evbuffer *buf = evbuffer_new();
+
+    evbuffer_add_printf(buf, &quot;{\&quot;type\&quot;:\&quot;ok\&quot;}&quot;);
+
+    evhttp_send_reply(req, 200, &quot;OK&quot;, buf);
+    evbuffer_free(buf);
+
+    // push to subscribers
+    channel-&gt;send(&quot;data&quot;, content, encoded);
+    return 0;
+}
+</pre>
+</div>
+<div class="section" id="sub">
+<h4><a class="toc-backref" href="#id14">3.2.2&nbsp;&nbsp;&nbsp;sub</a></h4>
+<pre class="literal-block">
+int Server::sub(struct evhttp_request *req, Subscriber::Type sub_type){
+    HttpQuery query(req);
+    int seq = query.get_int(&quot;seq&quot;, 0);
+    int noop = query.get_int(&quot;noop&quot;, 0);
+    const char *cb = query.get_str(&quot;cb&quot;, &quot;&quot;);
+    const char *token = query.get_str(&quot;token&quot;, &quot;&quot;);
+    std::string cname = query.get_str(&quot;cname&quot;, &quot;&quot;);
+
+    Channel *channel = this-&gt;get_channel_by_name(cname);
+
+    ... //check
+
+    Subscriber *sub = new Subscriber();
+    sub-&gt;req = req;
+    sub-&gt;type = sub_type;
+    sub-&gt;idle = 0;
+    sub-&gt;seq_next = seq;
+    sub-&gt;seq_noop = noop;
+    sub-&gt;callback = cb;
+
+    channel-&gt;add_subscriber(sub); //添加进去.
+    subscribers ++;
+    sub-&gt;start();
+
+    return 0;
+}
+</pre>
+</div>
+</div>
+<div class="section" id="channel-cpp-pub">
+<h3><a class="toc-backref" href="#id15">3.3&nbsp;&nbsp;&nbsp;channel.cpp (pub端)</a></h3>
+<pre class="literal-block">
+class Channel{
+    LinkedList&lt;Subscriber *&gt; subs;
+    int idle;
+    int seq_next;
+    std::string name;
+    std::string token;
+    std::vector&lt;std::string&gt; msg_list; //用一个vector保存msg
+    void add_subscriber(Subscriber *sub);
+    void send(const char *type, const char *content, bool encoded=true);
+}
+</pre>
+<p>这是pub逻辑,</p>
+<pre class="literal-block">
+void Channel::send(const char *type, const char *content, bool encoded){
+    ...
+    msg_list.push_back(content);
+    seq_next ++;
+    if(msg_list.size() &gt;= ServerConfig::channel_buffer_size * 1.5){
+        std::vector&lt;std::string&gt;::iterator it;
+        it = msg_list.end() - ServerConfig::channel_buffer_size;
+        msg_list.assign(it, msg_list.end());
+        log_trace(&quot;resize msg_list to %d, seq_next: %d&quot;, msg_list.size(), seq_next);
+    }
+    LinkedList&lt;Subscriber *&gt;::Iterator it = subs.iterator();
+    while(Subscriber *sub = it.next()){
+        sub-&gt;send_chunk(this-&gt;seq_next, type, new_content.c_str());
+    }
+}
+</pre>
+<p><tt class="docutils literal"><span class="pre">sub-&gt;send_chunk</span></tt> 是决定向sub端发数据,
+前面 <tt class="docutils literal"><span class="pre">serv-&gt;check_timeout()</span></tt> 里面sub-&gt;noop() 是决定向sub端回复说 <tt class="docutils literal">没有消息</tt></p>
+</div>
+<div class="section" id="subscriber-cpp-subscriber-h">
+<h3><a class="toc-backref" href="#id16">3.4&nbsp;&nbsp;&nbsp;subscriber.cpp subscriber.h</a></h3>
+<pre class="literal-block">
+evhttp_add_header(req-&gt;output_headers, &quot;Connection&quot;, &quot;keep-alive&quot;);
+evhttp_send_reply_chunk(this-&gt;req, buf);
+</pre>
+<p>evhttp_send_reply_chunk, 就是用Chunked方式回复数据.</p>
+</div>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id17">4&nbsp;&nbsp;&nbsp;问题</a></h2>
+<ul>
+<li><p class="first">消息存在内存中, 不能持久化.</p>
+</li>
+<li><p class="first">一个channel如果一直活跃, 消息就不会删除, 越堆越多?(一个channel有个最大消息量):</p>
+<pre class="literal-block">
+if(msg_list.size() &gt;= ServerConfig::channel_buffer_size * 1.5){
+    std::vector&lt;std::string&gt;::iterator it;
+    it = msg_list.end() - ServerConfig::channel_buffer_size;
+    msg_list.assign(it, msg_list.end());
+    log_trace(&quot;resize msg_list to %d, seq_next: %d&quot;, msg_list.size(), seq_next);
+}
+</pre>
+</li>
+<li><p class="first">有channel timeout, 没有msg timeout</p>
+</li>
+</ul>
+<div class="section" id="k">
+<h3><a class="toc-backref" href="#id18">4.1&nbsp;&nbsp;&nbsp;1000K 连接的测试.</a></h3>
+<p>ideawu 提供了一个 c1000k 代码:</p>
+<p><a class="reference external" href="https://github.com/ideawu/c1000k">https://github.com/ideawu/c1000k</a></p>
+<p>要测试c1000k 主要两个问题:</p>
+<ol class="arabic simple">
+<li>是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.</li>
+<li>client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)</li>
+</ol>
+<p>ideawu是这样解决的:
+1. server 端每accept一个连接, 都设置它的缓冲区大小为5k:</p>
+<pre class="literal-block">
+     bufsize = 5000;
+     setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &amp;bufsize, sizeof(bufsize));
+     setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &amp;bufsize, sizeof(bufsize));
+
+这样1000k连接只需要10G内存.
+</pre>
+<ol class="arabic" start="2">
+<li><p class="first">server 端开100个port, 这样每个客户端3w端口, 就可以开300w个连接.</p>
+</li>
+<li><p class="first">这时候, 限制就只有fd个数限制了.</p>
+<p>我启动的时候设置好limit就可以</p>
+<pre class="literal-block">
+$ limit -n 1024000 ./server 6000
+$ limit -n 1024000 ./client 127.0.0.1 6000
+
+可以一直跑到:
+connections: 1023897
+error: Too many open files
+</pre>
+</li>
+</ol>
+</div>
+</div>
+<div class="section" id="id4">
+<h2><a class="toc-backref" href="#id19">5&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ul class="simple">
+<li>对于comet, evhttp 应该是最佳选择, 好于nginx.</li>
+<li>赞ideawu.</li>
+<li>消息不持久化,</li>
+<li>单机模式, 如何扩展?</li>
+<li>定时timer遍历, 对单进程服务器来说, 应该不可接受.</li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

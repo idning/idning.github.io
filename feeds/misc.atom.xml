@@ -245,6 +245,181 @@ _nc_alloc(size_t size, const char *name, int line)
 </summary><category term="all"></category></entry><entry><title>我们还需要80列的限制么</title><link href="/do_we_need_80_column_rule.html" rel="alternate"></link><updated>2014-07-21T13:02:07+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-21:do_we_need_80_column_rule.html</id><summary type="html">&lt;p&gt;现在, 我们写代码通常不限制80列. 现在我们的屏幕都很宽, 一般都能放180列到200列. 所以貌似没必要限制80列了&lt;/p&gt;
 &lt;p&gt;但是, 我们经常用diff工具来查看代码, 这样超过80列的代码在diff工具中就不好看了.&lt;/p&gt;
 &lt;p&gt;所以, 我们还是坚持80列原则把.&lt;/p&gt;
+</summary><category term="all"></category></entry><entry><title>honx分析</title><link href="/honx.html" rel="alternate"></link><updated>2014-07-10T09:41:04+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-10:honx.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;分析&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#chromehttps-proxy" id="id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;chrome支持https proxy&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id7"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;尝试破解&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id8"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;这个方法对自己有啥用&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#https" id="id9"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;架设https 代理服务器的方法&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id10"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;给honx的建议&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#ps" id="id11"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;ps&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;分析&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;抓包, 发现 &lt;tt class="docutils literal"&gt;23.239.5.211&lt;/tt&gt; 这个host:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop ~/test$ host 23.239.5.211
+211.5.239.23.in-addr.arpa domain name pointer li699-211.members.linode.com.
+&lt;/pre&gt;
+&lt;p&gt;访问 &lt;a class="reference external" href="https://23.239.5.211/"&gt;https://23.239.5.211/&lt;/a&gt; 发现是一个https服务.&lt;/p&gt;
+&lt;p&gt;也就是说, honx 架设了一个https代理服务器,&lt;/p&gt;
+&lt;p&gt;但是, 据我所知, client 和proxy 之间的协议, 只支持 socks, socks5, http, 并不支持https. 目前PAC文件也是只支持这三种协议,&lt;/p&gt;
+&lt;p&gt;因为g-f-w会根据内容过滤, 所以代理必须使用一种加密的通道, 而不能是socks, http, 这也就是自己之前一直用ssh隧道的原因.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="chromehttps-proxy"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;chrome支持https proxy&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;看了一下 chrome 扩展中 允许的 proxy 类型:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://developer.chrome.com/extensions/proxy"&gt;https://developer.chrome.com/extensions/proxy&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;发现有https协议:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Scheme      Port
+http        80
+https       443
+socks4      1080
+socks5      1080
+&lt;/pre&gt;
+&lt;p&gt;原来, chrome 是支持 https 代理的:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.chromium.org/developers/design-documents/secure-web-proxy"&gt;http://www.chromium.org/developers/design-documents/secure-web-proxy&lt;/a&gt;
+&lt;a class="reference external" href="http://www.chromium.org/spdy/spdy-proxy"&gt;http://www.chromium.org/spdy/spdy-proxy&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;可以直接在porxy.pac里面返回HTTPS xxx就行:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) { return &amp;quot;HTTPS secure-proxy.example.com:443&amp;quot;; }
+&lt;/pre&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;其实这里也可以是SPDY&lt;/li&gt;
+&lt;li&gt;HTTPS proxy 的支持是chrome特有的, 目前还没发现其它浏览器或者ssh客户端之类支持(因为代码相对复杂)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;尝试破解&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;既然如此, 我们写这样一个pac文件:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) {
+    return 'HTTPS 23.239.5.211:443;';
+}
+&lt;/pre&gt;
+&lt;p&gt;似乎就ok, 但是测试发现不行, 原因是 https 有域名校验, 这里chrome可能使用强制校验, 必须通过匹配的域名访问 23.239.5.211 才行.&lt;/p&gt;
+&lt;p&gt;再查了一些chrome的资料, 其实通过 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;chrome://xxx-internals/&lt;/span&gt;&lt;/tt&gt;  很容易发现, honx其实也是写了这样的一个pac文件. 可以清楚的看到:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+PAC script: data:application/x-ns-proxy-autoconfig...
+&lt;/pre&gt;
+&lt;p&gt;它的内容是:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) {
+
+var D = &amp;quot;DIRECT&amp;quot;;
+var p='HTTPS xxxxx.com:443;';
+
+var node = {&amp;quot;net&amp;quot;:{&amp;quot;akamaihd&amp;quot;:1,&amp;quot;facebook&amp;quot;:1,&amp;quot;fbcdn&amp;quot;:1,&amp;quot;cloudfront&amp;quot;:1,&amp;quot;sstatic&amp;quot;:1,&amp;quot;doubleclick&amp;quot;:1,&amp;quot;2mdn&amp;quot;:1},&amp;quot;com&amp;quot;:{&amp;quot;facebook&amp;quot;:1,&amp;quot;twitter&amp;quot;:1,&amp;quot;twimg&amp;quot;:1,&amp;quot;google&amp;quot;:1,&amp;quot;googleusercontent&amp;quot;:1,&amp;quot;googleapis&amp;quot;:1,&amp;quot;gstatic&amp;quot;:1,&amp;quot;gmail&amp;quot;:1,&amp;quot;tumblr&amp;quot;:1,&amp;quot;appspot&amp;quot;:1,&amp;quot;amazonaws&amp;quot;:{&amp;quot;s3&amp;quot;:1},&amp;quot;blogspot&amp;quot;:1,&amp;quot;blogger&amp;quot;:1,&amp;quot;mediafire&amp;quot;:1,&amp;quot;ytimg&amp;quot;:1,&amp;quot;youtube&amp;quot;:1,&amp;quot;googlevideo&amp;quot;:1,&amp;quot;youtube-nocookie&amp;quot;:1,&amp;quot;wordpress&amp;quot;:1,&amp;quot;vimeo&amp;quot;:1,&amp;quot;googlesyndication&amp;quot;:1,&amp;quot;ggpht&amp;quot;:1,&amp;quot;imgur&amp;quot;:1,&amp;quot;googleadservices&amp;quot;:1,&amp;quot;cloudflare&amp;quot;:1,&amp;quot;chrome&amp;quot;:1,&amp;quot;symantec&amp;quot;:1},&amp;quot;co&amp;quot;:{&amp;quot;t&amp;quot;:1},&amp;quot;hk&amp;quot;:{&amp;quot;com&amp;quot;:{&amp;quot;google&amp;quot;:1}},&amp;quot;ly&amp;quot;:{&amp;quot;bit&amp;quot;:1},&amp;quot;be&amp;quot;:{&amp;quot;youtu&amp;quot;:1},&amp;quot;wpad&amp;quot;:1,&amp;quot;org&amp;quot;:{&amp;quot;chromium&amp;quot;:1}};
+
+var hostParts = host.toLowerCase().split('.');
+for (var i=hostParts.length - 1; i &amp;gt;= 0; i --) {
+    var part = hostParts[i];
+    node = node[part];
+    if (node == undefined || node == 1) break;
+}
+if (node == 1)
+    return p;
+
+return D;
+}
+&lt;/pre&gt;
+&lt;p&gt;我们发现这个脚本里面清楚的写着xxxx.com 这个域名, 把自己的pac换成这个域名:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) {
+    return 'HTTPS xxxxx.com:443;';
+}
+&lt;/pre&gt;
+&lt;p&gt;ok, 发现我们已经顺利使用这个https 代理了.&lt;/p&gt;
+&lt;p&gt;这里为了防止大家瞎搞, 域名我已经隐去了.&lt;/p&gt;
+&lt;p&gt;这段js里面居然用了一个 &lt;strong&gt;trie-tree&lt;/strong&gt; , 好赞, 不像我写的土鳖js:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+var hosts = [
+    &amp;quot;google.com&amp;quot;,
+    &amp;quot;google.co.jp&amp;quot;,
+    &amp;quot;blogspot.com&amp;quot;,
+];
+
+function FindProxyForURL(url, host) {
+    for (var i in hosts){
+        pattern = '.*' + hosts[i] + '.*';
+        if (regExpMatch(host, pattern)){
+            return proxy;
+        }
+    }
+    return &amp;quot;DIRECT&amp;quot;;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id8"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;这个方法对自己有啥用&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;既然知道了chrome 可以用https 的proxy, 那我就可以在自己的linode上搭了.&lt;/li&gt;
+&lt;li&gt;搭了这样一个https代理, 会不会被大家乱用呢.. 还得想办法.&lt;/li&gt;
+&lt;li&gt;如果能让ssh客户端等支持https 代理就好了.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="https"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;架设https 代理服务器的方法&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;Running a Secure Web Proxy&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;While all the details of running a secure web proxy are out of scope for this document, here are two suggestions.  If you are already running a web proxy, you use stunnel to convert it into a secure web proxy.  For example:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+stunnel -f -d 443 -r localhost:8080 -p cert.pem
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;This would cause stunnel to listen for SSL connections on port 443 and send any HTTP requests to the web proxy running on port 8080.&lt;/p&gt;
+&lt;ol class="arabic simple" start="2"&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;Squid&lt;/tt&gt; appears to offer support for running as a secure web proxy via the https_port directive.&lt;/li&gt;
+&lt;li&gt;nginx+SPDY?&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/igrigorik/node-spdyproxy"&gt;https://github.com/igrigorik/node-spdyproxy&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id10"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;给honx的建议&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;增加某种验证机制,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;使用http/https的 proxy验证机制&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;都比较弱, 而且需要用户介入手动填一次密码, 会频繁打断用户.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;比如在代理服务器上同时开一个注册服务, 当honx启动后, 每x秒会向这个接口注册一次, 说这个clientip是合法的, 这个接口可以加入复杂的验证, 这样就比较优雅.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不过引入这种机制会导致一些ip会变(公司多出口之类)的用户可能不能正常使用. 比较烦恼&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;再者, 一个honx用户估计是可以在多处登录, 这样就可以多人共享proxy, 所以, 加认证等等, 终归是防君子不防小人.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;建议针对学生降价.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="ps"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id11"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;ps&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;honx 在产品设计上非常傻瓜, 0配置, 一键加入代理也很方便.&lt;/li&gt;
+&lt;li&gt;好服务, 要呵护, 希望大家没功夫折腾的同学, 多多支持honx(我也买了)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>tmux</title><link href="/tmux.html" rel="alternate"></link><updated>2014-05-08T09:52:32+08:00</updated><author><name>ning</name></author><id>tag:,2014-05-08:tmux.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
@@ -593,6 +768,409 @@ def work():
 &lt;li&gt;&lt;a class="reference external" href="https://github.com/aziz/dotfiles/blob/master/tmux.conf"&gt;https://github.com/aziz/dotfiles/blob/master/tmux.conf&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a class="reference external" href="https://gist.github.com/kwbock/5161135"&gt;https://gist.github.com/kwbock/5161135&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a class="reference external" href="https://github.com/roylez/dotfiles/blob/master/.tmux.conf"&gt;https://github.com/roylez/dotfiles/blob/master/.tmux.conf&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>icomet-cr</title><link href="/icomet-cr.html" rel="alternate"></link><updated>2014-04-23T16:18:23+08:00</updated><author><name>ning</name></author><id>tag:,2014-04-23:icomet-cr.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;代码量&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#utils" id="id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;utils&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#config" id="id7"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;config&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#log" id="id8"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;log&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id9"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#comet" id="id10"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;comet逻辑&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#comet-server-cpp-main" id="id11"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;comet-server.cpp main()&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#server-cpp-server-h" id="id12"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;server.cpp server.h&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#pub" id="id13"&gt;3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;pub&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#sub" id="id14"&gt;3.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;sub&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#channel-cpp-pub" id="id15"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;channel.cpp (pub端)&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#subscriber-cpp-subscriber-h" id="id16"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;subscriber.cpp subscriber.h&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#k" id="id18"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;1000K 连接的测试.&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id19"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;icomet是ideawu的作品, 基于libevent 的evhttp框架做的comet服务.&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://github.com/ideawu/icomet"&gt;https://github.com/ideawu/icomet&lt;/a&gt;&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;代码量&lt;/a&gt;&lt;/h2&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop:~/test/icomet/src$ find . -name '*.cpp' | xargs cat | wc -l
+2116
+ning&amp;#64;ning-laptop:~/test/icomet/src$ find . -name '*.h' | xargs cat | wc -l
+982
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="utils"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;utils&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="config"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id7"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;config&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;支持名字空间的config&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;支持保存到文件(dump)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;注释也会读入, 并记录行号, dump的时候可以保留注释, 这不错.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;是否支持默认值和覆盖?&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不支持.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;数组支持, 需要解析的时候特别解析:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;allow xx&lt;/li&gt;
+&lt;li&gt;allow xxx&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;注释里面说是是c的cfg这样:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct config *cfg, *c;
+
+cfg = cfg_load_file(&amp;quot;cfg_test.conf&amp;quot;);
+if(!cfg){
+    return 0;
+}
+printf(&amp;quot;proxy.php.host = %s\n&amp;quot;, cfg_getstr(cfg, &amp;quot;proxy.php.host&amp;quot;));
+printf(&amp;quot;proxy.php.port = %d\n&amp;quot;, cfg_getnum(cfg, &amp;quot;proxy.php.port&amp;quot;));
+&lt;/pre&gt;
+&lt;p&gt;实际上, 格式较怪异:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+# 有效行以 \t* 开头
+proxy :
+    php =
+        host = 127.0.0.1
+        port = 8088
+    py :
+        host = 127.0.0.1
+        port = 8080
+&lt;/pre&gt;
+&lt;p&gt;实际用起来还是有点费劲:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+{
+    Config *cc = (Config *)conf-&amp;gt;get(&amp;quot;admin&amp;quot;);
+    if(cc != NULL){
+        std::vector&amp;lt;Config *&amp;gt; *children = &amp;amp;cc-&amp;gt;children;
+        std::vector&amp;lt;Config *&amp;gt;::iterator it;
+        for(it = children-&amp;gt;begin(); it != children-&amp;gt;end(); it++){
+            if((*it)-&amp;gt;key != &amp;quot;allow&amp;quot;){
+                continue;
+            }
+            const char *ip = (*it)-&amp;gt;str();
+            log_info(&amp;quot;    allow %s&amp;quot;, ip);
+            ip_filter-&amp;gt;add_allow(ip);
+        }
+    }
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="log"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;log&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;和自己习惯不一样:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static const int LEVEL_NONE     = (-1);
+static const int LEVEL_MIN      = 0;
+static const int LEVEL_FATAL    = 0;
+static const int LEVEL_ERROR    = 1;
+static const int LEVEL_WARN     = 2;
+static const int LEVEL_INFO     = 3;
+static const int LEVEL_DEBUG    = 4;
+static const int LEVEL_TRACE    = 5;
+static const int LEVEL_MAX      = 5;
+&lt;/pre&gt;
+&lt;p&gt;支持按照文件大小切日志-能按小时切最好&lt;/p&gt;
+&lt;p&gt;可以设置写的时候加锁:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+if(this-&amp;gt;mutex){
+    pthread_mutex_lock(this-&amp;gt;mutex);
+}
+fwrite(buf, len, 1, this-&amp;gt;fp);
+fflush(this-&amp;gt;fp);
+
+stats.w_curr += len;
+stats.w_total += len;
+if(rotate_size &amp;gt; 0 &amp;amp;&amp;amp; stats.w_curr &amp;gt; rotate_size){
+    this-&amp;gt;rotate();
+}
+if(this-&amp;gt;mutex){
+    pthread_mutex_unlock(this-&amp;gt;mutex);
+}
+&lt;/pre&gt;
+&lt;p&gt;因为 这里用的是 &lt;tt class="docutils literal"&gt;FILE *&lt;/tt&gt;, 不能直接append.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;daemon.h
+file.h
+ip_filter.h 黑白名单,
+list.h 链表 c++还需要这个么?:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+template &amp;lt;class T&amp;gt;
+class LinkedList{
+&lt;/pre&gt;
+&lt;p&gt;strings.h 提供trim(), hexmem() parse_ip_port() 函数
+objpool.h 因为用范型, 所以很有用的对象池, 可惜c用不了, icomet里面没用.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="comet"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id10"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;comet逻辑&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="comet-server-cpp-main"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id11"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;comet-server.cpp main()&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+Server *serv = NULL;
+void pub_handler(struct evhttp_request *req, void *arg){
+    CHECK_AUTH();
+    serv-&amp;gt;pub(req, true);
+}
+
+void timer_cb(evutil_socket_t sig, short events, void *user_data){ //每秒一次.
+    rand();
+    serv-&amp;gt;check_timeout();
+}
+
+int main(int argc, char **argv){
+    //读取配置
+    serv = new Server();
+    // /pub?cname=abc&amp;amp;content=hi
+    evhttp_set_cb(admin_http, &amp;quot;/pub&amp;quot;, pub_handler, NULL);
+
+    // /sub?cname=abc&amp;amp;cb=jsonp&amp;amp;token=&amp;amp;seq=123&amp;amp;noop=123
+    evhttp_set_cb(front_http, &amp;quot;/sub&amp;quot;, poll_handler, NULL);
+
+}
+&lt;/pre&gt;
+&lt;p&gt;为啥把pub 放在admin_http上&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="server-cpp-server-h"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id12"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;server.cpp server.h&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;used_channels 所有已用channel链表
+cname_channels 每个channel有一个名字, 用map存name-&amp;gt;channel的关系.&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Channel* Server::new_channel(const std::string &amp;amp;cname){
+    if(used_channels.size &amp;gt;= ServerConfig::max_channels){
+        return NULL;
+    }
+    log_debug(&amp;quot;new channel: %s&amp;quot;, cname.c_str());
+
+    Channel *channel = new Channel();
+    channel-&amp;gt;serv = this;
+    channel-&amp;gt;name = cname;
+    channel-&amp;gt;create_token();
+
+    add_presence(PresenceOnline, channel-&amp;gt;name);
+
+    used_channels.push_back(channel);
+    cname_channels[channel-&amp;gt;name] = channel;
+
+    return channel;
+}
+&lt;/pre&gt;
+&lt;p&gt;check_timeout 每秒对每个channel上的每个sub, 检查是否过了一段时间的idle, 如果是idle, 就回复这个sub没有更新(noop()方法):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+int Server::check_timeout(){
+    //log_debug(&amp;quot;&amp;lt;&amp;quot;);
+    LinkedList&amp;lt;Channel *&amp;gt;::Iterator it = used_channels.iterator();
+    while(Channel *channel = it.next()){
+        if(channel-&amp;gt;subs.size == 0){
+            if(--channel-&amp;gt;idle &amp;lt; 0){
+                this-&amp;gt;free_channel(channel);
+            }
+            continue;
+        }
+        if(channel-&amp;gt;idle &amp;lt; ServerConfig::channel_idles){
+            channel-&amp;gt;idle = ServerConfig::channel_idles;
+        }
+
+        LinkedList&amp;lt;Subscriber *&amp;gt;::Iterator it2 = channel-&amp;gt;subs.iterator();
+        while(Subscriber *sub = it2.next()){
+            if(++sub-&amp;gt;idle &amp;lt;= ServerConfig::polling_idles){
+                continue;
+            }
+            sub-&amp;gt;idle = 0;
+            sub-&amp;gt;noop();
+        }
+    }
+    //log_debug(&amp;quot;&amp;gt;&amp;quot;);
+    return 0;
+}
+&lt;/pre&gt;
+&lt;p&gt;这个方法效率极低.&lt;/p&gt;
+&lt;div class="section" id="pub"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id13"&gt;3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;pub&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+int Server::pub(struct evhttp_request *req, bool encoded){
+    channel = this-&amp;gt;get_channel_by_name(cname);
+    // response to publisher
+    evhttp_add_header(req-&amp;gt;output_headers, &amp;quot;Content-Type&amp;quot;, &amp;quot;text/javascript; charset=utf-8&amp;quot;);
+    struct evbuffer *buf = evbuffer_new();
+
+    evbuffer_add_printf(buf, &amp;quot;{\&amp;quot;type\&amp;quot;:\&amp;quot;ok\&amp;quot;}&amp;quot;);
+
+    evhttp_send_reply(req, 200, &amp;quot;OK&amp;quot;, buf);
+    evbuffer_free(buf);
+
+    // push to subscribers
+    channel-&amp;gt;send(&amp;quot;data&amp;quot;, content, encoded);
+    return 0;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="sub"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id14"&gt;3.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;sub&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+int Server::sub(struct evhttp_request *req, Subscriber::Type sub_type){
+    HttpQuery query(req);
+    int seq = query.get_int(&amp;quot;seq&amp;quot;, 0);
+    int noop = query.get_int(&amp;quot;noop&amp;quot;, 0);
+    const char *cb = query.get_str(&amp;quot;cb&amp;quot;, &amp;quot;&amp;quot;);
+    const char *token = query.get_str(&amp;quot;token&amp;quot;, &amp;quot;&amp;quot;);
+    std::string cname = query.get_str(&amp;quot;cname&amp;quot;, &amp;quot;&amp;quot;);
+
+    Channel *channel = this-&amp;gt;get_channel_by_name(cname);
+
+    ... //check
+
+    Subscriber *sub = new Subscriber();
+    sub-&amp;gt;req = req;
+    sub-&amp;gt;type = sub_type;
+    sub-&amp;gt;idle = 0;
+    sub-&amp;gt;seq_next = seq;
+    sub-&amp;gt;seq_noop = noop;
+    sub-&amp;gt;callback = cb;
+
+    channel-&amp;gt;add_subscriber(sub); //添加进去.
+    subscribers ++;
+    sub-&amp;gt;start();
+
+    return 0;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="channel-cpp-pub"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id15"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;channel.cpp (pub端)&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+class Channel{
+    LinkedList&amp;lt;Subscriber *&amp;gt; subs;
+    int idle;
+    int seq_next;
+    std::string name;
+    std::string token;
+    std::vector&amp;lt;std::string&amp;gt; msg_list; //用一个vector保存msg
+    void add_subscriber(Subscriber *sub);
+    void send(const char *type, const char *content, bool encoded=true);
+}
+&lt;/pre&gt;
+&lt;p&gt;这是pub逻辑,&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void Channel::send(const char *type, const char *content, bool encoded){
+    ...
+    msg_list.push_back(content);
+    seq_next ++;
+    if(msg_list.size() &amp;gt;= ServerConfig::channel_buffer_size * 1.5){
+        std::vector&amp;lt;std::string&amp;gt;::iterator it;
+        it = msg_list.end() - ServerConfig::channel_buffer_size;
+        msg_list.assign(it, msg_list.end());
+        log_trace(&amp;quot;resize msg_list to %d, seq_next: %d&amp;quot;, msg_list.size(), seq_next);
+    }
+    LinkedList&amp;lt;Subscriber *&amp;gt;::Iterator it = subs.iterator();
+    while(Subscriber *sub = it.next()){
+        sub-&amp;gt;send_chunk(this-&amp;gt;seq_next, type, new_content.c_str());
+    }
+}
+&lt;/pre&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;sub-&amp;gt;send_chunk&lt;/span&gt;&lt;/tt&gt; 是决定向sub端发数据,
+前面 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;serv-&amp;gt;check_timeout()&lt;/span&gt;&lt;/tt&gt; 里面sub-&amp;gt;noop() 是决定向sub端回复说 &lt;tt class="docutils literal"&gt;没有消息&lt;/tt&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="subscriber-cpp-subscriber-h"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id16"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;subscriber.cpp subscriber.h&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+evhttp_add_header(req-&amp;gt;output_headers, &amp;quot;Connection&amp;quot;, &amp;quot;keep-alive&amp;quot;);
+evhttp_send_reply_chunk(this-&amp;gt;req, buf);
+&lt;/pre&gt;
+&lt;p&gt;evhttp_send_reply_chunk, 就是用Chunked方式回复数据.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;消息存在内存中, 不能持久化.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;一个channel如果一直活跃, 消息就不会删除, 越堆越多?(一个channel有个最大消息量):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+if(msg_list.size() &amp;gt;= ServerConfig::channel_buffer_size * 1.5){
+    std::vector&amp;lt;std::string&amp;gt;::iterator it;
+    it = msg_list.end() - ServerConfig::channel_buffer_size;
+    msg_list.assign(it, msg_list.end());
+    log_trace(&amp;quot;resize msg_list to %d, seq_next: %d&amp;quot;, msg_list.size(), seq_next);
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;有channel timeout, 没有msg timeout&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="k"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id18"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;1000K 连接的测试.&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;ideawu 提供了一个 c1000k 代码:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://github.com/ideawu/c1000k"&gt;https://github.com/ideawu/c1000k&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;要测试c1000k 主要两个问题:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.&lt;/li&gt;
+&lt;li&gt;client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;ideawu是这样解决的:
+1. server 端每accept一个连接, 都设置它的缓冲区大小为5k:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+     bufsize = 5000;
+     setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &amp;amp;bufsize, sizeof(bufsize));
+     setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &amp;amp;bufsize, sizeof(bufsize));
+
+这样1000k连接只需要10G内存.
+&lt;/pre&gt;
+&lt;ol class="arabic" start="2"&gt;
+&lt;li&gt;&lt;p class="first"&gt;server 端开100个port, 这样每个客户端3w端口, 就可以开300w个连接.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;这时候, 限制就只有fd个数限制了.&lt;/p&gt;
+&lt;p&gt;我启动的时候设置好limit就可以&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ limit -n 1024000 ./server 6000
+$ limit -n 1024000 ./client 127.0.0.1 6000
+
+可以一直跑到:
+connections: 1023897
+error: Too many open files
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id19"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;对于comet, evhttp 应该是最佳选择, 好于nginx.&lt;/li&gt;
+&lt;li&gt;赞ideawu.&lt;/li&gt;
+&lt;li&gt;消息不持久化,&lt;/li&gt;
+&lt;li&gt;单机模式, 如何扩展?&lt;/li&gt;
+&lt;li&gt;定时timer遍历, 对单进程服务器来说, 应该不可接受.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>Understanding the Linux Kernel(notes)</title><link href="/ulk.html" rel="alternate"></link><updated>2014-01-05T11:54:31+08:00</updated><author><name>ning</name></author><id>tag:,2014-01-05:ulk.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;

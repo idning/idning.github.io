@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>honx分析</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/honx.html">2014-07-10 09:41:04</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id5">1&nbsp;&nbsp;&nbsp;分析</a></li>
+<li><a class="reference internal" href="#chromehttps-proxy" id="id6">2&nbsp;&nbsp;&nbsp;chrome支持https proxy</a></li>
+<li><a class="reference internal" href="#id2" id="id7">3&nbsp;&nbsp;&nbsp;尝试破解</a></li>
+<li><a class="reference internal" href="#id3" id="id8">4&nbsp;&nbsp;&nbsp;这个方法对自己有啥用</a><ul class="auto-toc">
+<li><a class="reference internal" href="#https" id="id9">4.1&nbsp;&nbsp;&nbsp;架设https 代理服务器的方法</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id4" id="id10">5&nbsp;&nbsp;&nbsp;给honx的建议</a></li>
+<li><a class="reference internal" href="#ps" id="id11">6&nbsp;&nbsp;&nbsp;ps</a></li>
+</ul>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id5">1&nbsp;&nbsp;&nbsp;分析</a></h2>
+<p>抓包, 发现 <tt class="docutils literal">23.239.5.211</tt> 这个host:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop ~/test$ host 23.239.5.211
+211.5.239.23.in-addr.arpa domain name pointer li699-211.members.linode.com.
+</pre>
+<p>访问 <a class="reference external" href="https://23.239.5.211/">https://23.239.5.211/</a> 发现是一个https服务.</p>
+<p>也就是说, honx 架设了一个https代理服务器,</p>
+<p>但是, 据我所知, client 和proxy 之间的协议, 只支持 socks, socks5, http, 并不支持https. 目前PAC文件也是只支持这三种协议,</p>
+<p>因为g-f-w会根据内容过滤, 所以代理必须使用一种加密的通道, 而不能是socks, http, 这也就是自己之前一直用ssh隧道的原因.</p>
+</div>
+<div class="section" id="chromehttps-proxy">
+<h2><a class="toc-backref" href="#id6">2&nbsp;&nbsp;&nbsp;chrome支持https proxy</a></h2>
+<p>看了一下 chrome 扩展中 允许的 proxy 类型:</p>
+<p><a class="reference external" href="https://developer.chrome.com/extensions/proxy">https://developer.chrome.com/extensions/proxy</a></p>
+<p>发现有https协议:</p>
+<pre class="literal-block">
+Scheme      Port
+http        80
+https       443
+socks4      1080
+socks5      1080
+</pre>
+<p>原来, chrome 是支持 https 代理的:</p>
+<p><a class="reference external" href="http://www.chromium.org/developers/design-documents/secure-web-proxy">http://www.chromium.org/developers/design-documents/secure-web-proxy</a>
+<a class="reference external" href="http://www.chromium.org/spdy/spdy-proxy">http://www.chromium.org/spdy/spdy-proxy</a></p>
+<p>可以直接在porxy.pac里面返回HTTPS xxx就行:</p>
+<pre class="literal-block">
+function FindProxyForURL(url, host) { return &quot;HTTPS secure-proxy.example.com:443&quot;; }
+</pre>
+<ul class="simple">
+<li>其实这里也可以是SPDY</li>
+<li>HTTPS proxy 的支持是chrome特有的, 目前还没发现其它浏览器或者ssh客户端之类支持(因为代码相对复杂)</li>
+</ul>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id7">3&nbsp;&nbsp;&nbsp;尝试破解</a></h2>
+<p>既然如此, 我们写这样一个pac文件:</p>
+<pre class="literal-block">
+function FindProxyForURL(url, host) {
+    return 'HTTPS 23.239.5.211:443;';
+}
+</pre>
+<p>似乎就ok, 但是测试发现不行, 原因是 https 有域名校验, 这里chrome可能使用强制校验, 必须通过匹配的域名访问 23.239.5.211 才行.</p>
+<p>再查了一些chrome的资料, 其实通过 <tt class="docutils literal"><span class="pre">chrome://xxx-internals/</span></tt>  很容易发现, honx其实也是写了这样的一个pac文件. 可以清楚的看到:</p>
+<pre class="literal-block">
+PAC script: data:application/x-ns-proxy-autoconfig...
+</pre>
+<p>它的内容是:</p>
+<pre class="literal-block">
+function FindProxyForURL(url, host) {
+
+var D = &quot;DIRECT&quot;;
+var p='HTTPS xxxxx.com:443;';
+
+var node = {&quot;net&quot;:{&quot;akamaihd&quot;:1,&quot;facebook&quot;:1,&quot;fbcdn&quot;:1,&quot;cloudfront&quot;:1,&quot;sstatic&quot;:1,&quot;doubleclick&quot;:1,&quot;2mdn&quot;:1},&quot;com&quot;:{&quot;facebook&quot;:1,&quot;twitter&quot;:1,&quot;twimg&quot;:1,&quot;google&quot;:1,&quot;googleusercontent&quot;:1,&quot;googleapis&quot;:1,&quot;gstatic&quot;:1,&quot;gmail&quot;:1,&quot;tumblr&quot;:1,&quot;appspot&quot;:1,&quot;amazonaws&quot;:{&quot;s3&quot;:1},&quot;blogspot&quot;:1,&quot;blogger&quot;:1,&quot;mediafire&quot;:1,&quot;ytimg&quot;:1,&quot;youtube&quot;:1,&quot;googlevideo&quot;:1,&quot;youtube-nocookie&quot;:1,&quot;wordpress&quot;:1,&quot;vimeo&quot;:1,&quot;googlesyndication&quot;:1,&quot;ggpht&quot;:1,&quot;imgur&quot;:1,&quot;googleadservices&quot;:1,&quot;cloudflare&quot;:1,&quot;chrome&quot;:1,&quot;symantec&quot;:1},&quot;co&quot;:{&quot;t&quot;:1},&quot;hk&quot;:{&quot;com&quot;:{&quot;google&quot;:1}},&quot;ly&quot;:{&quot;bit&quot;:1},&quot;be&quot;:{&quot;youtu&quot;:1},&quot;wpad&quot;:1,&quot;org&quot;:{&quot;chromium&quot;:1}};
+
+var hostParts = host.toLowerCase().split('.');
+for (var i=hostParts.length - 1; i &gt;= 0; i --) {
+    var part = hostParts[i];
+    node = node[part];
+    if (node == undefined || node == 1) break;
+}
+if (node == 1)
+    return p;
+
+return D;
+}
+</pre>
+<p>我们发现这个脚本里面清楚的写着xxxx.com 这个域名, 把自己的pac换成这个域名:</p>
+<pre class="literal-block">
+function FindProxyForURL(url, host) {
+    return 'HTTPS xxxxx.com:443;';
+}
+</pre>
+<p>ok, 发现我们已经顺利使用这个https 代理了.</p>
+<p>这里为了防止大家瞎搞, 域名我已经隐去了.</p>
+<p>这段js里面居然用了一个 <strong>trie-tree</strong> , 好赞, 不像我写的土鳖js:</p>
+<pre class="literal-block">
+var hosts = [
+    &quot;google.com&quot;,
+    &quot;google.co.jp&quot;,
+    &quot;blogspot.com&quot;,
+];
+
+function FindProxyForURL(url, host) {
+    for (var i in hosts){
+        pattern = '.*' + hosts[i] + '.*';
+        if (regExpMatch(host, pattern)){
+            return proxy;
+        }
+    }
+    return &quot;DIRECT&quot;;
+}
+</pre>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id8">4&nbsp;&nbsp;&nbsp;这个方法对自己有啥用</a></h2>
+<ul class="simple">
+<li>既然知道了chrome 可以用https 的proxy, 那我就可以在自己的linode上搭了.</li>
+<li>搭了这样一个https代理, 会不会被大家乱用呢.. 还得想办法.</li>
+<li>如果能让ssh客户端等支持https 代理就好了.</li>
+</ul>
+<div class="section" id="https">
+<h3><a class="toc-backref" href="#id9">4.1&nbsp;&nbsp;&nbsp;架设https 代理服务器的方法</a></h3>
+<p>Running a Secure Web Proxy</p>
+<ol class="arabic">
+<li><p class="first">While all the details of running a secure web proxy are out of scope for this document, here are two suggestions.  If you are already running a web proxy, you use stunnel to convert it into a secure web proxy.  For example:</p>
+<pre class="literal-block">
+stunnel -f -d 443 -r localhost:8080 -p cert.pem
+</pre>
+</li>
+</ol>
+<p>This would cause stunnel to listen for SSL connections on port 443 and send any HTTP requests to the web proxy running on port 8080.</p>
+<ol class="arabic simple" start="2">
+<li><tt class="docutils literal">Squid</tt> appears to offer support for running as a secure web proxy via the https_port directive.</li>
+<li>nginx+SPDY?</li>
+<li><a class="reference external" href="https://github.com/igrigorik/node-spdyproxy">https://github.com/igrigorik/node-spdyproxy</a></li>
+</ol>
+</div>
+</div>
+<div class="section" id="id4">
+<h2><a class="toc-backref" href="#id10">5&nbsp;&nbsp;&nbsp;给honx的建议</a></h2>
+<ul>
+<li><dl class="first docutils">
+<dt>增加某种验证机制,</dt>
+<dd><ul class="first last">
+<li><dl class="first docutils">
+<dt>使用http/https的 proxy验证机制</dt>
+<dd><ul class="first last simple">
+<li>都比较弱, 而且需要用户介入手动填一次密码, 会频繁打断用户.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>比如在代理服务器上同时开一个注册服务, 当honx启动后, 每x秒会向这个接口注册一次, 说这个clientip是合法的, 这个接口可以加入复杂的验证, 这样就比较优雅.</dt>
+<dd><ul class="first last simple">
+<li>不过引入这种机制会导致一些ip会变(公司多出口之类)的用户可能不能正常使用. 比较烦恼</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">再者, 一个honx用户估计是可以在多处登录, 这样就可以多人共享proxy, 所以, 加认证等等, 终归是防君子不防小人.</p>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">建议针对学生降价.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="ps">
+<h2><a class="toc-backref" href="#id11">6&nbsp;&nbsp;&nbsp;ps</a></h2>
+<ul class="simple">
+<li>honx 在产品设计上非常傻瓜, 0配置, 一键加入代理也很方便.</li>
+<li>好服务, 要呵护, 希望大家没功夫折腾的同学, 多多支持honx(我也买了)</li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

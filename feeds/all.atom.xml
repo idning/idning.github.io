@@ -3659,6 +3659,181 @@ if rsp_len &amp;gt; 4:
 &lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;MGET&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;用的比较少, 不能简单的从rsp_len来判断.&lt;/p&gt;
 &lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>honx分析</title><link href="/honx.html" rel="alternate"></link><updated>2014-07-10T09:41:04+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-10:honx.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;分析&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#chromehttps-proxy" id="id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;chrome支持https proxy&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id7"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;尝试破解&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id8"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;这个方法对自己有啥用&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#https" id="id9"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;架设https 代理服务器的方法&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id10"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;给honx的建议&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#ps" id="id11"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;ps&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;分析&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;抓包, 发现 &lt;tt class="docutils literal"&gt;23.239.5.211&lt;/tt&gt; 这个host:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop ~/test$ host 23.239.5.211
+211.5.239.23.in-addr.arpa domain name pointer li699-211.members.linode.com.
+&lt;/pre&gt;
+&lt;p&gt;访问 &lt;a class="reference external" href="https://23.239.5.211/"&gt;https://23.239.5.211/&lt;/a&gt; 发现是一个https服务.&lt;/p&gt;
+&lt;p&gt;也就是说, honx 架设了一个https代理服务器,&lt;/p&gt;
+&lt;p&gt;但是, 据我所知, client 和proxy 之间的协议, 只支持 socks, socks5, http, 并不支持https. 目前PAC文件也是只支持这三种协议,&lt;/p&gt;
+&lt;p&gt;因为g-f-w会根据内容过滤, 所以代理必须使用一种加密的通道, 而不能是socks, http, 这也就是自己之前一直用ssh隧道的原因.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="chromehttps-proxy"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;chrome支持https proxy&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;看了一下 chrome 扩展中 允许的 proxy 类型:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://developer.chrome.com/extensions/proxy"&gt;https://developer.chrome.com/extensions/proxy&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;发现有https协议:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Scheme      Port
+http        80
+https       443
+socks4      1080
+socks5      1080
+&lt;/pre&gt;
+&lt;p&gt;原来, chrome 是支持 https 代理的:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.chromium.org/developers/design-documents/secure-web-proxy"&gt;http://www.chromium.org/developers/design-documents/secure-web-proxy&lt;/a&gt;
+&lt;a class="reference external" href="http://www.chromium.org/spdy/spdy-proxy"&gt;http://www.chromium.org/spdy/spdy-proxy&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;可以直接在porxy.pac里面返回HTTPS xxx就行:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) { return &amp;quot;HTTPS secure-proxy.example.com:443&amp;quot;; }
+&lt;/pre&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;其实这里也可以是SPDY&lt;/li&gt;
+&lt;li&gt;HTTPS proxy 的支持是chrome特有的, 目前还没发现其它浏览器或者ssh客户端之类支持(因为代码相对复杂)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id7"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;尝试破解&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;既然如此, 我们写这样一个pac文件:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) {
+    return 'HTTPS 23.239.5.211:443;';
+}
+&lt;/pre&gt;
+&lt;p&gt;似乎就ok, 但是测试发现不行, 原因是 https 有域名校验, 这里chrome可能使用强制校验, 必须通过匹配的域名访问 23.239.5.211 才行.&lt;/p&gt;
+&lt;p&gt;再查了一些chrome的资料, 其实通过 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;chrome://xxx-internals/&lt;/span&gt;&lt;/tt&gt;  很容易发现, honx其实也是写了这样的一个pac文件. 可以清楚的看到:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+PAC script: data:application/x-ns-proxy-autoconfig...
+&lt;/pre&gt;
+&lt;p&gt;它的内容是:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) {
+
+var D = &amp;quot;DIRECT&amp;quot;;
+var p='HTTPS xxxxx.com:443;';
+
+var node = {&amp;quot;net&amp;quot;:{&amp;quot;akamaihd&amp;quot;:1,&amp;quot;facebook&amp;quot;:1,&amp;quot;fbcdn&amp;quot;:1,&amp;quot;cloudfront&amp;quot;:1,&amp;quot;sstatic&amp;quot;:1,&amp;quot;doubleclick&amp;quot;:1,&amp;quot;2mdn&amp;quot;:1},&amp;quot;com&amp;quot;:{&amp;quot;facebook&amp;quot;:1,&amp;quot;twitter&amp;quot;:1,&amp;quot;twimg&amp;quot;:1,&amp;quot;google&amp;quot;:1,&amp;quot;googleusercontent&amp;quot;:1,&amp;quot;googleapis&amp;quot;:1,&amp;quot;gstatic&amp;quot;:1,&amp;quot;gmail&amp;quot;:1,&amp;quot;tumblr&amp;quot;:1,&amp;quot;appspot&amp;quot;:1,&amp;quot;amazonaws&amp;quot;:{&amp;quot;s3&amp;quot;:1},&amp;quot;blogspot&amp;quot;:1,&amp;quot;blogger&amp;quot;:1,&amp;quot;mediafire&amp;quot;:1,&amp;quot;ytimg&amp;quot;:1,&amp;quot;youtube&amp;quot;:1,&amp;quot;googlevideo&amp;quot;:1,&amp;quot;youtube-nocookie&amp;quot;:1,&amp;quot;wordpress&amp;quot;:1,&amp;quot;vimeo&amp;quot;:1,&amp;quot;googlesyndication&amp;quot;:1,&amp;quot;ggpht&amp;quot;:1,&amp;quot;imgur&amp;quot;:1,&amp;quot;googleadservices&amp;quot;:1,&amp;quot;cloudflare&amp;quot;:1,&amp;quot;chrome&amp;quot;:1,&amp;quot;symantec&amp;quot;:1},&amp;quot;co&amp;quot;:{&amp;quot;t&amp;quot;:1},&amp;quot;hk&amp;quot;:{&amp;quot;com&amp;quot;:{&amp;quot;google&amp;quot;:1}},&amp;quot;ly&amp;quot;:{&amp;quot;bit&amp;quot;:1},&amp;quot;be&amp;quot;:{&amp;quot;youtu&amp;quot;:1},&amp;quot;wpad&amp;quot;:1,&amp;quot;org&amp;quot;:{&amp;quot;chromium&amp;quot;:1}};
+
+var hostParts = host.toLowerCase().split('.');
+for (var i=hostParts.length - 1; i &amp;gt;= 0; i --) {
+    var part = hostParts[i];
+    node = node[part];
+    if (node == undefined || node == 1) break;
+}
+if (node == 1)
+    return p;
+
+return D;
+}
+&lt;/pre&gt;
+&lt;p&gt;我们发现这个脚本里面清楚的写着xxxx.com 这个域名, 把自己的pac换成这个域名:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+function FindProxyForURL(url, host) {
+    return 'HTTPS xxxxx.com:443;';
+}
+&lt;/pre&gt;
+&lt;p&gt;ok, 发现我们已经顺利使用这个https 代理了.&lt;/p&gt;
+&lt;p&gt;这里为了防止大家瞎搞, 域名我已经隐去了.&lt;/p&gt;
+&lt;p&gt;这段js里面居然用了一个 &lt;strong&gt;trie-tree&lt;/strong&gt; , 好赞, 不像我写的土鳖js:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+var hosts = [
+    &amp;quot;google.com&amp;quot;,
+    &amp;quot;google.co.jp&amp;quot;,
+    &amp;quot;blogspot.com&amp;quot;,
+];
+
+function FindProxyForURL(url, host) {
+    for (var i in hosts){
+        pattern = '.*' + hosts[i] + '.*';
+        if (regExpMatch(host, pattern)){
+            return proxy;
+        }
+    }
+    return &amp;quot;DIRECT&amp;quot;;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id8"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;这个方法对自己有啥用&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;既然知道了chrome 可以用https 的proxy, 那我就可以在自己的linode上搭了.&lt;/li&gt;
+&lt;li&gt;搭了这样一个https代理, 会不会被大家乱用呢.. 还得想办法.&lt;/li&gt;
+&lt;li&gt;如果能让ssh客户端等支持https 代理就好了.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="https"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;架设https 代理服务器的方法&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;Running a Secure Web Proxy&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;While all the details of running a secure web proxy are out of scope for this document, here are two suggestions.  If you are already running a web proxy, you use stunnel to convert it into a secure web proxy.  For example:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+stunnel -f -d 443 -r localhost:8080 -p cert.pem
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;This would cause stunnel to listen for SSL connections on port 443 and send any HTTP requests to the web proxy running on port 8080.&lt;/p&gt;
+&lt;ol class="arabic simple" start="2"&gt;
+&lt;li&gt;&lt;tt class="docutils literal"&gt;Squid&lt;/tt&gt; appears to offer support for running as a secure web proxy via the https_port directive.&lt;/li&gt;
+&lt;li&gt;nginx+SPDY?&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="https://github.com/igrigorik/node-spdyproxy"&gt;https://github.com/igrigorik/node-spdyproxy&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id10"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;给honx的建议&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;增加某种验证机制,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;使用http/https的 proxy验证机制&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;都比较弱, 而且需要用户介入手动填一次密码, 会频繁打断用户.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;比如在代理服务器上同时开一个注册服务, 当honx启动后, 每x秒会向这个接口注册一次, 说这个clientip是合法的, 这个接口可以加入复杂的验证, 这样就比较优雅.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不过引入这种机制会导致一些ip会变(公司多出口之类)的用户可能不能正常使用. 比较烦恼&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;再者, 一个honx用户估计是可以在多处登录, 这样就可以多人共享proxy, 所以, 加认证等等, 终归是防君子不防小人.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;建议针对学生降价.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="ps"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id11"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;ps&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;honx 在产品设计上非常傻瓜, 0配置, 一键加入代理也很方便.&lt;/li&gt;
+&lt;li&gt;好服务, 要呵护, 希望大家没功夫折腾的同学, 多多支持honx(我也买了)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>redis-latancy问题</title><link href="/redis-latancy.html" rel="alternate"></link><updated>2014-07-09T10:04:00+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-09:redis-latancy.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
@@ -6891,6 +7066,409 @@ fds=3:8:72
 &lt;div class="section" id="id8"&gt;
 &lt;h2&gt;&lt;a class="toc-backref" href="#id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;按照思路2, 实现: &lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/257"&gt;https://github.com/twitter/twemproxy/pull/257&lt;/a&gt;&lt;/p&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>icomet-cr</title><link href="/icomet-cr.html" rel="alternate"></link><updated>2014-04-23T16:18:23+08:00</updated><author><name>ning</name></author><id>tag:,2014-04-23:icomet-cr.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;代码量&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#utils" id="id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;utils&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#config" id="id7"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;config&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#log" id="id8"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;log&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id9"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#comet" id="id10"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;comet逻辑&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#comet-server-cpp-main" id="id11"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;comet-server.cpp main()&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#server-cpp-server-h" id="id12"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;server.cpp server.h&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#pub" id="id13"&gt;3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;pub&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#sub" id="id14"&gt;3.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;sub&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#channel-cpp-pub" id="id15"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;channel.cpp (pub端)&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#subscriber-cpp-subscriber-h" id="id16"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;subscriber.cpp subscriber.h&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#k" id="id18"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;1000K 连接的测试.&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id19"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;icomet是ideawu的作品, 基于libevent 的evhttp框架做的comet服务.&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://github.com/ideawu/icomet"&gt;https://github.com/ideawu/icomet&lt;/a&gt;&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;代码量&lt;/a&gt;&lt;/h2&gt;
+&lt;pre class="literal-block"&gt;
+ning&amp;#64;ning-laptop:~/test/icomet/src$ find . -name '*.cpp' | xargs cat | wc -l
+2116
+ning&amp;#64;ning-laptop:~/test/icomet/src$ find . -name '*.h' | xargs cat | wc -l
+982
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="utils"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;utils&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="config"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id7"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;config&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;支持名字空间的config&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;支持保存到文件(dump)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;注释也会读入, 并记录行号, dump的时候可以保留注释, 这不错.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;是否支持默认值和覆盖?&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不支持.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;数组支持, 需要解析的时候特别解析:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;allow xx&lt;/li&gt;
+&lt;li&gt;allow xxx&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;注释里面说是是c的cfg这样:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+struct config *cfg, *c;
+
+cfg = cfg_load_file(&amp;quot;cfg_test.conf&amp;quot;);
+if(!cfg){
+    return 0;
+}
+printf(&amp;quot;proxy.php.host = %s\n&amp;quot;, cfg_getstr(cfg, &amp;quot;proxy.php.host&amp;quot;));
+printf(&amp;quot;proxy.php.port = %d\n&amp;quot;, cfg_getnum(cfg, &amp;quot;proxy.php.port&amp;quot;));
+&lt;/pre&gt;
+&lt;p&gt;实际上, 格式较怪异:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+# 有效行以 \t* 开头
+proxy :
+    php =
+        host = 127.0.0.1
+        port = 8088
+    py :
+        host = 127.0.0.1
+        port = 8080
+&lt;/pre&gt;
+&lt;p&gt;实际用起来还是有点费劲:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+{
+    Config *cc = (Config *)conf-&amp;gt;get(&amp;quot;admin&amp;quot;);
+    if(cc != NULL){
+        std::vector&amp;lt;Config *&amp;gt; *children = &amp;amp;cc-&amp;gt;children;
+        std::vector&amp;lt;Config *&amp;gt;::iterator it;
+        for(it = children-&amp;gt;begin(); it != children-&amp;gt;end(); it++){
+            if((*it)-&amp;gt;key != &amp;quot;allow&amp;quot;){
+                continue;
+            }
+            const char *ip = (*it)-&amp;gt;str();
+            log_info(&amp;quot;    allow %s&amp;quot;, ip);
+            ip_filter-&amp;gt;add_allow(ip);
+        }
+    }
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="log"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;log&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;和自己习惯不一样:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+static const int LEVEL_NONE     = (-1);
+static const int LEVEL_MIN      = 0;
+static const int LEVEL_FATAL    = 0;
+static const int LEVEL_ERROR    = 1;
+static const int LEVEL_WARN     = 2;
+static const int LEVEL_INFO     = 3;
+static const int LEVEL_DEBUG    = 4;
+static const int LEVEL_TRACE    = 5;
+static const int LEVEL_MAX      = 5;
+&lt;/pre&gt;
+&lt;p&gt;支持按照文件大小切日志-能按小时切最好&lt;/p&gt;
+&lt;p&gt;可以设置写的时候加锁:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+if(this-&amp;gt;mutex){
+    pthread_mutex_lock(this-&amp;gt;mutex);
+}
+fwrite(buf, len, 1, this-&amp;gt;fp);
+fflush(this-&amp;gt;fp);
+
+stats.w_curr += len;
+stats.w_total += len;
+if(rotate_size &amp;gt; 0 &amp;amp;&amp;amp; stats.w_curr &amp;gt; rotate_size){
+    this-&amp;gt;rotate();
+}
+if(this-&amp;gt;mutex){
+    pthread_mutex_unlock(this-&amp;gt;mutex);
+}
+&lt;/pre&gt;
+&lt;p&gt;因为 这里用的是 &lt;tt class="docutils literal"&gt;FILE *&lt;/tt&gt;, 不能直接append.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id9"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;daemon.h
+file.h
+ip_filter.h 黑白名单,
+list.h 链表 c++还需要这个么?:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+template &amp;lt;class T&amp;gt;
+class LinkedList{
+&lt;/pre&gt;
+&lt;p&gt;strings.h 提供trim(), hexmem() parse_ip_port() 函数
+objpool.h 因为用范型, 所以很有用的对象池, 可惜c用不了, icomet里面没用.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="comet"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id10"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;comet逻辑&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="comet-server-cpp-main"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id11"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;comet-server.cpp main()&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+Server *serv = NULL;
+void pub_handler(struct evhttp_request *req, void *arg){
+    CHECK_AUTH();
+    serv-&amp;gt;pub(req, true);
+}
+
+void timer_cb(evutil_socket_t sig, short events, void *user_data){ //每秒一次.
+    rand();
+    serv-&amp;gt;check_timeout();
+}
+
+int main(int argc, char **argv){
+    //读取配置
+    serv = new Server();
+    // /pub?cname=abc&amp;amp;content=hi
+    evhttp_set_cb(admin_http, &amp;quot;/pub&amp;quot;, pub_handler, NULL);
+
+    // /sub?cname=abc&amp;amp;cb=jsonp&amp;amp;token=&amp;amp;seq=123&amp;amp;noop=123
+    evhttp_set_cb(front_http, &amp;quot;/sub&amp;quot;, poll_handler, NULL);
+
+}
+&lt;/pre&gt;
+&lt;p&gt;为啥把pub 放在admin_http上&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="server-cpp-server-h"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id12"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;server.cpp server.h&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;used_channels 所有已用channel链表
+cname_channels 每个channel有一个名字, 用map存name-&amp;gt;channel的关系.&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+Channel* Server::new_channel(const std::string &amp;amp;cname){
+    if(used_channels.size &amp;gt;= ServerConfig::max_channels){
+        return NULL;
+    }
+    log_debug(&amp;quot;new channel: %s&amp;quot;, cname.c_str());
+
+    Channel *channel = new Channel();
+    channel-&amp;gt;serv = this;
+    channel-&amp;gt;name = cname;
+    channel-&amp;gt;create_token();
+
+    add_presence(PresenceOnline, channel-&amp;gt;name);
+
+    used_channels.push_back(channel);
+    cname_channels[channel-&amp;gt;name] = channel;
+
+    return channel;
+}
+&lt;/pre&gt;
+&lt;p&gt;check_timeout 每秒对每个channel上的每个sub, 检查是否过了一段时间的idle, 如果是idle, 就回复这个sub没有更新(noop()方法):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+int Server::check_timeout(){
+    //log_debug(&amp;quot;&amp;lt;&amp;quot;);
+    LinkedList&amp;lt;Channel *&amp;gt;::Iterator it = used_channels.iterator();
+    while(Channel *channel = it.next()){
+        if(channel-&amp;gt;subs.size == 0){
+            if(--channel-&amp;gt;idle &amp;lt; 0){
+                this-&amp;gt;free_channel(channel);
+            }
+            continue;
+        }
+        if(channel-&amp;gt;idle &amp;lt; ServerConfig::channel_idles){
+            channel-&amp;gt;idle = ServerConfig::channel_idles;
+        }
+
+        LinkedList&amp;lt;Subscriber *&amp;gt;::Iterator it2 = channel-&amp;gt;subs.iterator();
+        while(Subscriber *sub = it2.next()){
+            if(++sub-&amp;gt;idle &amp;lt;= ServerConfig::polling_idles){
+                continue;
+            }
+            sub-&amp;gt;idle = 0;
+            sub-&amp;gt;noop();
+        }
+    }
+    //log_debug(&amp;quot;&amp;gt;&amp;quot;);
+    return 0;
+}
+&lt;/pre&gt;
+&lt;p&gt;这个方法效率极低.&lt;/p&gt;
+&lt;div class="section" id="pub"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id13"&gt;3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;pub&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+int Server::pub(struct evhttp_request *req, bool encoded){
+    channel = this-&amp;gt;get_channel_by_name(cname);
+    // response to publisher
+    evhttp_add_header(req-&amp;gt;output_headers, &amp;quot;Content-Type&amp;quot;, &amp;quot;text/javascript; charset=utf-8&amp;quot;);
+    struct evbuffer *buf = evbuffer_new();
+
+    evbuffer_add_printf(buf, &amp;quot;{\&amp;quot;type\&amp;quot;:\&amp;quot;ok\&amp;quot;}&amp;quot;);
+
+    evhttp_send_reply(req, 200, &amp;quot;OK&amp;quot;, buf);
+    evbuffer_free(buf);
+
+    // push to subscribers
+    channel-&amp;gt;send(&amp;quot;data&amp;quot;, content, encoded);
+    return 0;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="sub"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id14"&gt;3.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;sub&lt;/a&gt;&lt;/h4&gt;
+&lt;pre class="literal-block"&gt;
+int Server::sub(struct evhttp_request *req, Subscriber::Type sub_type){
+    HttpQuery query(req);
+    int seq = query.get_int(&amp;quot;seq&amp;quot;, 0);
+    int noop = query.get_int(&amp;quot;noop&amp;quot;, 0);
+    const char *cb = query.get_str(&amp;quot;cb&amp;quot;, &amp;quot;&amp;quot;);
+    const char *token = query.get_str(&amp;quot;token&amp;quot;, &amp;quot;&amp;quot;);
+    std::string cname = query.get_str(&amp;quot;cname&amp;quot;, &amp;quot;&amp;quot;);
+
+    Channel *channel = this-&amp;gt;get_channel_by_name(cname);
+
+    ... //check
+
+    Subscriber *sub = new Subscriber();
+    sub-&amp;gt;req = req;
+    sub-&amp;gt;type = sub_type;
+    sub-&amp;gt;idle = 0;
+    sub-&amp;gt;seq_next = seq;
+    sub-&amp;gt;seq_noop = noop;
+    sub-&amp;gt;callback = cb;
+
+    channel-&amp;gt;add_subscriber(sub); //添加进去.
+    subscribers ++;
+    sub-&amp;gt;start();
+
+    return 0;
+}
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="channel-cpp-pub"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id15"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;channel.cpp (pub端)&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+class Channel{
+    LinkedList&amp;lt;Subscriber *&amp;gt; subs;
+    int idle;
+    int seq_next;
+    std::string name;
+    std::string token;
+    std::vector&amp;lt;std::string&amp;gt; msg_list; //用一个vector保存msg
+    void add_subscriber(Subscriber *sub);
+    void send(const char *type, const char *content, bool encoded=true);
+}
+&lt;/pre&gt;
+&lt;p&gt;这是pub逻辑,&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+void Channel::send(const char *type, const char *content, bool encoded){
+    ...
+    msg_list.push_back(content);
+    seq_next ++;
+    if(msg_list.size() &amp;gt;= ServerConfig::channel_buffer_size * 1.5){
+        std::vector&amp;lt;std::string&amp;gt;::iterator it;
+        it = msg_list.end() - ServerConfig::channel_buffer_size;
+        msg_list.assign(it, msg_list.end());
+        log_trace(&amp;quot;resize msg_list to %d, seq_next: %d&amp;quot;, msg_list.size(), seq_next);
+    }
+    LinkedList&amp;lt;Subscriber *&amp;gt;::Iterator it = subs.iterator();
+    while(Subscriber *sub = it.next()){
+        sub-&amp;gt;send_chunk(this-&amp;gt;seq_next, type, new_content.c_str());
+    }
+}
+&lt;/pre&gt;
+&lt;p&gt;&lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;sub-&amp;gt;send_chunk&lt;/span&gt;&lt;/tt&gt; 是决定向sub端发数据,
+前面 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;serv-&amp;gt;check_timeout()&lt;/span&gt;&lt;/tt&gt; 里面sub-&amp;gt;noop() 是决定向sub端回复说 &lt;tt class="docutils literal"&gt;没有消息&lt;/tt&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="subscriber-cpp-subscriber-h"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id16"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;subscriber.cpp subscriber.h&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+evhttp_add_header(req-&amp;gt;output_headers, &amp;quot;Connection&amp;quot;, &amp;quot;keep-alive&amp;quot;);
+evhttp_send_reply_chunk(this-&amp;gt;req, buf);
+&lt;/pre&gt;
+&lt;p&gt;evhttp_send_reply_chunk, 就是用Chunked方式回复数据.&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;消息存在内存中, 不能持久化.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;一个channel如果一直活跃, 消息就不会删除, 越堆越多?(一个channel有个最大消息量):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+if(msg_list.size() &amp;gt;= ServerConfig::channel_buffer_size * 1.5){
+    std::vector&amp;lt;std::string&amp;gt;::iterator it;
+    it = msg_list.end() - ServerConfig::channel_buffer_size;
+    msg_list.assign(it, msg_list.end());
+    log_trace(&amp;quot;resize msg_list to %d, seq_next: %d&amp;quot;, msg_list.size(), seq_next);
+}
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;有channel timeout, 没有msg timeout&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="k"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id18"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;1000K 连接的测试.&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;ideawu 提供了一个 c1000k 代码:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://github.com/ideawu/c1000k"&gt;https://github.com/ideawu/c1000k&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;要测试c1000k 主要两个问题:&lt;/p&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.&lt;/li&gt;
+&lt;li&gt;client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;ideawu是这样解决的:
+1. server 端每accept一个连接, 都设置它的缓冲区大小为5k:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+     bufsize = 5000;
+     setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &amp;amp;bufsize, sizeof(bufsize));
+     setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &amp;amp;bufsize, sizeof(bufsize));
+
+这样1000k连接只需要10G内存.
+&lt;/pre&gt;
+&lt;ol class="arabic" start="2"&gt;
+&lt;li&gt;&lt;p class="first"&gt;server 端开100个port, 这样每个客户端3w端口, 就可以开300w个连接.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;这时候, 限制就只有fd个数限制了.&lt;/p&gt;
+&lt;p&gt;我启动的时候设置好limit就可以&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ limit -n 1024000 ./server 6000
+$ limit -n 1024000 ./client 127.0.0.1 6000
+
+可以一直跑到:
+connections: 1023897
+error: Too many open files
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id19"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;对于comet, evhttp 应该是最佳选择, 好于nginx.&lt;/li&gt;
+&lt;li&gt;赞ideawu.&lt;/li&gt;
+&lt;li&gt;消息不持久化,&lt;/li&gt;
+&lt;li&gt;单机模式, 如何扩展?&lt;/li&gt;
+&lt;li&gt;定时timer遍历, 对单进程服务器来说, 应该不可接受.&lt;/li&gt;
+&lt;/ul&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>redis-aof-replay</title><link href="/redis-aof-replay.html" rel="alternate"></link><updated>2014-02-27T09:44:50+08:00</updated><author><name>ning</name></author><id>tag:,2014-02-27:redis-aof-replay.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
@@ -11099,141 +11677,147 @@ sched_getaffinity()
 </summary><category term="all"></category></entry><entry><title>twemproxy代码分析</title><link href="/twemproxy-src.html" rel="alternate"></link><updated>2013-12-15T15:12:02+08:00</updated><author><name>ning</name></author><id>tag:,2013-12-15:twemproxy-src.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="simple"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id45"&gt;调研&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id46"&gt;文章调研&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#redis-twemproxy-a-redis-proxy-from-twitter" id="id47"&gt;Redis 作者:Twemproxy, a Redis proxy from Twitter&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id48"&gt;存储分片和Twemproxy核心解读&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#redis-twemproxy-benchmark" id="id49"&gt;redis-twemproxy-benchmark&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id50"&gt;这个文章总结不错&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id47"&gt;调研&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id48"&gt;文章调研&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-twemproxy-a-redis-proxy-from-twitter" id="id49"&gt;Redis 作者:Twemproxy, a Redis proxy from Twitter&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id50"&gt;存储分片和Twemproxy核心解读&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-twemproxy-benchmark" id="id51"&gt;redis-twemproxy-benchmark&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id52"&gt;这个文章总结不错&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#hash" id="id51"&gt;hash函数&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id52"&gt;配置&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#user" id="id53"&gt;user&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id54"&gt;不支持&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hash" id="id53"&gt;hash函数&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id54"&gt;配置&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#user" id="id55"&gt;user&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id56"&gt;不支持&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id55"&gt;代码分析&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id56"&gt;模块划分&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#event" id="id57"&gt;event&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id58"&gt;请求处理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#main" id="id59"&gt;main&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#os-utils" id="id60"&gt;os utils&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#ds-utils" id="id61"&gt;ds utils&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id62"&gt;协议&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id11" id="id63"&gt;hash&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id57"&gt;代码分析&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id58"&gt;模块划分&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#event" id="id59"&gt;event&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id60"&gt;请求处理&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#main" id="id61"&gt;main&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#os-utils" id="id62"&gt;os utils&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#ds-utils" id="id63"&gt;ds utils&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id64"&gt;协议&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id11" id="id65"&gt;hash&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id12" id="id64"&gt;event 机制&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#epool" id="id65"&gt;epool 实现&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#event-create" id="id66"&gt;上层对event_create 的使用&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#event-wait" id="id67"&gt;上层对event_wait的使用&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#libevent" id="id68"&gt;和libevent 对比&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id12" id="id66"&gt;event 机制&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#epool" id="id67"&gt;epool 实现&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#event-create" id="id68"&gt;上层对event_create 的使用&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#event-wait" id="id69"&gt;上层对event_wait的使用&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#libevent" id="id70"&gt;和libevent 对比&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id13" id="id69"&gt;重要结构&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#server-poolserver" id="id70"&gt;server_pool和server.&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#conn-msg-mbuf" id="id71"&gt;conn, msg, mbuf&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#conn" id="id72"&gt;conn&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#msg" id="id73"&gt;msg&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#mbuf" id="id74"&gt;mbuf&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id14" id="id75"&gt;小结&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id15" id="id76"&gt;请求处理&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#core-core" id="id77"&gt;读写总控函数 core_core&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#accept" id="id78"&gt;accept连接&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#nc-connection-c" id="id79"&gt;nc_connection.c&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#messsage-c" id="id80"&gt;messsage.c&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id16" id="id81"&gt;一个请求被处理的流程&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id17" id="id82"&gt;初始状态&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id18" id="id83"&gt;1.读取请求&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id19" id="id84"&gt;2.转发到后端&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id20" id="id85"&gt;3.接收后端响应&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#client" id="id86"&gt;4.把响应回给client&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id13" id="id71"&gt;重要结构&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#server-poolserver" id="id72"&gt;server_pool和server.&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#conn-msg-mbuf" id="id73"&gt;conn, msg, mbuf&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#conn" id="id74"&gt;conn&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#msg" id="id75"&gt;msg&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mbuf" id="id76"&gt;mbuf&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id14" id="id77"&gt;小结&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#buf" id="id87"&gt;buf处理上的特点&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id21" id="id88"&gt;后端如何处理&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id22" id="id89"&gt;协议&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id23" id="id90"&gt;hash&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id24" id="id91"&gt;具体hash函数&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#crc32" id="id92"&gt;crc32&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#hsieh" id="id93"&gt;hsieh&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#jenkins-lookup3" id="id94"&gt;Jenkins lookup3&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#jenkins-one-at-a-time" id="id95"&gt;Jenkins one_at_a_time&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#fnv-xxx" id="id96"&gt;FNV-XXX&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#murmur" id="id97"&gt;murmur&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id25" id="id98"&gt;小结&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#dispatch" id="id99"&gt;dispatch方法&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#rbtree" id="id100"&gt;rbtree&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#mget" id="id101"&gt;如何处理mget&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#nginx" id="id102"&gt;代码严重受nginx影响&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id26" id="id103"&gt;(代码)小结&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id27" id="id104"&gt;注意&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id15" id="id78"&gt;请求处理&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#core-core" id="id79"&gt;读写总控函数 core_core&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#accept" id="id80"&gt;accept连接&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#nc-connection-c" id="id81"&gt;nc_connection.c&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#messsage-c" id="id82"&gt;messsage.c&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id16" id="id83"&gt;一个请求被处理的流程&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id17" id="id84"&gt;初始状态&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id18" id="id85"&gt;1.读取请求&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id19" id="id86"&gt;2.转发到后端&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id20" id="id87"&gt;3.接收后端响应&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#client" id="id88"&gt;4.把响应回给client&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id28" id="id105"&gt;使用&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id29" id="id106"&gt;配置参数&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#hashdistribution" id="id107"&gt;hash和distribution见前面分析&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#auto-eject-hosts" id="id108"&gt;auto_eject_hosts相关&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#timeout" id="id109"&gt;timeout&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#log" id="id110"&gt;log&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#mbuf-size" id="id111"&gt;mbuf size&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#max-key-lenght" id="id112"&gt;max key lenght&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#server-connections-1" id="id113"&gt;server_connections: &amp;gt; 1&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id30" id="id114"&gt;监控&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#buf" id="id89"&gt;buf处理上的特点&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id21" id="id90"&gt;后端如何处理&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id22" id="id91"&gt;协议&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id23" id="id92"&gt;hash&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id24" id="id93"&gt;具体hash函数&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#crc32" id="id94"&gt;crc32&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hsieh" id="id95"&gt;hsieh&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#jenkins-lookup3" id="id96"&gt;Jenkins lookup3&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#jenkins-one-at-a-time" id="id97"&gt;Jenkins one_at_a_time&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#fnv-xxx" id="id98"&gt;FNV-XXX&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#murmur" id="id99"&gt;murmur&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id25" id="id100"&gt;小结&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#redis-mgr" id="id115"&gt;使用redis-mgr部署&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id31" id="id116"&gt;日志级别&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id32" id="id117"&gt;修改日志级别:&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id33" id="id118"&gt;2.动态调整日志级别:&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id34" id="id119"&gt;3.切日志&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#dispatch" id="id101"&gt;dispatch方法&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#rbtree" id="id102"&gt;rbtree&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mget" id="id103"&gt;如何处理mget&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#nginx" id="id104"&gt;代码严重受nginx影响&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id26" id="id105"&gt;(代码)小结&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id27" id="id106"&gt;注意&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id35" id="id120"&gt;自己实现一个自动的主从切换?&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#sentinel" id="id121"&gt;sentinel验证&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id36" id="id122"&gt;配置和优化&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#m-512" id="id123"&gt;-m 512&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id28" id="id107"&gt;使用&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id29" id="id108"&gt;编译&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#debug" id="id109"&gt;debug级别&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#core" id="id110"&gt;core的问题&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id37" id="id124"&gt;问题&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#preconnect-true-redis-core" id="id125"&gt;preconnect: true 的时候, 如果后端redis挂掉, 会core&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#pipeline-replay" id="id126"&gt;pipeline/replay时消耗大量内存:&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#mgetcase" id="id127"&gt;mget慢这个case&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id38" id="id128"&gt;应该允许释放mbuf&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id39" id="id129"&gt;#一轮完了再集中加事件, 不要多次加, 重复加&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id40" id="id130"&gt;#可能的优化:mget&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id41" id="id131"&gt;改造&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#key" id="id132"&gt;key过长回错误&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id30" id="id111"&gt;使用&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id31" id="id112"&gt;配置参数&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hashdistribution" id="id113"&gt;hash和distribution见前面分析&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#auto-eject-hosts" id="id114"&gt;auto_eject_hosts相关&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#timeout" id="id115"&gt;timeout&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#log" id="id116"&gt;log&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mbuf-size" id="id117"&gt;mbuf size&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#max-key-lenght" id="id118"&gt;max key lenght&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#server-connections-1" id="id119"&gt;server_connections: &amp;gt; 1&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id32" id="id120"&gt;监控&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id42" id="id133"&gt;社区情况&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id43" id="id134"&gt;小结&lt;/a&gt;&lt;ul&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id44" id="id135"&gt;期望&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-mgr" id="id121"&gt;使用redis-mgr部署&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id33" id="id122"&gt;日志级别&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id34" id="id123"&gt;修改日志级别:&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id35" id="id124"&gt;2.动态调整日志级别:&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id36" id="id125"&gt;3.切日志&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id37" id="id126"&gt;自己实现一个自动的主从切换?&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#sentinel" id="id127"&gt;sentinel验证&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id38" id="id128"&gt;配置和优化&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#m-512" id="id129"&gt;-m 512&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id39" id="id130"&gt;问题&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#preconnect-true-redis-core" id="id131"&gt;preconnect: true 的时候, 如果后端redis挂掉, 会core&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#pipeline-replay" id="id132"&gt;pipeline/replay时消耗大量内存:&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mgetcase" id="id133"&gt;mget慢这个case&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id40" id="id134"&gt;应该允许释放mbuf&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id41" id="id135"&gt;#一轮完了再集中加事件, 不要多次加, 重复加&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id42" id="id136"&gt;#可能的优化:mget&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id43" id="id137"&gt;改造&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#key" id="id138"&gt;key过长回错误&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id44" id="id139"&gt;社区情况&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id45" id="id140"&gt;小结&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id46" id="id141"&gt;期望&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id1"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id45"&gt;调研&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id47"&gt;调研&lt;/a&gt;&lt;/h2&gt;
 &lt;div class="section" id="id2"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id46"&gt;文章调研&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id48"&gt;文章调研&lt;/a&gt;&lt;/h3&gt;
 &lt;div class="section" id="redis-twemproxy-a-redis-proxy-from-twitter"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id47"&gt;Redis 作者:Twemproxy, a Redis proxy from Twitter&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id49"&gt;Redis 作者:Twemproxy, a Redis proxy from Twitter&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;&lt;a class="reference external" href="http://antirez.com/news/44"&gt;http://antirez.com/news/44&lt;/a&gt;&lt;/p&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;计划中的redis-cluster: Multiple instances is a share-nothing architecture.&lt;/li&gt;
@@ -11321,7 +11905,7 @@ mget 只有50%
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id3"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id48"&gt;存储分片和Twemproxy核心解读&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id50"&gt;存储分片和Twemproxy核心解读&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;&lt;a class="reference external" href="http://www.wzxue.com/%E5%AD%98%E5%82%A8%E5%88%86%E7%89%87%E5%92%8Ctwemproxy%E6%A0%B8%E5%BF%83%E8%A7%A3%E8%AF%BB/"&gt;http://www.wzxue.com/%E5%AD%98%E5%82%A8%E5%88%86%E7%89%87%E5%92%8Ctwemproxy%E6%A0%B8%E5%BF%83%E8%A7%A3%E8%AF%BB/&lt;/a&gt;&lt;/p&gt;
 &lt;p&gt;antirez(Redis作者)写过一篇对twemproxy的介绍http://antirez.com/news/44, 他认为twemproxy是目前Redis 分片管理的最好方案，虽然antirez的Redis cluster正在实现并且对其给予厚望&lt;/p&gt;
 &lt;ul&gt;
@@ -11344,7 +11928,7 @@ mget 只有50%
 github 上人气挺高: &lt;a class="reference external" href="https://github.com/yuyuyu101"&gt;https://github.com/yuyuyu101&lt;/a&gt;&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="redis-twemproxy-benchmark"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id49"&gt;redis-twemproxy-benchmark&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id51"&gt;redis-twemproxy-benchmark&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;&lt;a class="reference external" href="http://blog.jpush.cn/redis-twemproxy-benchmark/"&gt;http://blog.jpush.cn/redis-twemproxy-benchmark/&lt;/a&gt;&lt;/p&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;twemproxy 可以开http监控端口: &lt;a class="reference external" href="http://ip:22222"&gt;http://ip:22222&lt;/a&gt; json格式&lt;/li&gt;
@@ -11355,7 +11939,7 @@ github 上人气挺高: &lt;a class="reference external" href="https://github.co
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id4"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id50"&gt;这个文章总结不错&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id52"&gt;这个文章总结不错&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;&lt;a class="reference external" href="http://cloudaice.com/twemproxy-explore/"&gt;http://cloudaice.com/twemproxy-explore/&lt;/a&gt;&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;dl class="first docutils"&gt;
@@ -11437,7 +12021,7 @@ github 上人气挺高: &lt;a class="reference external" href="https://github.co
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="hash"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id51"&gt;hash函数&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id53"&gt;hash函数&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;hash:&lt;/p&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;one_at_a_time&lt;/li&gt;
@@ -11455,7 +12039,7 @@ github 上人气挺高: &lt;a class="reference external" href="https://github.co
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id5"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id52"&gt;配置&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id54"&gt;配置&lt;/a&gt;&lt;/h3&gt;
 &lt;pre class="literal-block"&gt;
 delta:
   listen: 127.0.0.1:22124
@@ -11475,7 +12059,7 @@ delta:
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="user"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id53"&gt;user&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id55"&gt;user&lt;/a&gt;&lt;/h3&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;Twitter&lt;/li&gt;
 &lt;li&gt;Pinterest&lt;/li&gt;
@@ -11483,7 +12067,7 @@ delta:
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id6"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id54"&gt;不支持&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id56"&gt;不支持&lt;/a&gt;&lt;/h3&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;auth&lt;/li&gt;
 &lt;li&gt;mset&lt;/li&gt;
@@ -11492,12 +12076,12 @@ delta:
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id7"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id55"&gt;代码分析&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id57"&gt;代码分析&lt;/a&gt;&lt;/h2&gt;
 &lt;div class="section" id="id8"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id56"&gt;模块划分&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id58"&gt;模块划分&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;核心是 &lt;tt class="docutils literal"&gt;event&lt;/tt&gt; , &lt;tt class="docutils literal"&gt;请求处理&lt;/tt&gt; 这两块&lt;/p&gt;
 &lt;div class="section" id="event"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id57"&gt;event&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id59"&gt;event&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 ./event
 ./event/Makefile.am
@@ -11508,7 +12092,7 @@ delta:
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id9"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id58"&gt;请求处理&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id60"&gt;请求处理&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 ./nc_proxy.c
 ./nc_proxy.h
@@ -11530,7 +12114,7 @@ delta:
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="main"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id59"&gt;main&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id61"&gt;main&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;./nc.c, 处理daemon, pidfile, args, config, 最后:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 nc_run(struct instance *nci)
@@ -11547,7 +12131,7 @@ nc_run(struct instance *nci)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="os-utils"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id60"&gt;os utils&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id62"&gt;os utils&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 ./nc_conf.c
 ./nc_conf.h
@@ -11562,7 +12146,7 @@ nc_run(struct instance *nci)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="ds-utils"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id61"&gt;ds utils&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id63"&gt;ds utils&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 ./nc_array.c
 ./nc_array.h
@@ -11576,7 +12160,7 @@ nc_run(struct instance *nci)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id10"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id62"&gt;协议&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id64"&gt;协议&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 ./proto/nc_proto.h
 ./proto/nc_memcache.c
@@ -11584,7 +12168,7 @@ nc_run(struct instance *nci)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id11"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id63"&gt;hash&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id65"&gt;hash&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 ./hashkit/nc_crc16.c
 ./hashkit/nc_crc32.c
@@ -11602,7 +12186,7 @@ nc_run(struct instance *nci)
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id12"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id64"&gt;event 机制&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id66"&gt;event 机制&lt;/a&gt;&lt;/h3&gt;
 &lt;pre class="literal-block"&gt;
 struct event_base {
     int                ep;      /* epoll descriptor */
@@ -11625,7 +12209,7 @@ int event_wait(struct event_base *evb, int timeout);
 void event_loop_stats(event_stats_cb_t cb, void *arg);
 &lt;/pre&gt;
 &lt;div class="section" id="epool"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id65"&gt;epool 实现&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id67"&gt;epool 实现&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;event_base_create:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 struct event_base *
@@ -11697,7 +12281,7 @@ event_wait(struct event_base *evb, int timeout)
 &lt;p&gt;注意: 这里用的都是边缘触发 EPOLLET (redis本身用的是水平触发)&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="event-create"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id66"&gt;上层对event_create 的使用&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id68"&gt;上层对event_create 的使用&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 core_ctx_create(){
     /* initialize server pool from configuration */  pool 是一种隔离单位
@@ -11767,7 +12351,7 @@ proxy_accept(struct context *ctx, struct conn *p) {
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="event-wait"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id67"&gt;上层对event_wait的使用&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id69"&gt;上层对event_wait的使用&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 rstatus_t
 core_loop(struct context *ctx)
@@ -11802,7 +12386,7 @@ nc_run(struct instance *nci)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="libevent"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id68"&gt;和libevent 对比&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id70"&gt;和libevent 对比&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;从数据结构, 函数命令来看, 受到libevnet和nginx的强烈影响.&lt;/p&gt;
 &lt;p&gt;(redis是自己的事件框架, memcached 就是用libevent作为事件框架)&lt;/p&gt;
 &lt;p&gt;libevent 的结构大概是这样的(不准确)&lt;/p&gt;
@@ -11841,9 +12425,9 @@ event_add(ev_accept, NULL);
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id13"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id69"&gt;重要结构&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id71"&gt;重要结构&lt;/a&gt;&lt;/h3&gt;
 &lt;div class="section" id="server-poolserver"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id70"&gt;server_pool和server.&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id72"&gt;server_pool和server.&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;在 &lt;tt class="docutils literal"&gt;server_pool.h&lt;/tt&gt; 中注释写的非常清楚, 还有示意图:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 *  +-------------+
@@ -11893,9 +12477,9 @@ s2:
 &lt;img alt="" src="/imgs/twemproxy-server_pool.png" /&gt;
 &lt;/div&gt;
 &lt;div class="section" id="conn-msg-mbuf"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id71"&gt;conn, msg, mbuf&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id73"&gt;conn, msg, mbuf&lt;/a&gt;&lt;/h4&gt;
 &lt;div class="section" id="conn"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id72"&gt;conn&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id74"&gt;conn&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;前面event机制提供的事件注册接口, 注册的事件都是在conn上的:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 int event_add_in(struct event_base *evb, struct conn *c);
@@ -11962,7 +12546,7 @@ conn-&amp;gt;send_done = req_send_done;
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="msg"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id73"&gt;msg&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id75"&gt;msg&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;msg代表一个请求体, 或者一个response, 对于mget之类, 它还会代表原request解析后的一个子request:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 struct msg {
@@ -11983,11 +12567,11 @@ struct msg {
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="mbuf"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id74"&gt;mbuf&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id76"&gt;mbuf&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;msg中用来保存请求/响应 内容的链表, 每个mbuf大小默认是16K, 可以配置, 范围在 &lt;tt class="docutils literal"&gt;512B - 64K&lt;/tt&gt; 之间&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id14"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id75"&gt;小结&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id77"&gt;小结&lt;/a&gt;&lt;/h5&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;server_pool里面保存该pool上面所有client_conn的链表,&lt;/li&gt;
 &lt;li&gt;server里面保存该server上所有server_conn的链表.&lt;/li&gt;
@@ -12003,7 +12587,7 @@ struct msg {
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id15"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id76"&gt;请求处理&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id78"&gt;请求处理&lt;/a&gt;&lt;/h3&gt;
 &lt;pre class="literal-block"&gt;
 ./nc_connection.h
 ./nc_connection.c       //三种连接类型, 对象池处理(conn_get, conn_put), 底层读写(conn_recv, conn_sendv)
@@ -12027,7 +12611,7 @@ struct msg {
 ./nc_mbuf.c             //msg使用的buf.
 &lt;/pre&gt;
 &lt;div class="section" id="core-core"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id77"&gt;读写总控函数 core_core&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id79"&gt;读写总控函数 core_core&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 rstatus_t
 core_core(void *arg, uint32_t events)
@@ -12052,7 +12636,7 @@ core_core(void *arg, uint32_t events)
 &lt;p&gt;核心就是 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;recv&lt;/span&gt;&lt;/tt&gt; , &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;send&lt;/span&gt;&lt;/tt&gt;, 以及它们的变化.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="accept"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id78"&gt;accept连接&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id80"&gt;accept连接&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;前面讲到proxy_init通过:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 p = conn_get_proxy(pool); 获得一个proxy类型的 conn, 它的回调设置: conn-&amp;gt;recv = proxy_recv;
@@ -12064,7 +12648,7 @@ c = conn_get(p-&amp;gt;owner, true, p-&amp;gt;redis);
 &lt;p&gt;获得一个client类型的conn, 这里会把conn-&amp;gt;recv设置为 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;conn-&amp;gt;recv&lt;/span&gt; = msg_recv&lt;/tt&gt;, 有数据发来时，就会调用 msg_recv&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="nc-connection-c"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id79"&gt;nc_connection.c&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id81"&gt;nc_connection.c&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;很赞的注释:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 *                   nc_connection.[ch]
@@ -12079,7 +12663,7 @@ c = conn_get(p-&amp;gt;owner, true, p-&amp;gt;redis);
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="messsage-c"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id80"&gt;messsage.c&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id82"&gt;messsage.c&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 *            nc_message.[ch]
 *        _message (struct msg)
@@ -12198,17 +12782,17 @@ conn_get(void *owner, bool client, bool redis)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id16"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id81"&gt;一个请求被处理的流程&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id83"&gt;一个请求被处理的流程&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;我们按照 messsage.c 里面的4个步骤&lt;/p&gt;
 &lt;p&gt;后面的图都采用这样的表示方法:&lt;/p&gt;
 &lt;img alt="" src="/imgs/twemproxy-step-desc.png" /&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id17"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id82"&gt;初始状态&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id84"&gt;初始状态&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;考察只有一个后端的情况, 假设有2个client要发送3个请求过来&lt;/p&gt;
 &lt;img alt="" src="/imgs/twemproxy-state-0.png" /&gt;
 &lt;div class="section" id="id18"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id83"&gt;1.读取请求&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id85"&gt;1.读取请求&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;此时回调函数:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 conn-&amp;gt;recv = msg_recv;
@@ -12237,7 +12821,7 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
 &lt;p&gt;req_forward用server_pool_conn获得一个server_conn.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id19"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id84"&gt;2.转发到后端&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id86"&gt;2.转发到后端&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;对于server_conn来说, 因为挂了epoll_out事件, 很快就会调用 conn-&amp;gt;send，也就是msg_send.&lt;/p&gt;
 &lt;p&gt;此时:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
@@ -12252,7 +12836,7 @@ conn-&amp;gt;send_done = req_send_done;
 &lt;img alt="" src="/imgs/twemproxy-state-2.png" /&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id20"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id85"&gt;3.接收后端响应&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id87"&gt;3.接收后端响应&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;因为server_conn的 epoll_in是一直开着的, 响应很快回来后, 就到了server_conn的 msg_recv
 这个过程和调用栈1类似,不过两个函数钩子不一样(图中灰色框)&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
@@ -12278,7 +12862,7 @@ event_add_out(ctx-&amp;gt;evb, c_conn);
 &lt;img alt="" src="/imgs/twemproxy-state-3.png" /&gt;
 &lt;/div&gt;
 &lt;div class="section" id="client"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id86"&gt;4.把响应回给client&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id88"&gt;4.把响应回给client&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;现在每个请求的msg都有了一个对应的response msg, client_conn的out事件也挂上了, 下面这个调用栈:&lt;/p&gt;
 &lt;img alt="" src="/imgs/twemproxy-step-4.png" /&gt;
 &lt;p&gt;最终, 一切归于沉寂, 后端连接依然在:&lt;/p&gt;
@@ -12287,7 +12871,7 @@ event_add_out(ctx-&amp;gt;evb, c_conn);
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="buf"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id87"&gt;buf处理上的特点&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id89"&gt;buf处理上的特点&lt;/a&gt;&lt;/h3&gt;
 &lt;ol class="arabic"&gt;
 &lt;li&gt;&lt;p class="first"&gt;输入是通过mbuf &lt;strong&gt;链表&lt;/strong&gt; 来保存, 不会做realloc()&lt;/p&gt;
 &lt;/li&gt;
@@ -12312,7 +12896,7 @@ core_start(struct instance *nci)
 &lt;/ol&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id21"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id88"&gt;后端如何处理&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id90"&gt;后端如何处理&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;后端连接池的处理:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 struct conn *
@@ -12350,12 +12934,12 @@ server_conn(struct server *server)
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id22"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id89"&gt;协议&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id91"&gt;协议&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;因为需要从mbuf链表里面解析, 解析器是手工打造的..
 这里暂时不去分析它.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id23"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id90"&gt;hash&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id92"&gt;hash&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;twemproxy支持的hash方法:&lt;/p&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;one_at_a_time&lt;/li&gt;
@@ -12489,9 +13073,9 @@ static hash_t hash_algos[] = {
 sp-&amp;gt;key_hash = hash_algos[cp-&amp;gt;hash];
 &lt;/pre&gt;
 &lt;div class="section" id="id24"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id91"&gt;具体hash函数&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id93"&gt;具体hash函数&lt;/a&gt;&lt;/h4&gt;
 &lt;div class="section" id="crc32"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id92"&gt;crc32&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id94"&gt;crc32&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;crc32是设计来计算校验码的, 并不适合算hash.&lt;/p&gt;
 &lt;p&gt;twemproxy 0.2.4 里面包含的crc32算法 crc32使用的是 memcache 用的crc32.
 最新的版本里面包含了一个 crc32a, 才是原来含义上的crc32:&lt;/p&gt;
@@ -12504,13 +13088,13 @@ print '%08x' % crc32, crc32%4
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="hsieh"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id93"&gt;hsieh&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id95"&gt;hsieh&lt;/a&gt;&lt;/h5&gt;
 &lt;/div&gt;
 &lt;div class="section" id="jenkins-lookup3"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id94"&gt;Jenkins lookup3&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id96"&gt;Jenkins lookup3&lt;/a&gt;&lt;/h5&gt;
 &lt;/div&gt;
 &lt;div class="section" id="jenkins-one-at-a-time"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id95"&gt;Jenkins one_at_a_time&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id97"&gt;Jenkins one_at_a_time&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;The Jenkins hash functions are a collection of (non-cryptographic) hash functions for multi-byte keys designed by Bob Jenkins. They can be used also as checksums&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 uint32_t jenkins_one_at_a_time_hash(char *key, size_t len)
@@ -12530,7 +13114,7 @@ uint32_t jenkins_one_at_a_time_hash(char *key, size_t len)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="fnv-xxx"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id96"&gt;FNV-XXX&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id98"&gt;FNV-XXX&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;Fowler–Noll–Vo is a non-cryptographic hash function created by Glenn Fowler, Landon Curt Noll, and Phong Vo.&lt;/p&gt;
 &lt;p&gt;FNV-1实现简单:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
@@ -12550,7 +13134,7 @@ return hash
 &lt;/ol&gt;
 &lt;/div&gt;
 &lt;div class="section" id="murmur"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id97"&gt;murmur&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id99"&gt;murmur&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;MurmurHash performed well in a random distribution of regular keys.[7]&lt;/p&gt;
 &lt;p&gt;这些都用了:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
@@ -12558,7 +13142,7 @@ libstdc++ (ver 4.6), Perl,[24] nginx (ver 1.0.1),[25] Rubinius,[26] libmemcached
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id25"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id98"&gt;小结&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id100"&gt;小结&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;hash函数的几个要求:
 1. 均匀性(排除crc32)
 2. 速度
@@ -12592,7 +13176,7 @@ def hash_fnv1a_64(s):
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="dispatch"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id99"&gt;dispatch方法&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id101"&gt;dispatch方法&lt;/a&gt;&lt;/h4&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;ketama&lt;/li&gt;
 &lt;li&gt;modula&lt;/li&gt;
@@ -12601,7 +13185,7 @@ def hash_fnv1a_64(s):
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="rbtree"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id100"&gt;rbtree&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id102"&gt;rbtree&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;一个proxy为什么需要rbtree?? 用来做某种超时:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 static struct rbtree tmo_rbt;    /* timeout rbtree */
@@ -12626,10 +13210,10 @@ msg_tmo_insert(struct msg *msg, struct conn *conn)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="mget"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id101"&gt;如何处理mget&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id103"&gt;如何处理mget&lt;/a&gt;&lt;/h3&gt;
 &lt;/div&gt;
 &lt;div class="section" id="nginx"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id102"&gt;代码严重受nginx影响&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id104"&gt;代码严重受nginx影响&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;active 和ready变量&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 ngx_int_t
@@ -12651,7 +13235,7 @@ ngx_handle_read_event(ngx_event_t *rev, ngx_uint_t flags)
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id26"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id103"&gt;(代码)小结&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id105"&gt;(代码)小结&lt;/a&gt;&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;p class="first"&gt;代码质量非常好, 举例&lt;/p&gt;
 &lt;blockquote&gt;
@@ -12699,7 +13283,7 @@ static struct command conf_commands[] = {
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;div class="section" id="id27"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id104"&gt;注意&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id106"&gt;注意&lt;/a&gt;&lt;/h4&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;p class="first"&gt;这个 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;pool-&amp;gt;server_connections&lt;/span&gt;&lt;/tt&gt; 一般都没有配置(默认值是1. 虽然一个连接可能可以应付绝大多数场景, 个人感觉这必须配置啊!!!)&lt;/p&gt;
 &lt;p&gt;也就是说 不管前端多少个client, 到后端redis, 就只有1个连接. -- 这是这种proxy的特色&lt;/p&gt;
@@ -12743,7 +13327,130 @@ msg-&amp;gt;peer = pmsg;
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id28"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id105"&gt;使用&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id107"&gt;使用&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id29"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id108"&gt;编译&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="debug"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id109"&gt;debug级别&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;有两种debug: log_debug输出到日志和ASSERT:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+flag                         log    ASSERT
+--enable-debug=no       =&amp;gt;   0      啥也不做
+--enable-debug=log      =&amp;gt;   1      啥也不做
+--enable-debug=yes      =&amp;gt;   1      出错时打日志
+--enable-debug=full     =&amp;gt;   1      出错时core
+&lt;/pre&gt;
+&lt;p&gt;configure.ac:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+AS_CASE([x$enable_debug],
+  [xfull], [AC_DEFINE([HAVE_ASSERT_PANIC], [1],
+                      [Define to 1 if panic on an assert is enabled])
+            AC_DEFINE([HAVE_DEBUG_LOG], [1], [Define to 1 if debug log is enabled])
+           ],
+  [xyes], [AC_DEFINE([HAVE_ASSERT_LOG], [1],
+                     [Define to 1 if log on an assert is enabled])
+           AC_DEFINE([HAVE_DEBUG_LOG], [1], [Define to 1 if debug log is enabled])
+          ],
+  [xlog], [AC_DEFINE([HAVE_DEBUG_LOG], [1], [Define to 1 if debug log is enabled])],
+  [xno], [],
+  [AC_MSG_FAILURE([invalid value ${enable_debug} for --enable-debug])])
+AC_MSG_RESULT($enable_debug)
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="core"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id110"&gt;core的问题&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;./configure --enable-debug=log&lt;/p&gt;
+&lt;p&gt;有些老的gcc可能会core&lt;/p&gt;
+&lt;p&gt;比如:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/115"&gt;https://github.com/twitter/twemproxy/issues/115&lt;/a&gt;
+&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/146"&gt;https://github.com/twitter/twemproxy/issues/146&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;in my machine(centos6.3):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ gcc -v
+Using built-in specs.
+Target: x86_64-redhat-linux
+Thread model: posix
+gcc version 4.4.6 20120305 (Red Hat 4.4.6-4) (GCC)
+&lt;/pre&gt;
+&lt;p&gt;debug=no:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+./configure  &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8                                         =&amp;gt; core
+./configure CFLAGS=&amp;quot;-O1 -g3&amp;quot; &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8                         =&amp;gt; ok
+./configure CFLAGS=&amp;quot;-O2 -g3&amp;quot; &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8                         =&amp;gt; core
+./configure CFLAGS=&amp;quot;-O3 -g3&amp;quot; &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8                         =&amp;gt; core
+&lt;/pre&gt;
+&lt;p&gt;debug=log:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+./configure --enable-debug=log &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8                       =&amp;gt; core
+./configure CFLAGS=&amp;quot;-O1 -g3&amp;quot; --enable-debug=log &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8      =&amp;gt; ok
+./configure CFLAGS=&amp;quot;-O2 -g3&amp;quot; --enable-debug=log &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8      =&amp;gt; core
+./configure CFLAGS=&amp;quot;-O3 -g3&amp;quot; --enable-debug=log &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8      =&amp;gt; core
+&lt;/pre&gt;
+&lt;p&gt;debug=full:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+./configure --enable-debug=full &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8                      =&amp;gt; ok
+./configure CFLAGS=&amp;quot;-O1 -g3&amp;quot; --enable-debug=full &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8     =&amp;gt; ok
+./configure CFLAGS=&amp;quot;-O2 -g3&amp;quot; --enable-debug=full &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8     =&amp;gt; ok
+./configure CFLAGS=&amp;quot;-O3 -g3&amp;quot; --enable-debug=full &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8     =&amp;gt; ok
+&lt;/pre&gt;
+&lt;p&gt;在configure里面写了, 默认是-O2(看直接./configure 之后make的输出, 也能看到-O2):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+elif test $ac_cv_prog_cxx_g = yes; then
+  if test &amp;quot;$GXX&amp;quot; = yes; then
+    CXXFLAGS=&amp;quot;-g -O2&amp;quot;
+  else
+    CXXFLAGS=&amp;quot;-g&amp;quot;
+  fi
+else
+  if test &amp;quot;$GXX&amp;quot; = yes; then
+    CXXFLAGS=&amp;quot;-O2&amp;quot;
+  else
+    CXXFLAGS=
+  fi
+fi
+&lt;/pre&gt;
+&lt;p&gt;比较优化选项:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ gcc -c -Q -O1 --help=optimizers &amp;gt; /tmp/o1
+$ gcc -c -Q -O2 --help=optimizers &amp;gt; /tmp/o2
+
+-finline-small-functions
+&lt;/pre&gt;
+&lt;p&gt;分别用-O1 和-O2生成的二进制, 看某个函数的汇编, 差别太大了:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+objdump -d src/nutcracker.o1
+&lt;/pre&gt;
+&lt;p&gt;对函数禁止优化:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+有时候，我们希望对某个函数或者某块代码添加自己的优化选项
+这个可以通过下面的宏实现：
+对代码块的优化/禁止优化：
+#pragma GCC push_options
+#pragma GCC optimize (&amp;quot;O0&amp;quot;)
+
+your code
+
+#pragma GCC pop_options
+to disable optimizations since GCC 4.4.
+&lt;/pre&gt;
+&lt;p&gt;对函数的优化/禁止优化:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+__attribute__((optimize(&amp;quot;O0&amp;quot;)))
+&lt;/pre&gt;
+&lt;p&gt;写了个脚本逐一去掉 -O2的选项:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+cd ~/twemproxy &amp;amp;&amp;amp; ./configure CFLAGS=&amp;quot;-O1  -falign-functions -falign-jumps -falign-labels -falign-loops -fcaller-saves -fcrossjumping -fcse-follow-jumps -fdelete-null-pointer-checks -fexpensive-optimizations -fforward-propagate -fgcse -finline-small-functions -fipa-cp -foptimize-register-move -foptimize-sibling-calls -fpeephole2 -fregmove -freorder-blocks -freorder-functions -frerun-cse-after-loop -fschedule-insns2 -fstrict-aliasing&amp;quot; &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make -j 8
+&lt;/pre&gt;
+&lt;p&gt;去掉 -fstrict-aliasing 就好.&lt;/p&gt;
+&lt;p&gt;带 -fstrict-aliasing  就会出问题.&lt;/p&gt;
+&lt;p&gt;下面的就ok:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+./configure CFLAGS=&amp;quot;-O3 -fno-strict-aliasing&amp;quot; &amp;amp;&amp;amp; make clean &amp;amp;&amp;amp; make
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id30"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id111"&gt;使用&lt;/a&gt;&lt;/h3&gt;
 &lt;ol class="arabic"&gt;
 &lt;li&gt;&lt;p class="first"&gt;一般运行的时候需要指定一个pid文件, 如果这个命令连续运行两次, 则pid文件被清除:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
@@ -12779,8 +13486,9 @@ cluster0:
 &lt;/pre&gt;
 &lt;/li&gt;
 &lt;/ol&gt;
-&lt;div class="section" id="id29"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id106"&gt;配置参数&lt;/a&gt;&lt;/h3&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id31"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id112"&gt;配置参数&lt;/a&gt;&lt;/h3&gt;
 &lt;pre class="literal-block"&gt;
 alpha:
   listen: 127.0.0.1:22121
@@ -12794,10 +13502,10 @@ alpha:
    - 127.0.0.1:6379:1
 &lt;/pre&gt;
 &lt;div class="section" id="hashdistribution"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id107"&gt;hash和distribution见前面分析&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id113"&gt;hash和distribution见前面分析&lt;/a&gt;&lt;/h4&gt;
 &lt;/div&gt;
 &lt;div class="section" id="auto-eject-hosts"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id108"&gt;auto_eject_hosts相关&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id114"&gt;auto_eject_hosts相关&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;下面选项只在auto_eject_hosts时有用&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;dl class="first docutils"&gt;
@@ -12821,16 +13529,16 @@ alpha:
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="timeout"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id109"&gt;timeout&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id115"&gt;timeout&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;默认情况下, twemproxy一直等着把请求传给后端, 但是如果等了timeout时间, proxy 就不会把这个请求传给后端, 而是向客户端回复一个&lt;/p&gt;
 &lt;p&gt;SERVER_ERROR Connection timed outrn is sent back to the client.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="log"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id110"&gt;log&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id116"&gt;log&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;编译时加上log选项, 设为 LOG_INFO&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="mbuf-size"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id111"&gt;mbuf size&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id117"&gt;mbuf size&lt;/a&gt;&lt;/h4&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;default mbuf-size of 16K&lt;/li&gt;
 &lt;/ul&gt;
@@ -12860,7 +13568,7 @@ Options:
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="max-key-lenght"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id112"&gt;max key lenght&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id118"&gt;max key lenght&lt;/a&gt;&lt;/h4&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;p class="first"&gt;对memcache: ascii protocol key最多 250 characters. The key should not include whitespace, or 'r' or 'n' character.&lt;/p&gt;
 &lt;/li&gt;
@@ -12877,7 +13585,7 @@ Options:
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="server-connections-1"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id113"&gt;server_connections: &amp;gt; 1&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id119"&gt;server_connections: &amp;gt; 1&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;如果client想要在一个pipeline里面读到最新的写, 就要设置server_connections:1,
 如果我们设置 &lt;tt class="docutils literal"&gt;server_connections:2&lt;/tt&gt;&lt;/p&gt;
 &lt;p&gt;那么:&lt;/p&gt;
@@ -12887,8 +13595,8 @@ get foo
 &lt;/pre&gt;
 &lt;p&gt;后面这个get可能在另一个连接里面发过去, 所以不一定能读到 &lt;tt class="docutils literal"&gt;set foo bar&lt;/tt&gt; 的结果&lt;/p&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id30"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id114"&gt;监控&lt;/a&gt;&lt;/h4&gt;
+&lt;div class="section" id="id32"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id120"&gt;监控&lt;/a&gt;&lt;/h4&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;server_err&lt;/li&gt;
 &lt;li&gt;server_timedout&lt;/li&gt;
@@ -12897,7 +13605,7 @@ get foo
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="redis-mgr"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id115"&gt;使用redis-mgr部署&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id121"&gt;使用redis-mgr部署&lt;/a&gt;&lt;/h3&gt;
 &lt;pre class="literal-block"&gt;
 cluster0 = {
     'cluster_name': 'cluster0',
@@ -12969,8 +13677,8 @@ $ redis-benchmark -h 127.0.0.5 -p 22000 -t get,set -n 1000000
 &lt;/pre&gt;
 &lt;p&gt;高并发先, 直连redis性能差, cpu都起不来.&lt;/p&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id31"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id116"&gt;日志级别&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id33"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id122"&gt;日志级别&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;我们如果编译debug版本:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 cd nutcracker-0.2.4/ &amp;amp;&amp;amp; ./configure CFLAGS=&amp;quot;-O1&amp;quot; --enable-debug=full --prefix=`pwd`/../output &amp;amp;&amp;amp; make -j 8 &amp;amp;&amp;amp; make install
@@ -12993,8 +13701,8 @@ cd nutcracker-0.2.4/ &amp;amp;&amp;amp; ./configure CFLAGS=&amp;quot;-O1&amp;quo
 [Mon Jan 20 09:44:08 2014] nc_proxy.c:337 accepted c 12 on p 11 from '127.0.0.5:52028'
 &lt;/pre&gt;
 &lt;p&gt;处理方法:&lt;/p&gt;
-&lt;div class="section" id="id32"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id117"&gt;修改日志级别:&lt;/a&gt;&lt;/h4&gt;
+&lt;div class="section" id="id34"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id123"&gt;修改日志级别:&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 $ ./bin/nutcracker -h
 This is nutcracker-0.2.4
@@ -13020,8 +13728,8 @@ Options:
 &lt;/pre&gt;
 &lt;p&gt;使用 &lt;tt class="docutils literal"&gt;nutcracker &lt;span class="pre"&gt;-v&lt;/span&gt; 0&lt;/tt&gt; 即可&lt;/p&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id33"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id118"&gt;2.动态调整日志级别:&lt;/a&gt;&lt;/h4&gt;
+&lt;div class="section" id="id35"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id124"&gt;2.动态调整日志级别:&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 case SIGTTIN:
     actionstr = &amp;quot;, up logging level&amp;quot;;
@@ -13053,8 +13761,8 @@ kill -s TTOU  23787
 kill -s TTIN 15797
 &lt;/pre&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id34"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id119"&gt;3.切日志&lt;/a&gt;&lt;/h4&gt;
+&lt;div class="section" id="id36"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id125"&gt;3.切日志&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;如果我们需要用日志统计流量, 客户端信息, 可以切日志, 方法:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 ning&amp;#64;ning-laptop /tmp/r/nutcracker-22000$ mv log/nutcracker.log log/nutcracker.log.20140120
@@ -13076,18 +13784,18 @@ total 124K
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id35"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id120"&gt;自己实现一个自动的主从切换?&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id37"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id126"&gt;自己实现一个自动的主从切换?&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;0配置, 利用sentinel用的方式, 获知sentinel的位置.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="sentinel"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id121"&gt;sentinel验证&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id127"&gt;sentinel验证&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;如果一主一丛, 主彻底挂了, 从应该是提升为主, 而給老主发的&lt;/p&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id36"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id122"&gt;配置和优化&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id38"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id128"&gt;配置和优化&lt;/a&gt;&lt;/h2&gt;
 &lt;div class="section" id="m-512"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id123"&gt;-m 512&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id129"&gt;-m 512&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;速度提高, 内存消耗减少(一般消息都小于512字节)&lt;/p&gt;
 &lt;p&gt;注意: 不能滥用, twemproxy实现里面, 一个key必须放在一个mbuf里面(解析器, 为了防止拷贝数据做的限制), 所以, 如果key长度大于mbuf大小, 会打印错误:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
@@ -13106,10 +13814,10 @@ nutcracker requires the key to be stored in a contiguous memory region. Since al
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id37"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id124"&gt;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id39"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id130"&gt;问题&lt;/a&gt;&lt;/h2&gt;
 &lt;div class="section" id="preconnect-true-redis-core"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id125"&gt;preconnect: true 的时候, 如果后端redis挂掉, 会core&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id131"&gt;preconnect: true 的时候, 如果后端redis挂掉, 会core&lt;/a&gt;&lt;/h3&gt;
 &lt;pre class="literal-block"&gt;
 [Tue Dec 24 21:10:20 2013] nc_util.c:291 [0] /lib64/tls/libpthread.so.0 [0x302b80c420]
 [Tue Dec 24 21:10:20 2013] nc_util.c:291 [1] bin/nutcracker(server_unref+0x5a) [0x405f7a]
@@ -13125,7 +13833,7 @@ nutcracker requires the key to be stored in a contiguous memory region. Since al
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="pipeline-replay"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id126"&gt;pipeline/replay时消耗大量内存:&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id132"&gt;pipeline/replay时消耗大量内存:&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/issues/203"&gt;https://github.com/twitter/twemproxy/issues/203&lt;/a&gt;&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 ning&amp;#64;ning-laptop:~/idning-github/redis-mgr$ cat tests/a.py
@@ -13247,19 +13955,19 @@ core_core(void *arg, uint32_t events)
 &lt;p&gt;so the client will block on sending&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="mgetcase"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id127"&gt;mget慢这个case&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id133"&gt;mget慢这个case&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;We are looking to use TwemProxy with Redis for sharding. We have use cases where we may need to fetch about 10k keys in one go from across multiple shards. However, when I try this with TwemProxy on a test setup (described below), it takes about 1.7 seconds to return. If I fired the same request on a single Redis instance directly, it returns in about 16ms.&lt;/p&gt;
 &lt;p&gt;-m 512, I got the best results. With this, multi-key get on 10k keys returned in about 750ms&lt;/p&gt;
 &lt;p&gt;For example, if my input buffer from read syscall contains 10 messages = [1, 2, 3, 4, 5, 6, ... 10], we leave existing message &amp;quot;1&amp;quot; in its current mbuf and copy messages from [2,3,4,5, ...10] to a new mbuf. Once message &amp;quot;1&amp;quot; is processed, we then we copy messages from [3,4,5,6,...10] to a new mbuf and so on and on. So, to split messages [1,2,3...10] across 10 mbufs we are doing quadratic instead of linear copies. This is really unfortunate,&lt;/p&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id38"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id128"&gt;应该允许释放mbuf&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id40"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id134"&gt;应该允许释放mbuf&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;否则一旦分配，就不释放&lt;/p&gt;
 &lt;p&gt;大量并发mget, 就需要用小的mbuf size&lt;/p&gt;
 &lt;p&gt;This is the reason why for 'large number' of connections or for wide multi-get like requests, you want to choose a small value for mbuf-size like 512&lt;/p&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id39"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id129"&gt;#一轮完了再集中加事件, 不要多次加, 重复加&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id41"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id135"&gt;#一轮完了再集中加事件, 不要多次加, 重复加&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;实际上, 已经做了这个优化, 只有第一次加事件的时候才真正加:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 static void
@@ -13280,19 +13988,19 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
 }
 &lt;/pre&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id40"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id130"&gt;#可能的优化:mget&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id42"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id136"&gt;#可能的优化:mget&lt;/a&gt;&lt;/h3&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id41"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id131"&gt;改造&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id43"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id137"&gt;改造&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;single 模式, 支持所有命令, 简单proxy.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="key"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id132"&gt;key过长回错误&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id138"&gt;key过长回错误&lt;/a&gt;&lt;/h3&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id42"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id133"&gt;社区情况&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id44"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id139"&gt;社区情况&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;pull-request:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;dl class="first docutils"&gt;
@@ -13384,13 +14092,13 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;/div&gt;
-&lt;div class="section" id="id43"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id134"&gt;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id45"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id140"&gt;小结&lt;/a&gt;&lt;/h2&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;twemproxy 对pipeline型的读写, 性能不好.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;div class="section" id="id44"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id135"&gt;期望&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id46"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id141"&gt;期望&lt;/a&gt;&lt;/h3&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;ping/auth/quit 的几个支持希望能尽快merge到主干&lt;/li&gt;
 &lt;/ul&gt;
