@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>gcc/gdb/gprof/gcov/valgrind使用</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/gcc_gdb_gprof_gcov_valgrind.html">2012-10-05 23:44:06</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="simple">
+<li><a class="reference internal" href="#gcc" id="id20">gcc编译带符号</a></li>
+<li><a class="reference internal" href="#gdb" id="id21">gdb 启动参数</a></li>
+<li><a class="reference internal" href="#id1" id="id22">gdb 查看结构体，格式</a></li>
+<li><a class="reference internal" href="#some-ppt-for-gdb" id="id23">some ppt for gdb</a></li>
+<li><a class="reference internal" href="#core-dump" id="id24">core dump</a></li>
+<li><a class="reference internal" href="#id2" id="id25">gdb 基本使用</a><ul>
+<li><a class="reference internal" href="#id3" id="id26">修改代码查找路径</a></li>
+<li><a class="reference internal" href="#run" id="id27">run</a></li>
+<li><a class="reference internal" href="#continue" id="id28">continue</a></li>
+<li><a class="reference internal" href="#bt" id="id29">bt</a></li>
+<li><a class="reference internal" href="#list" id="id30">list</a></li>
+<li><a class="reference internal" href="#break" id="id31">break</a></li>
+<li><a class="reference internal" href="#watch" id="id32">watch</a></li>
+<li><a class="reference internal" href="#info" id="id33">info</a><ul>
+<li><a class="reference internal" href="#info-locals" id="id34">info locals</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#next-over" id="id35">next&lt;over&gt;</a></li>
+<li><a class="reference internal" href="#step-into" id="id36">step &lt;into&gt;</a></li>
+<li><a class="reference internal" href="#print" id="id37">print</a></li>
+<li><a class="reference internal" href="#x" id="id38">x</a></li>
+<li><a class="reference internal" href="#set" id="id39">set</a></li>
+<li><a class="reference internal" href="#call" id="id40">call</a></li>
+<li><a class="reference internal" href="#watch-rwatch" id="id41">watch &amp; rwatch</a></li>
+<li><a class="reference internal" href="#nexti-and-stepi" id="id42">nexti and stepi</a></li>
+<li><a class="reference internal" href="#disassemble" id="id43">disassemble</a></li>
+<li><a class="reference internal" href="#trace-stack-control" id="id44">trace stack control</a></li>
+<li><a class="reference internal" href="#gdb-tui" id="id45">gdb TUI</a></li>
+<li><a class="reference internal" href="#cgdb" id="id46">cgdb</a></li>
+<li><a class="reference internal" href="#vimgdb" id="id47">vimgdb ?</a></li>
+<li><a class="reference internal" href="#xxgdb-gui" id="id48">xxgdb (gui)</a></li>
+<li><a class="reference internal" href="#ddd-gui" id="id49">DDD (gui)</a></li>
+<li><a class="reference internal" href="#gdb-scripts" id="id50">gdb scripts</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id4" id="id51">高级使用</a><ul>
+<li><a class="reference internal" href="#load" id="id52">启动load一个脚本</a></li>
+<li><a class="reference internal" href="#id5" id="id53">获得某个地址对应的代码::</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id6" id="id54">gcc</a><ul>
+<li><a class="reference internal" href="#gcc-warn" id="id55">gcc warn 选项</a></li>
+<li><a class="reference internal" href="#id7" id="id56">gcc编译生成汇编：</a></li>
+<li><a class="reference internal" href="#i-l-l" id="id57">-I, -L -l</a><ul>
+<li><a class="reference internal" href="#id8" id="id58">静态链接指定的库</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#gcc-object" id="id59">gcc 产生 object文件（只编译）</a></li>
+<li><a class="reference internal" href="#shared-libraries" id="id60">关于shared-libraries</a><ul>
+<li><a class="reference internal" href="#static-library" id="id61">Static Library</a></li>
+<li><a class="reference internal" href="#id9" id="id62">Shared Libraries</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id10" id="id63">其它</a><ul>
+<li><a class="reference internal" href="#nm" id="id64">nm</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#gcov" id="id65">gcov</a></li>
+<li><a class="reference internal" href="#id11" id="id66">内存泄漏</a><ul>
+<li><a class="reference internal" href="#tcmalloc-heap-profiler" id="id67">tcmalloc heap_profiler.</a></li>
+<li><a class="reference internal" href="#valgrind" id="id68">Valgrind</a><ul>
+<li><a class="reference internal" href="#id12" id="id69">Valgrind 使用举例</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#profiling" id="id70">profiling</a><ul>
+<li><a class="reference internal" href="#gprof" id="id71">gprof</a><ul>
+<li><a class="reference internal" href="#id13" id="id72">gprof基本用法</a></li>
+<li><a class="reference internal" href="#id14" id="id73">gprof 实现原理</a></li>
+<li><a class="reference internal" href="#id15" id="id74">使用注意：</a></li>
+<li><a class="reference internal" href="#id16" id="id75">问题</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#google-cpu-profile" id="id76">google-cpu-profile</a><ul>
+<li><a class="reference internal" href="#id17" id="id77">安装</a></li>
+<li><a class="reference internal" href="#id18" id="id78">使用</a></li>
+<li><a class="reference internal" href="#tcmalloc" id="id79">和tcmalloc 是同一个工具集</a></li>
+<li><a class="reference internal" href="#id19" id="id80">例子</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#perf" id="id81">perf</a><ul>
+<li><a class="reference internal" href="#source-level-analysis-with-perf-annotate" id="id82">Source level analysis with perf annotate</a></li>
+<li><a class="reference internal" href="#perf-top" id="id83">perf top</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#callgrind" id="id84">callgrind</a></li>
+<li><a class="reference internal" href="#oprofile" id="id85">oprofile</a></li>
+<li><a class="reference internal" href="#systemtap-root" id="id86">systemtap(root)</a></li>
+<li><a class="reference internal" href="#vtune-root" id="id87">vtune(root)</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="gcc">
+<h2><a class="toc-backref" href="#id20">gcc编译带符号</a></h2>
+<pre class="literal-block">
+-g
+-g2
+-g3: 最多调试信息  =&gt; 最好用这个.
+-ggdb: gdb 特有的符号表, 无法被其它调试器使用.
+</pre>
+<p>默认情况下，GCC在编译时不会将调试符号插入到生成的二进制代码中，因为这样会增加可执行文件的大小。如果需要在编译时生成调试符号信息，可以使用GCC 的-g或者-ggdb选项。GCC在产生调试符号时，同样采用了分级的思路，开发人员可以通过在-g选项后附加数字1、2或3来指定在代码中加入调试信息的多少。默认的级别是2（-g2），此时产生的调试信息包括扩展的符号表、行号、局部或外部变量信息。级别3（-g3）包含级别2中的所有调试信息，以及源代码中定义的宏。级别1（-g1）不包含局部变量和与行号有关的调试信息，因此只能够用于回溯跟踪和堆栈转储之用。回溯跟踪指的是监视程序在运行过程中的函数调用历史，堆栈转储则是一种以原始的十六进制格式保存程序执行环境的方法，两者都是经常用到的调试手段。</p>
+</div>
+<div class="section" id="gdb">
+<h2><a class="toc-backref" href="#id21">gdb 启动参数</a></h2>
+<p>这种用法会报错:</p>
+<pre class="literal-block">
+$ gdb ./redis-cli -h 127.0.0.5 -p 22002 --replay /tmp/r/redis-22001/data/appendonly.aof
+gdb: unrecognized option '--replay'
+Use `gdb --help' for a complete list of options.
+</pre>
+<p>可以这样:</p>
+<pre class="literal-block">
+$ gdb ./redis-cli -ex 'r -h 127.0.0.5 -p 22002 --replay /tmp/r/redis-22001/data/appendonly.aof'
+</pre>
+<p>或者:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis/src$ cat d.gdb
+r -h 127.0.0.5 -p 22002 --replay /tmp/r/redis-22001/data/appendonly.aof
+
+ning&#64;ning-laptop:~/idning-github/redis/src$ gdb ./redis-cli -x d.gdb
+</pre>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id22">gdb 查看结构体，格式</a></h2>
+<p>直接 <tt class="docutils literal">p *abc</tt> 的话会出来一大团东西，好处是最短的垂直空间内能显示完，坏处是层次结构不好找。</p>
+<p>在gdb里运行一下set print pretty on
+再输出就是层次结构了。</p>
+</div>
+<div class="section" id="some-ppt-for-gdb">
+<h2><a class="toc-backref" href="#id23">some ppt for gdb</a></h2>
+<p><a class="reference external" href="http://www.slideshare.net/ftt/gdb-2764286">http://www.slideshare.net/ftt/gdb-2764286</a>  淺入淺出 GDB  中央资工二 张竟.</p>
+</div>
+<div class="section" id="core-dump">
+<h2><a class="toc-backref" href="#id24">core dump</a></h2>
+<blockquote>
+$ ulimit -c 1024
+$ ulimit -a
+core file size (blocks, -c) 1024
+$ gdb --core=core.9128</blockquote>
+<p>此时用bt看不到backtrace，也就是调用堆栈，原来GDB还不知道符号信息在哪里。我们告诉它一下:</p>
+<pre class="literal-block">
+(gdb) file ./a.out
+</pre>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id25">gdb 基本使用</a></h2>
+<pre class="literal-block">
+gcc -g program.c -o programname
+</pre>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id26">修改代码查找路径</a></h3>
+<p><a class="reference external" href="http://sourceware.org/gdb/current/onlinedocs/gdb/Source-Path.html">http://sourceware.org/gdb/current/onlinedocs/gdb/Source-Path.html</a></p>
+<pre class="literal-block">
+dir xxx
+</pre>
+</div>
+<div class="section" id="run">
+<h3><a class="toc-backref" href="#id27">run</a></h3>
+<pre class="literal-block">
+(gdb) run arg1 &quot;arg2&quot; ...
+</pre>
+</div>
+<div class="section" id="continue">
+<h3><a class="toc-backref" href="#id28">continue</a></h3>
+<pre class="literal-block">
+^+c
+continue
+</pre>
+</div>
+<div class="section" id="bt">
+<h3><a class="toc-backref" href="#id29">bt</a></h3>
+<pre class="literal-block">
+back trace.
+</pre>
+</div>
+<div class="section" id="list">
+<h3><a class="toc-backref" href="#id30">list</a></h3>
+<pre class="literal-block">
+(gdb) list
+3 int main(int argc, char **argv)
+4 {
+5 int x = 30;
+6 int y = 10;
+7
+8 x = y;
+9
+10 return 0;
+11 }
+
+(gdb) l 17
+l -200  显示当前行往前200行处的代码.
+</pre>
+</div>
+<div class="section" id="break">
+<h3><a class="toc-backref" href="#id31">break</a></h3>
+<pre class="literal-block">
+break LinkedList&lt;int&gt;::remove
+break func1
+b 27x
+</pre>
+</div>
+<div class="section" id="watch">
+<h3><a class="toc-backref" href="#id32">watch</a></h3>
+<pre class="literal-block">
+watch [var] 当var变动时break
+
+rwatch [var] 当var读取时break
+
+info watch
+</pre>
+</div>
+<div class="section" id="info">
+<h3><a class="toc-backref" href="#id33">info</a></h3>
+<pre class="literal-block">
+(gdb) disable 2
+(gdb) info breakpoints
+Num Type Disp Enb Address What
+2 breakpoint keep n 0x080483c3 in func2 at test.c:5
+3 breakpoint keep y 0x080483da in func1 at test.c:10
+</pre>
+<div class="section" id="info-locals">
+<h4><a class="toc-backref" href="#id34">info locals</a></h4>
+<pre class="literal-block">
+(gdb) info locals
+msg = 0x7ffff680feb0
+i = 2
+</pre>
+<p>没有debuginfo时, 如果是数字, 字符串, 可以试试:</p>
+<pre class="literal-block">
+I know that you can find any parameters by looking at a positive offset from $ebp using gdb:
+
+(gdb) x/4wx $ebp
+</pre>
+</div>
+</div>
+<div class="section" id="next-over">
+<h3><a class="toc-backref" href="#id35">next&lt;over&gt;</a></h3>
+<pre class="literal-block">
+(gdb)
+Node&lt;int&gt;::next (this=0x0) at main.cc:28
+28 Node&lt;T&gt;* next () const { return next_; }
+(gdb)
+</pre>
+</div>
+<div class="section" id="step-into">
+<h3><a class="toc-backref" href="#id36">step &lt;into&gt;</a></h3>
+<pre class="literal-block">
+(gdb) step
+53 Node&lt;T&gt; *temp = 0; // temp points to one behind as we iterate
+(gdb)
+</pre>
+<p>next will go 'over' the function call to the next line of code, while step will go 'into' the function call.</p>
+</div>
+<div class="section" id="print">
+<h3><a class="toc-backref" href="#id37">print</a></h3>
+<pre class="literal-block">
+(gdb) p price[ii]
+$7 = 1.1000000000000001
+(gdb) p (bst[jj] / price[kk] * 0.97)
+$8 = 92380.952380952382
+</pre>
+</div>
+<div class="section" id="x">
+<h3><a class="toc-backref" href="#id38">x</a></h3>
+<p>examine memory in any of several formats</p>
+<pre class="literal-block">
+x/nfu addr
+x addr
+x
+Use the x command to examine memory.
+n, f, and u are all optional parameters that specify how much memory to display and how to format it; addr is an expression giving the address where you want to start displaying memory. If you use defaults for nfu, you need not type the slash `/'. Several commands set convenient defaults for addr.
+
+n, the repeat count
+The repeat count is a decimal integer; the default is 1. It specifies how much memory (counting by units u) to display.
+f, the display format
+The display format is one of the formats used by print, `s' (null-terminated string), or `i' (machine instruction). The default is `x' (hexadecimal) initially. The default changes each time you use either x or print.
+u, the unit size
+The unit size is any of
+b
+Bytes.
+h
+Halfwords (two bytes).
+w
+Words (four bytes). This is the initial default.
+g
+Giant words (eight bytes).
+</pre>
+</div>
+<div class="section" id="set">
+<h3><a class="toc-backref" href="#id39">set</a></h3>
+<pre class="literal-block">
+set x = 3
+</pre>
+</div>
+<div class="section" id="call">
+<h3><a class="toc-backref" href="#id40">call</a></h3>
+<pre class="literal-block">
+call abort()
+</pre>
+</div>
+<div class="section" id="watch-rwatch">
+<h3><a class="toc-backref" href="#id41">watch &amp; rwatch</a></h3>
+<p>write_watch &amp; read_watch</p>
+</div>
+<div class="section" id="nexti-and-stepi">
+<h3><a class="toc-backref" href="#id42">nexti and stepi</a></h3>
+<p>step through my code at the instruction level</p>
+</div>
+<div class="section" id="disassemble">
+<h3><a class="toc-backref" href="#id43">disassemble</a></h3>
+<p>see the assembly code my program is running:</p>
+<pre class="literal-block">
+(gdb) disassemble main
+Dump of assembler code for function main:
+0x80483c0 &lt;main&gt;: push %ebp
+0x80483c1 &lt;main+1&gt;: mov %esp,%ebp
+0x80483c3 &lt;main+3&gt;: sub $0x18,%esp
+0x80483c6 &lt;main+6&gt;: movl $0x0,0xfffffffc(%ebp)
+0x80483cd &lt;main+13&gt;: mov 0xfffffffc(%ebp),%eax
+0x80483d0 &lt;main+16&gt;: movb $0x7,(%eax)
+0x80483d3 &lt;main+19&gt;: xor %eax,%eax
+0x80483d5 &lt;main+21&gt;: jmp 0x80483d7 &lt;main+23&gt;
+0x80483d7 &lt;main+23&gt;: leave
+0x80483d8 &lt;main+24&gt;: ret
+</pre>
+</div>
+<div class="section" id="trace-stack-control">
+<h3><a class="toc-backref" href="#id44">trace stack control</a></h3>
+<p>f 0 : 到0对应的栈帧。</p>
+</div>
+<div class="section" id="gdb-tui">
+<h3><a class="toc-backref" href="#id45">gdb TUI</a></h3>
+<p>偶然无意键入win命令，发现了TUI功能</p>
+<p>The GDB Text User Interface (TUI)</p>
+<p>gdb -tui</p>
+<p>问题：  当程序有printf到终端的时候，界面会乱掉.</p>
+</div>
+<div class="section" id="cgdb">
+<h3><a class="toc-backref" href="#id46">cgdb</a></h3>
+<p>当遇到断点的时候cgdb就会停下来，
+ESC进入到source模式，</p>
+<ul class="simple">
+<li>j, k ，上下移动行</li>
+<li>space  添加断点。</li>
+<li>i 回到调试模式.</li>
+</ul>
+<p>而且可以记忆上次在cgdb session中写的命令.</p>
+<p>cgdb比emacs的gdb mode还是有相当的差距的，目前还算可以用，以后也会越来越好吧</p>
+</div>
+<div class="section" id="vimgdb">
+<h3><a class="toc-backref" href="#id47">vimgdb ?</a></h3>
+</div>
+<div class="section" id="xxgdb-gui">
+<h3><a class="toc-backref" href="#id48">xxgdb (gui)</a></h3>
+<p>不好用</p>
+</div>
+<div class="section" id="ddd-gui">
+<h3><a class="toc-backref" href="#id49">DDD (gui)</a></h3>
+</div>
+<div class="section" id="gdb-scripts">
+<h3><a class="toc-backref" href="#id50">gdb scripts</a></h3>
+<p>Using the GDB Scripts for Analyzing the Data</p>
+<p>Suppose that you have a singly-linked list that has strings in it. At some point, you might want to know the contents of the list. To do this, use the GDB scripting instead of adding the debug statements in your code:</p>
+<pre class="literal-block">
+#Example for gslist traversal.
+define p_gslist_str
+set $list = ($arg0)
+ while ((GSList *)$list-&gt;next != 0)
+p (char *)(GSList *)$list-&gt;data
+ set $list = (GSList *)$list-&gt;next
+ end
+end
+document p_gslist_str
+p_gslist_str &lt;list&gt;: Dumps the strings in a GSList
+end
+&lt;/code&gt;
+Add the above snippet into a file and load it into the GDB as follows:
+&lt;code&gt;
+(gdb) source /home/jjohnny/scripts/gdb/gslist.gdb
+&lt;/code&gt;
+Now, anywhere you want to take a look in the GSList, simply break and
+&lt;code&gt;
+(gdb) p_gslist_str server_uid_list
+$17 = 0x7fffd81101b0 “7666BC1E000000015870BD1E00000001″
+$18 = 0x7fffd810e330 “7666BC1E000000015970BD1E00000001″
+$19 = 0x7fffd810cbe0 “7666BC1E000000015C70BD1E00000001″
+</pre>
+</div>
+</div>
+<div class="section" id="id4">
+<h2><a class="toc-backref" href="#id51">高级使用</a></h2>
+<div class="section" id="load">
+<h3><a class="toc-backref" href="#id52">启动load一个脚本</a></h3>
+<p>比如调试redis, 每次进入gdb后, 需要 先设置breakpoint,  <tt class="docutils literal">r xxx</tt> 来启动, 此时可以把这些命令写入一个文件:</p>
+<pre class="literal-block">
+cat d.gdb
+r -h 127.0.0.5 -p 22002 --replay /tmp/r/redis-22001/data/appendonly.aof
+
+gdb ./redis-cli -x d.gdb
+</pre>
+<p>或者通过在命令行中用 <tt class="docutils literal"><span class="pre">-ex</span></tt> 指定命令</p>
+<pre class="literal-block">
+gdb ./redis-cli -ex 'r -h 127.0.0.5 -p 22002 --replay /tmp/r/redis-22001/data/appendonly.aof'
+</pre>
+</div>
+<div class="section" id="id5">
+<h3><a class="toc-backref" href="#id53">获得某个地址对应的代码::</a></h3>
+<p>比如mongodb 会自己打印breaktrace:</p>
+<pre class="literal-block">
+532651f65c 0x7f53264fc016 0x7f5326527865 0x7f5326526293 0x7f5326527808 0x7f5326526293 0x7f5326527808 0x7f5326526293 0x7f5
+326527808 0x7f5326526293 0x7f5326527261
+ /home/ning/mongo/bin/mongod(_ZN5mongo15printStackTraceERSo+0x26) [0xc95896]
+ /home/ning/mongo/bin/mongod(_ZN5mongo10abruptQuitEi+0x260) [0x6be1c0]
+ /lib64/libc.so.6() [0x318ae32920]
+ /lib64/libc.so.6(gsignal+0x35) [0x318ae328a5]
+ /lib64/libc.so.6(abort+0x175) [0x318ae34085]
+ /home/ning/mongo/bin/../lib64/libtokuportability.so(+0x4327) [0x7f53267da327]
+ /home/ning/mongo/bin/../lib64/libtokuportability.so(+0x43a3) [0x7f53267da3a3]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0xc1299) [0x7f532656f299]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x712af) [0x7f532651f2af]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x7165c) [0x7f532651f65c]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x4e016) [0x7f53264fc016]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x79865) [0x7f5326527865]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x78293) [0x7f5326526293]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x79808) [0x7f5326527808]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x78293) [0x7f5326526293]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x79808) [0x7f5326527808]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x78293) [0x7f5326526293]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x79808) [0x7f5326527808]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x78293) [0x7f5326526293]
+ /home/ning/mongo/bin/../lib64/libtokufractaltree.so(+0x79261) [0x7f5326527261]
+</pre>
+<p>怎么获得这些地址对应的 函数呢?</p>
+<p>nm:</p>
+<pre class="literal-block">
+$ nm ./src/third_party/ft-index/portability/libtokuportability.so | head
+0000000000209148 d _DYNAMIC
+00000000002093e0 d _GLOBAL_OFFSET_TABLE_
+0000000000003e20 t _GLOBAL__I_65535_0_huge_page_detection.cc.o.3766.2377
+                 w _ITM_deregisterTMCloneTable
+                 w _ITM_registerTMCloneTable
+                 w _Jv_RegisterClasses
+0000000000004c00 T _Z10os_reallocPvm
+0000000000004810 T _Z10toku_fstatiP4stat
+0000000000004f10 T _Z11toku_callocmm
+0000000000004cd0 T _Z11toku_mallocm
+</pre>
+<p>更好的方法:</p>
+<pre class="literal-block">
+gdb  lib64/libtokuportability.so --batch -ex 'info line *0x4327'
+
+gdb  lib64/libtokufractaltree.so --batch -ex 'info line *0xc1299'
+Line 198 of &quot;/home/xiaobeibei/tokumxSrc/mongo/src/third_party/ft-index/ft/bndata.cc&quot; starts at address 0xc1277 &lt;_ZN7bn_data15get_memory_sizeEv+87&gt; and ends at 0xc12a0 &lt;_ZN7bn_data14verify_mempoolEv&gt;.
+</pre>
+</div>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id54">gcc</a></h2>
+<div class="section" id="gcc-warn">
+<h3><a class="toc-backref" href="#id55">gcc warn 选项</a></h3>
+<p>TODO:</p>
+<pre class="literal-block">
+-Werror
+       Make all warnings into errors.
+
+-Wall (打开大部分检查- 不是所有)
+    This enables all the warnings about constructions that some users consider questionable, and that are easy to avoid (or modify to prevent the warning), even in conjunction with macros.  This
+    also enables some language-specific warnings described in C++ Dialect Options and Objective-C and Objective-C++ Dialect Options.
+
+    -Wall turns on the following warning flags:
+
+    -Waddress -Warray-bounds (only with -O2) -Wc++0x-compat -Wchar-subscripts -Wimplicit-int -Wimplicit-function-declaration -Wcomment -Wformat -Wmain (only for C/ObjC and unless -ffreestanding)
+    -Wmissing-braces -Wnonnull -Wparentheses -Wpointer-sign -Wreorder -Wreturn-type -Wsequence-point -Wsign-compare (only in C++) -Wstrict-aliasing -Wstrict-overflow=1 -Wswitch -Wtrigraphs
+    -Wuninitialized -Wunknown-pragmas -Wunused-function -Wunused-label -Wunused-value -Wunused-variable -Wvolatile-register-var
+
+-Wextra(这才是最猛的, 以前是叫&quot;-W &quot;)
+    This enables some extra warning flags that are not enabled by -Wall.
+    (This option used to be called -W.  The older name is still supported, but
+    the newer name is more descriptive.)
+</pre>
+<p>-W is now deprecated by -Wextra with new gcc versions.</p>
+<p>对部分文件关闭warning:</p>
+<pre class="literal-block">
+When using GCC you can use the -isystem flag instead of the -I flag to disable warnings from that location.
+
+So if you’re currently using
+
+gcc -Iparent/path/of/bar …
+use
+
+gcc -isystem parent/path/of/bar …
+instead. Unfortunately, this isn’t a particularly fine-grained control. I’m not aware of a more targeted mechanism.
+</pre>
+</div>
+<div class="section" id="id7">
+<h3><a class="toc-backref" href="#id56">gcc编译生成汇编：</a></h3>
+<p>gcc -S inline.c -o inline_O0.s</p>
+</div>
+<div class="section" id="i-l-l">
+<h3><a class="toc-backref" href="#id57">-I, -L -l</a></h3>
+<p>-include和-I参数(x.h &amp; path_to_x.h)</p>
+<p>-include用来包含头文件，但一般情况下包含头文件都在源码里用#include xxxxxx实现，-include参数很少用。-I参数是用来指定头文件目录，/usr/include目录一般是不用指定的，gcc知道去那里找，但 是如果头文件不在/usr/include里我们就要用-I参数指定了，比如头文件放在/myinclude目录里，那编译命令行就要加上-I /myinclude参数了，如果不加你会得到一个&quot;xxxx.h: No such file or directory&quot;的错误。-I参数可以用相对路径，比如头文件在当前目录，可以用-I.来指定。上面我们提到的--cflags参数就是用来生成-I 参数的</p>
+<p>-l参数和-L参数(libx.a &amp; path_to_libx.a )</p>
+<blockquote>
+-l参数就是用来指定程序要链接的库，-l参数紧接着就是库名，那么库名跟真正的库文件名有什么关系呢？就拿数学库来说，他的库名是m，他的库文件名是libm.so，很容易看出，把库文件名的头lib和尾.so去掉就是库名了
+好了现在我们知道怎么得到库名，当我们自已要用到一个第三方提供的库名字libtest.so，那么我们只要把libtest.so拷贝到/usr /lib里，编译时加上-ltest参数，我们就能用上libtest.so库了（当然要用libtest.so库里的函数，我们还需要与 libtest.so配套的头文件）
+放在/lib和/usr/lib和/usr/local/lib里的库直接用-l参数就能链接了，但如果库文件没放在这三个目录里，而是放在其他目 录里，这时我们只用-l参数的话，链接还是会出错，出错信息大概是：“/usr/bin/ld: cannot find -lxxx”，也就是链接程序ld在那3个目录里找不到libxxx.so，这时另外一个参数-L就派上用场了，比如常用的X11的库，它在/usr /X11R6/lib目录下，我们编译时就要用-L/usr/X11R6/lib -lX11参数，-L参数跟着的是库文件所在的目录名。再比如我们把libtest.so放在/aaa/bbb/ccc目录下，那链接参数就是-L /aaa/bbb/ccc -ltest</blockquote>
+<div class="section" id="id8">
+<h4><a class="toc-backref" href="#id58">静态链接指定的库</a></h4>
+<p>比如说我要把mongo-c-driver 的静态.a 静态编译到nginx 里面去.</p>
+<p>You could also use ld option -Bdynamic:</p>
+<pre class="literal-block">
+gcc &lt;objectfiles&gt; -static -lstatic1 -lstatic2 -Wl,-Bdynamic -ldynamic1 -ldynamic2
+</pre>
+<p>All libraries after it (including system ones linked by gcc automatically) will be linked dynamically.</p>
+</div>
+</div>
+<div class="section" id="gcc-object">
+<h3><a class="toc-backref" href="#id59">gcc 产生 object文件（只编译）</a></h3>
+<p>gcc -Wall -c main.c</p>
+</div>
+<div class="section" id="shared-libraries">
+<h3><a class="toc-backref" href="#id60">关于shared-libraries</a></h3>
+<p><a class="reference external" href="http://www.dwheeler.com/program-library">http://www.dwheeler.com/program-library</a>
+<a class="reference external" href="http://tldp.org/HOWTO/Program-Library-HOWTO/shared-libraries.html">http://tldp.org/HOWTO/Program-Library-HOWTO/shared-libraries.html</a>
+<a class="reference external" href="http://tldp.org/HOWTO/Program-Library-HOWTO/">http://tldp.org/HOWTO/Program-Library-HOWTO/</a></p>
+<p>三种：
+static libraries
+shared libraries
+dynamically loaded (DL) libraries.</p>
+<blockquote>
+DL libraries aren't really a different kind of library format (both static and shared libraries can be used as DL libraries); instead, the difference is in how DL libraries are used by programmers.</blockquote>
+<p>DLL的多个意思：some people use the term dynamically linked libraries (DLLs) to refer to shared libraries, some use the term DLL to mean any library that is used as a DL library, and some use the term DLL to mean a library meeting either condition.</p>
+<p>If you're building an application that should port to many systems(Solaris等?), you might consider using GNU libtool to build and install libraries instead of using the Linux tools directly.</p>
+<p>This HOWTO's master location is <a class="reference external" href="http://www.dwheeler.com/program-library">http://www.dwheeler.com/program-library</a>, and it has been contributed to the Linux Documentation Project (<a class="reference external" href="http://www.linuxdoc.org">http://www.linuxdoc.org</a>)</p>
+<div class="section" id="static-library">
+<h4><a class="toc-backref" href="#id61">Static Library</a></h4>
+<p>过去用于节省重新编译的时间，但是现在编译器越来越快，这个已经不是主要原因
+现在可以用来发布.h和.a，隐藏源代码
+比动态库快：</p>
+<p>In theory, code in static ELF libraries that is linked into an executable should run slightly faster (by 1-5%) than a shared library or a dynamically loaded library, but in practice this rarely seems to be the case due to other confounding factors.</p>
+<p>创建：</p>
+<p>ar rcs my_library.a file1.o file2.o</p>
+<p>注意用gcc链接静态库的时候, -l要放在xxx.c后面. (AFTER the name of the file to be compiled.)</p>
+</div>
+<div class="section" id="id9">
+<h4><a class="toc-backref" href="#id62">Shared Libraries</a></h4>
+<p>名字问题：</p>
+<p>linker name: <tt class="docutils literal">/usr/lib/libreadline.so</tt></p>
+<p>soname: <tt class="docutils literal">/usr/lib/libreadline.so.3</tt></p>
+<p>realname : <tt class="docutils literal">/usr/lib/libreadline.so.3.0</tt></p>
+<p>the filename containing the actual library code
+the linker name is simply created as a symbolic link to the <tt class="docutils literal">latest</tt> soname or the latest real name.</p>
+<p>You also need to understand where they should be placed in the filesystem.</p>
+<p>The GNU standards recommend installing by default all libraries in /usr/local/lib when distributing source code (and all commands should go into /usr/local/bin).
+The Filesystem Hierarchy Standard (FHS) discusses what should go where in a distribution (see <a class="reference external" href="http://www.pathname.com/fhs">http://www.pathname.com/fhs</a>). According to the FHS, most libraries should be installed in /usr/lib, but libraries required for startup should be in /lib and libraries that are not part of the system should be in /usr/local/lib.</p>
+<p>当程序（ ELF binary）运行的时候，一个loader(/lib/ld-linux.so.X)自动加载其它所有library.</p>
+<p>ldconfig, ld.so.conf, ld.so.cache的关系：非常清楚!!! -Lin Yang 1/11/11 11:14 AM
+扫描路径：The list of directories to be searched is stored in the file /etc/ld.so.conf
+Searching all of these directories at program start-up would be grossly inefficient, so a caching arrangement is actually used. The program ldconfig(8) by default reads in the file /etc/ld.so.conf, sets up the appropriate symbolic links in the dynamic link directories,  and then writes a cache to /etc/ld.so.cache  The implication is that ldconfig must be run whenever a DLL is added, when a DLL is removed, or when the set of DLL directories changes; 之后. On start-up, then, the dynamic loader actually uses the file /etc/ld.so.cache and then loads the libraries it needs.
+ldconfig是关键，ldconfig读取 /ect/ld.so.conf</p>
+<p>环境变量，覆盖上面/ect/ld.so.conf中的内容</p>
+<p>LD_LIBRARY_PATH</p>
+<p>a colon-separated set of directories where libraries should be searched for first,
+最好只用于debug, LD_LIBRARY_PATH is handy for development and testing, but shouldn't be modified by an installation process for normal use by normal users;</p>
+<p>LD_PRELOAD</p>
+<p>The environment variable LD_PRELOAD lists shared libraries with functions that override the standard set, just as /etc/ld.so.preload does</p>
+<p>/lib/ld-linux.so.2 本身是个可执行的，可以这样用：</p>
+<p>/lib/ld-linux.so.2 --library-path PATH EXECUTABLE
+/lib/ld-linux.so.2 test/protocol_test.out</p>
+<p>LD_DEBUG 用于调试：</p>
+<p>export LD_DEBUG=files
+command_to_run</p>
+<p>LD_xxxx</p>
+<p>Most of them aren't well-documented; if you need to know about them, the best way to learn about them is to read the source code of the loader (part of gcc).</p>
+<p>Creating a Shared Library</p>
+<p>The -fPIC and -fpic options enable <tt class="docutils literal">position independent code</tt> generation， The -fPIC choice always works, but may produce larger code than -fpic</p>
+<p>The -Wl option passes options along to the linker (in this case the -soname linker option) - the commas after -Wl are not a typo</p>
+<p>例子：</p>
+<p>Here's an example, which creates two object files (a.o and b.o) and then creates a shared library that contains both of them. Note that this compilation includes debugging information (-g) and will generate warnings (-Wall), which aren't required for shared libraries but are recommended. The compilation generates object files (using -c), and includes the required -fPIC option:</p>
+<pre class="literal-block">
+gcc -fPIC -g -c -Wall a.c
+gcc -fPIC -g -c -Wall b.c
+gcc -shared -Wl,-soname,libmystuff.so.1 \
+-o libmystuff.so.1.0.1 a.o b.o -lc
+</pre>
+<p>安装 Shared Library</p>
+<p>Once you've created a shared library, you'll want to install it. The simple approach is simply to copy the library into one of the standard directories (e.g., /usr/lib) and run ldconfig(8).
+可以通过 ldconfig -n directory_with_shared_libraries 实现.
+Usually you can update libraries without concern; if there was an API change, the library creator is supposed to change the soname.比如libevent, libevent2 -Lin Yang 1/11/11 11:51 AM  That way, multiple libraries can be on a single system, and the right one is selected for each program.</p>
+<p>make sure that your libraries are either backwards-compatible or that you've incremented the version number in the soname every time you make an incompatible change.</p>
+</div>
+</div>
+</div>
+<div class="section" id="id10">
+<h2><a class="toc-backref" href="#id63">其它</a></h2>
+<div class="section" id="nm">
+<h3><a class="toc-backref" href="#id64">nm</a></h3>
+<p>The nm(1) command can report the list of symbols in a given library:</p>
+<pre class="literal-block">
+ning&#64;pcning:~/idning-paper/src$ nm test/protocol_test.out
+08049f18 d _DYNAMIC
+08049ff4 d _GLOBAL_OFFSET_TABLE_
+08048dbc R _IO_stdin_used
+         w _Jv_RegisterClasses
+08049f08 d __CTOR_END__
+08049f04 d __CTOR_LIST__
+08049f10 D __DTOR_END__
+08049f0c d __DTOR_LIST__
+08048ef4 r __FRAME_END__
+08049f14 d __JCR_END__
+08049f14 d __JCR_LIST__
+08048ede r __PRETTY_FUNCTION__.4058
+         U __assert_fail&#64;&#64;GLIBC_2.0
+0804a024 A __bss_start
+0804a01c D __data_start
+08048d70 t __do_global_ctors_aux
+08048550 t __do_global_dtors_aux
+0804a020 D __dso_handle
+         w __gmon_start__
+</pre>
+<p>nm输出:</p>
+<pre class="literal-block">
+lowercase means that the symbol is local
+uppercase means that the symbol is global
+T (a normal definition in the code section),
+D (initialized data section),
+B (uninitialized data section),
+U (undefined; the symbol is used by the library but not defined by the library),
+W (weak; if another library also defines this symbol, that definition overrides this one).
+</pre>
+<p>If you know the name of a function, but you truly can't remember what library it was defined in, you can use nm's <tt class="docutils literal"><span class="pre">-o</span></tt> option (which prefixes the filename in each line) along with grep to find the library name. From a Bourne shell, you can search all the libraries in /lib, /usr/lib, direct subdirectories of /usr/lib, and /usr/local/lib for <tt class="docutils literal">cos</tt> as follows:</p>
+<pre class="literal-block">
+nm -o /lib/* /usr/lib/* /usr/lib/*/* \
+/usr/local/lib/* 2&gt; /dev/null | grep 'cos$'
+</pre>
+<p>Shared Libraries Can Be Scripts</p>
+<p>/usr/lib/libc.so on one of my systems:</p>
+<pre class="literal-block">
+/* GNU ld script
+Use the shared library, but some functions are only in
+the static library, so try that secondarily. */
+GROUP ( /lib/libc.so.6 /usr/lib/libc_nonshared.a )
+</pre>
+<dl class="docutils">
+<dt>使用和创建shared library的时候都只需要soname.</dt>
+<dd>When you install a new version of a library, you install it in one of a few special directories and then run the program ldconfig(8). ldconfig examines the existing files and creates the sonames as symbolic links to the real names, as well as setting up the cache file /etc/ld.so.cache (described in a moment).</dd>
+</dl>
+<p>自己的一个shared-library的例子</p>
+<p>原来只有libevent1.4, 安装了libevent2后
+比如:</p>
+<pre class="literal-block">
+gcc -o test/protocol_test.gen.o -c -D_DEBUG -Wall -Icommon -I/usr/local/include test/protocol_test.gen.c
+gcc -o test/protocol_test.gen.out test/protocol_test.gen.o -Lcommon -L/usr/local/lib -lcommon -levent
+</pre>
+<p>但是运行时发现:</p>
+<pre class="literal-block">
+ning&#64;pcning:~/idning-paper/src$ ./test/protocol_test.gen.out
+./test/protocol_test.gen.out: error while loading shared libraries: libevent-2.0.so.5: cannot open shared object file: No such file or directory
+</pre>
+<p>用ldd （list dynamic dependencies）查看:</p>
+<pre class="literal-block">
+ning&#64;pcning:~/idning-paper/src$ ldd ./test/protocol_test.gen.out
+        linux-gate.so.1 =&gt;  (0x00fb4000)
+        libevent-2.0.so.5 =&gt; not found
+        libc.so.6 =&gt; /lib/tls/i686/cmov/libc.so.6 (0x00af5000)
+        /lib/ld-linux.so.2 (0x00589000)
+</pre>
+<p>这时候有两个办法：
+运行前:</p>
+<pre class="literal-block">
+$ export LD_LIBRARY_PATH=/usr/local/lib
+$ ldd ./test/protocol_test.gen.out
+        linux-gate.so.1 =&gt;  (0x00a35000)
+        libevent-2.0.so.5 =&gt; /usr/local/lib/libevent-2.0.so.5 (0x00abd000)
+        libc.so.6 =&gt; /lib/tls/i686/cmov/libc.so.6 (0x00110000)
+        librt.so.1 =&gt; /lib/tls/i686/cmov/librt.so.1 (0x00a01000)
+        /lib/ld-linux.so.2 (0x008a5000)
+        libpthread.so.0 =&gt; /lib/tls/i686/cmov/libpthread.so.0 (0x00bf1000)
+</pre>
+<p>编译前:</p>
+<pre class="literal-block">
+$ export LD_RUN_PATH=/usr/local/lib
+</pre>
+<p>没用..这可能是 solarios上的选项 <em>-Lin Yang 1/11/11 10:17 AM</em></p>
+<ol class="arabic simple" start="3">
+<li>ldconfig －这个好使 <em>-Lin Yang 1/11/11 11:19 AM</em></li>
+</ol>
+<p>又例如</p>
+<p>在安装libevent2的时候，使用 <tt class="docutils literal">./configure</tt> 将会安装到/usr/local/下</p>
+<p>运行程序的时候出现错误:</p>
+<pre class="literal-block">
+[root&#64;localhost src]# ./mds/mds.out
+./mds/mds.out: error while loading shared libraries: libevent-2.0.so.5: cannot open shared object file: No such file or directory
+</pre>
+<p>这时候需要:</p>
+<pre class="literal-block">
+vi /etc/ld.so.conf.d/libevent2.conf
+/usr/local/lib
+# libevent-2.0.so.5 在这个目录下
+
+ldconfig
+</pre>
+<p>然后就好了</p>
+<p>参考：</p>
+<p><a class="reference external" href="http://www.cs.cmu.edu/~gilpin/tutorial/">http://www.cs.cmu.edu/~gilpin/tutorial/</a></p>
+<p><a class="reference external" href="http://www.unknownroad.com/rtfm/gdbtut/gdbtoc.html">http://www.unknownroad.com/rtfm/gdbtut/gdbtoc.html</a></p>
+</div>
+</div>
+<div class="section" id="gcov">
+<h2><a class="toc-backref" href="#id65">gcov</a></h2>
+<p>gcov is a test coverage program
+how often each line of code executes
+what lines of code are actually executed
+how much computing time each section of code uses</p>
+<p>When using gcov, you must first compile your program with two special GCC options: <cite>-fprofile-arcs -ftest-coverage</cite>.</p>
+<p>For each source file compiled with -fprofile-arcs, an accompanying .gcda file will be placed in the object file directory.
+usage:</p>
+<pre class="literal-block">
+$ gcc -fprofile-arcs -ftest-coverage tmp.c
+$ ./a.out
+$ gcov tmp.c
+90.00% of 10 source lines executed in file tmp.c
+Creating tmp.c.gcov.
+The file tmp.c.gcov contains output from gcov. Here is a sample:
+-: 0:Source:tmp.c
+-: 0:Graph:tmp.gcno
+-: 0:Data:tmp.gcda
+-: 0:Runs:1
+-: 0:Programs:1
+-: 1:#include &lt;stdio.h&gt;
+-: 2:
+-: 3:int main (void)
+1: 4:{
+1: 5: int i, total;
+-: 6:
+1: 7: total = 0;
+-: 8:
+11: 9: for (i = 0; i &lt; 10; i++)
+10: 10: total += i;
+-: 11:
+1: 12: if (total != 45)
+#####: 13: printf (&quot;Failure\n&quot;);
+-: 14: else
+1: 15: printf (&quot;Success\n&quot;);
+1: 16: return 0;
+-: 17:}
+</pre>
+<p>编译时: -fprofile-arcs -ftest-coverage
+链接时: -l gcov</p>
+<p>The .gcno file is generated when the source file is compiled with the GCC -ftest-coverage option. It contains information to reconstruct the basic block graphs and assign source line numbers to blocks.
+The .gcda file is generated when a program containing object files built with the GCC -fprofile-arcs option is executed. A separate.gcda file is created for each object file compiled with this option. It contains arc transition counts, and some summary information.</p>
+</div>
+<div class="section" id="id11">
+<h2><a class="toc-backref" href="#id66">内存泄漏</a></h2>
+<div class="section" id="tcmalloc-heap-profiler">
+<h3><a class="toc-backref" href="#id67">tcmalloc heap_profiler.</a></h3>
+</div>
+<div class="section" id="valgrind">
+<h3><a class="toc-backref" href="#id68">Valgrind</a></h3>
+<pre class="literal-block">
+valgrind --tool=memcheck --leak-check=full -v --log-file=lighttpd --num-callers=8 ./bin/lighttpd -D -f ./conf/lighttpd.conf
+</pre>
+<p>A leak error Message involving an unloaded shared object:
+84 bytes in 1 blocks are possibly lost in loss record 488 of 713 at 0x1B9036DA: operator new(unsigned) (vg_replace_malloc.c:132) by 0x1DB63EEB: ??? by 0x1DB4B800: ??? by 0x1D65E007: ??? by 0x8049EE6: main (main.cpp:24)</p>
+<p>-g</p>
+<p>Valgrind是一个GPL的软件，用于Linux（For x86, amd64 and ppc32）程序的内存调试和代码剖析。你可以在它的环境中运行你的程序来监视内存的使用情况，比如C 语言中的malloc和free或者 C++中的new和 delete。使用Valgrind的工具包，你可以自动的检测许多内存管理和线程的bug，避免花费太多的时间在bug寻找上，使得你的程序更加稳固。
+Valgrind的主要功能
+Valgrind工具包包含多个工具，如Memcheck,Cachegrind,Helgrind, Callgrind，Massif。下面分别介绍个工具的作用：
+Memcheck 工具主要检查下面的程序错误：
+•        使用未初始化的内存 (Use of uninitialised memory)
+•        使用已经释放了的内存 (Reading/writing memory after it has been free’d)
+•        使用超过 malloc分配的内存空间(Reading/writing off the end of malloc’d blocks)
+•        对堆栈的非法访问 (Reading/writing inappropriate areas on the stack)
+•        申请的空间是否有释放 (Memory leaks – where pointers to malloc’d blocks are lost forever)
+•        malloc/free/new/delete申请和释放内存的匹配(Mismatched use of malloc/new/new [] vs free/delete/delete [])
+•        src和dst的重叠(Overlapping src and dst pointers in memcpy() and related functions)
+Callgrind
+Callgrind收集程序运行时的一些数据，函数调用关系等信息，还可以有选择地进行cache 模拟。在运行结束时，它会把分析数据写入一个文件。callgrind_annotate可以把这个文件的内容转化成可读的形式。
+Cachegrind
+它模拟 CPU中的一级缓存I1,D1和L2二级缓存，能够精确地指出程序中 cache的丢失和命中。如果需要，它还能够为我们提供cache丢失次数，内存引用次数，以及每行代码，每个函数，每个模块，整个程序产生的指令数。这对优化程序有很大的帮助。
+Helgrind
+它主要用来检查多线程程序中出现的竞争问题。Helgrind 寻找内存中被多个线程访问，而又没有一贯加锁的区域，这些区域往往是线程之间失去同步的地方，而且会导致难以发掘的错误。Helgrind实现了名为” Eraser” 的竞争检测算法，并做了进一步改进，减少了报告错误的次数。
+Massif
+堆栈分析器，它能测量程序在堆栈中使用了多少内存，告诉我们堆块，堆管理块和栈的大小。Massif能帮助我们减少内存的使用，在带有虚拟内存的现代系统中，它还能够加速我们程序的运行，减少程序停留在交换区中的几率。</p>
+<p>Valgrind 使用
+用法: valgrind [options] prog-and-args [options]: 常用选项，适用于所有Valgrind工具
+1.        -tool=&lt;name&gt; 最常用的选项。运行 valgrind中名为toolname的工具。默认memcheck。
+2.        h –help 显示帮助信息。
+3.        -version 显示valgrind内核的版本，每个工具都有各自的版本。
+4.        q –quiet 安静地运行，只打印错误信息。
+5.        v –verbose 更详细的信息, 增加错误数统计。
+6.        -trace-children=no|yes 跟踪子线程? [no]
+7.        -track-fds=no|yes 跟踪打开的文件描述？[no]
+8.        -time-stamp=no|yes 增加时间戳到LOG信息? [no]
+9.        -log-fd=&lt;number&gt; 输出LOG到描述符文件 [2=stderr]
+10.        -log-file=&lt;file&gt; 将输出的信息写入到filename.PID的文件里，PID是运行程序的进行ID
+11.        -log-file-exactly=&lt;file&gt; 输出LOG信息到 file
+12.        -log-file-qualifier=&lt;VAR&gt; 取得环境变量的值来做为输出信息的文件名。 [none]
+13.        -log-socket=ipaddr:port 输出LOG到socket ，ipaddr:port
+LOG信息输出
+1.        -xml=yes 将信息以xml格式输出，只有memcheck可用
+2.        -num-callers=&lt;number&gt; show &lt;number&gt; callers in stack traces [12]
+3.        -error-limit=no|yes 如果太多错误，则停止显示新错误? [yes]
+4.        -error-exitcode=&lt;number&gt; 如果发现错误则返回错误代码 [0=disable]
+5.        -db-attach=no|yes 当出现错误，valgrind会自动启动调试器gdb。[no]
+6.        -db-command=&lt;command&gt; 启动调试器的命令行选项[gdb -nw %f %p]
+适用于Memcheck工具的相关选项：
+1.        -leak-check=no|summary|full 要求对leak给出详细信息? [summary]
+2.        -leak-resolution=low|med|high how much bt merging in leak check [low]
+3.        -show-reachable=no|yes show reachable blocks in leak check? [no]</p>
+<div class="section" id="id12">
+<h4><a class="toc-backref" href="#id69">Valgrind 使用举例</a></h4>
+<p>下面是一段有问题的C程序代码test.c:</p>
+<pre class="literal-block">
+#include &lt;stdlib.h&gt;
+void f(void)
+{
+   int* x = malloc(10 * sizeof(int));
+   x[10] = 0;  //问题1: 数组下标越界
+}           //问题2: 内存没有释放
+
+int main(void)
+{
+   f();
+   return 0;
+}
+</pre>
+<p>1、 编译程序test.c
+gcc -Wall test.c -g -o test
+2、 使用Valgrind检查程序BUG
+valgrind --tool=memcheck --leak-check=full ./test
+3、 分析输出的调试信息:</p>
+<pre class="literal-block">
+==3908== Memcheck, a memory error detector.
+==3908== Copyright (C) 2002-2007, and GNU GPL'd, by Julian Seward et al.
+==3908== Using LibVEX rev 1732, a library for dynamic binary translation.
+==3908== Copyright (C) 2004-2007, and GNU GPL'd, by OpenWorks LLP.
+==3908== Using valgrind-3.2.3, a dynamic binary instrumentation framework.
+==3908== Copyright (C) 2000-2007, and GNU GPL'd, by Julian Seward et al.
+==3908== For more details, rerun with: -v
+==3908==
+--3908-- DWARF2 CFI reader: unhandled CFI instruction 0:50
+--3908-- DWARF2 CFI reader: unhandled CFI instruction 0:50
+/*数组越界错误*/
+==3908== Invalid write of size 4
+==3908==    at 0x8048384: f (test.c:6)
+==3908==    by 0x80483AC: main (test.c:11)
+==3908==  Address 0x400C050 is 0 bytes after a block of size 40 alloc'd
+==3908==    at 0x40046F2: malloc (vg_replace_malloc.c:149)
+==3908==    by 0x8048377: f (test.c:5)
+==3908==    by 0x80483AC: main (test.c:11)
+==3908==
+==3908== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 14 from 1)
+==3908== malloc/free: in use at exit: 40 bytes in 1 blocks.
+==3908== malloc/free: 1 allocs, 0 frees, 40 bytes allocated.
+==3908== For counts of detected errors, rerun with: -v
+==3908== searching for pointers to 1 not-freed blocks.
+==3908== checked 59,124 bytes.
+==3908==
+==3908==
+/*有内存空间没有释放*/
+==3908== 40 bytes in 1 blocks are definitely lost in loss record 1 of 1
+==3908==    at 0x40046F2: malloc (vg_replace_malloc.c:149)
+==3908==    by 0x8048377: f (test.c:5)
+==3908==    by 0x80483AC: main (test.c:11)
+==3908==
+==3908== LEAK SUMMARY:
+==3908==    definitely lost: 40 bytes in 1 blocks.
+==3908==    possibly lost: 0 bytes in 0 blocks.
+==3908==    still reachable: 0 bytes in 0 blocks.
+==3908==       suppressed: 0 bytes in 0 blocks.
+</pre>
+<p>valgrind有使用方便，容易操作的特点，能够快速的查询出程序的代码占用内存情况，能够有效的找出内存的泄漏的原因，而且是开源。</p>
+</div>
+</div>
+</div>
+<div class="section" id="profiling">
+<h2><a class="toc-backref" href="#id70">profiling</a></h2>
+<div class="section" id="gprof">
+<h3><a class="toc-backref" href="#id71">gprof</a></h3>
+<p><a class="reference external" href="http://www.cs.utah.edu/dept/old/texinfo/as/gprof.h">http://www.cs.utah.edu/dept/old/texinfo/as/gprof.h</a> tml#SEC3</p>
+<div class="section" id="id13">
+<h4><a class="toc-backref" href="#id72">gprof基本用法</a></h4>
+<ol class="arabic">
+<li><p class="first">使用 <tt class="docutils literal"><span class="pre">-pg</span></tt> 选项编译和链接.</p>
+</li>
+<li><p class="first">执行你的应用程序，使之运行完成后生成供gprof分析的数据文件（默认是gmon.out）。</p>
+</li>
+<li><p class="first">使用gprof程序分析你的应用程序生成的数据，例如:</p>
+<pre class="literal-block">
+gprof a.out gmon.out
+</pre>
+</li>
+</ol>
+</div>
+<div class="section" id="id14">
+<h4><a class="toc-backref" href="#id73">gprof 实现原理</a></h4>
+<p>gprof并不神奇，在编译和链接程序的时 候（使用 -pg 编译和链接选项），gcc 在你应用程序的每个函数中都加入了一个名为mcount（or“_mcount”, or“__mcount”）的函数，也就是说-pg编译的应用程序里的每一个函数都会调用mcount, 而mcount会在内存中保存一张函数调用图，并通过函数调用堆栈的形式查找子函数和父函数的地址。这张调用图也保存了所有与函数相关的调用时间，调用次 数等等的所有信息。
+1. 在内存中分配一些内存，存储程序执行期间的统计数据
+2. 在GCC使用-pg选项编译后，gcc会在程序的入口处(main 函数之前)调用
+void monstartup(lowpc, highpc)
+在每个函数的入口处调用
+void _mcount()
+在程序退出时(在 atexit () 里)调用
+void _mcleanup()
+monstartup：负责初始化profile环境，分配内存空间 _mcount: 记录每个函数代码的caller和callee的位置 _mcleanup：清除profile环境，保存结果数据为gmon.out，供gprof分析结果 3．在_mcount函数中跟踪程序的执行状况，记录程序代码的执行次数，时间等数据。</p>
+</div>
+<div class="section" id="id15">
+<h4><a class="toc-backref" href="#id74">使用注意：</a></h4>
+<p>1） 一般gprof只能查看用户函数信息。如果想查看库函数的信息，需要在编译是再加入“-lc_p”编译参数代替“-lc”编译参数，这样程序会链接libc_p.a库，才可以产生库函数的profiling信息。
+2） gprof只能在程序 <strong>正常结束</strong> 退出之后才 能生成程序测评报告，原因是gprof通过在atexit()里注册了一个函数来产生结果信息，任何非正常退出都不会执行atexit()的动作，所以不 会产生gmon.out文件。如果你的程序是一个不会退出的服务程序，那就只有修改代码来达到目的。如果不想改变程序的运行方式，可以添加一个信号处理函 数解决问题（这样对代码修改最少），例如：
+static void sighandler( int sig_no ) { exit(0); } signal( SIGUSR1, sighandler );</p>
+<p>当使用 <tt class="docutils literal">kill <span class="pre">-USR1</span> pid</tt> 后，程序退出，生成gmon.out文件。</p>
+<p>编译：
+cc的时候加 <tt class="docutils literal"><span class="pre">-pg</span></tt></p>
+<p>ld的时候加：</p>
+<p><tt class="docutils literal">/lib/gcrt0.o</tt>  (或者/usr/lib/gcrt1.o)  现在不需要了. -Lin Yang 6/24/11 11:27 AM</p>
+<p>然后运行并且 <strong>正常终止</strong> 程序</p>
+<p>发现生成gmon.out</p>
+<p>再:</p>
+<pre class="literal-block">
+gprof -z  dist/sbin/mfsmaster dist/localstatedir/mfs/gmon.out
+
+不过我得到的报告都是0：
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls  Ts/call  Ts/call  name
+  0.00      0.00     0.00        3     0.00     0.00  mylock
+  0.00      0.00     0.00        1     0.00     0.00  changeugid
+  0.00      0.00     0.00        1     0.00     0.00  check_old_locks
+  0.00      0.00     0.00        1     0.00     0.00  remove_old_wdlock
+  0.00      0.00     0.00        1     0.00     0.00  wdlock
+  0.00      0.00     0.00                             __do_global_ctors_aux
+  0.00      0.00     0.00                             __do_global_dtors_aux
+  0.00      0.00     0.00                             __gmon_start__
+  0.00      0.00     0.00                             __libc_csu_fini
+</pre>
+<p>可以用kprof打开  dist/sbin/mfsmaster察看（gmon.out要在exe文件的同一目录下.）
+我自己用的时候:</p>
+<pre class="literal-block">
+mv gmon.out client/
+kprof
+file / open . client/mount.out
+</pre>
+</div>
+<div class="section" id="id16">
+<h4><a class="toc-backref" href="#id75">问题</a></h4>
+<p>感觉不太靠谱:</p>
+<pre class="literal-block">
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ cc bench1.c libhiredis.a -pg
+ning&#64;ning-laptop:~/idning-github/redis/deps/hiredis$ ./a.out
+$ gprof  ./a.out ./gmon.out  | vim -
+
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls  Ts/call  Ts/call  name
+ 22.23      0.04     0.04                             redisReaderGetReply
+ 16.67      0.07     0.03                             redisvFormatCommand
+ 11.12      0.09     0.02                             redisGetReply
+ 11.12      0.11     0.02                             sdscatlen
+  5.56      0.12     0.01                             main
+  5.56      0.13     0.01                             redisBufferRead
+  5.56      0.14     0.01                             redisBufferWrite
+  5.56      0.15     0.01                             sdsIncrLen
+  5.56      0.16     0.01                             sdsempty
+  5.56      0.17     0.01                             sdsnewlen
+  2.78      0.18     0.01                             sdsMakeRoomFor
+  2.78      0.18     0.01                             sdsRemoveFreeSpace
+</pre>
+<p>总共7s, 为啥self seconds 加起来不是7s</p>
+</div>
+</div>
+<div class="section" id="google-cpu-profile">
+<h3><a class="toc-backref" href="#id76">google-cpu-profile</a></h3>
+<p>goolge profile 工具</p>
+<p><a class="reference external" href="http://goog-perftools.sourceforge.net/doc/cpu_profiler.html">http://goog-perftools.sourceforge.net/doc/cpu_profiler.html</a></p>
+<p>This is the CPU profiler we use at Google. There are three parts to using it: linking the library into an application, running the code, and analyzing the output.</p>
+<p>生成调用关系图和时间占用.</p>
+<img alt="" src="/imgs/pprof-test.gif" />
+<div class="section" id="id17">
+<h4><a class="toc-backref" href="#id77">安装</a></h4>
+<ol class="arabic simple">
+<li>安装libunwind: <a class="reference external" href="http://download.savannah.gnu.org/releases/libunwind/libunwind-1.1.tar.gz">http://download.savannah.gnu.org/releases/libunwind/libunwind-1.1.tar.gz</a></li>
+<li>./configure --enable-frame-pointers --prefix=/home/ning/local/</li>
+</ol>
+</div>
+<div class="section" id="id18">
+<h4><a class="toc-backref" href="#id78">使用</a></h4>
+<ol class="arabic">
+<li><p class="first">链接时加上 <tt class="docutils literal"><span class="pre">-lprofiler</span></tt>,
+或者用 <tt class="docutils literal">LD_PRELOAD</tt> (不推荐)</p>
+<pre class="literal-block">
+env LD_PRELOAD=&quot;/usr/lib/libprofiler.so&quot; &lt;binary&gt;
+</pre>
+</li>
+<li><p class="first">run:</p>
+<pre class="literal-block">
+#In your code, bracket the code you want profiled in calls to ProfilerStart() and ProfilerStop()   (google/profiler.h)
+程序需要正常结束.
+</pre>
+</li>
+<li><p class="first">analysis:</p>
+<pre class="literal-block">
+pprof is the script used to analyze a profile.
+</pre>
+</li>
+</ol>
+<p>Linux 2.6 and above, profiling works correctly with threads, automatically profiling all threads</p>
+</div>
+<div class="section" id="tcmalloc">
+<h4><a class="toc-backref" href="#id79">和tcmalloc 是同一个工具集</a></h4>
+<p>TC Malloc:</p>
+<pre class="literal-block">
+gcc [...] -ltcmalloc
+</pre>
+<p>Heap Checker:</p>
+<pre class="literal-block">
+gcc [...] -o myprogram -ltcmalloc
+HEAPCHECK=normal ./myprogram
+</pre>
+<p>Heap Profiler:</p>
+<pre class="literal-block">
+gcc [...] -o myprogram -ltcmalloc
+HEAPPROFILE=/tmp/netheap ./myprogram
+</pre>
+<p>Cpu Profiler:</p>
+<pre class="literal-block">
+gcc [...] -o myprogram -lprofiler
+CPUPROFILE=/tmp/profile ./myprogram
+</pre>
+</div>
+<div class="section" id="id19">
+<h4><a class="toc-backref" href="#id80">例子</a></h4>
+<p>LD_PRELOAD试用:</p>
+<pre class="literal-block">
+#1. 启动
+PROFILEFREQUENCY=1000 CPUPROFILE=/tmp/profile LD_PRELOAD=/home/ning/local/lib/libprofiler.so bin/nutcracker -c /home/ning/tmp/r/nutcracker-4000/conf/nutcracker.conf -o /home/ning/tmp/r/nutcracker-4000/log/nutcracker.log -p /home/ning/tmp/r/nutcracker-4000/log/nutcracker.pid -s 5000 -v 4
+#起压力
+./redis-benchmark.1000 -n 1000 -p 4000 -t mget  -r 1000000000 -c 2
+
+#2.  ^C结束后:
+^CPROFILE: interrupts/evictions/bytes = 610/103/4120
+$ pprof --text bin/nutcracker /tmp/profile
+
+9470  71.5%  71.5%     9470  71.5% req_error
+1040   7.8%  79.3%     1040   7.8% memcpy
+ 465   3.5%  82.8%      465   3.5% writev
+ 241   1.8%  84.7%      241   1.8% _msg_get
+ 171   1.3%  85.9%      171   1.3% msg_send_chain
+ 142   1.1%  87.0%      142   1.1% mbuf_get
+ 107   0.8%  87.8%      107   0.8% rbtree_insert
+ 107   0.8%  88.6%      107   0.8% redis_parse_req
+  94   0.7%  89.3%       94   0.7% array_get
+  86   0.6%  90.0%       86   0.6% mbuf_remove
+  81   0.6%  90.6%       81   0.6% rsp_send_next
+  80   0.6%  91.2%       80   0.6% req_done
+</pre>
+<p>对性能影响很小.</p>
+</div>
+</div>
+<div class="section" id="perf">
+<h3><a class="toc-backref" href="#id81">perf</a></h3>
+<p>速度快. 2.6内核提供的. ubuntu, centos都默认安装, 不需要root</p>
+<p>perf list:</p>
+<pre class="literal-block">
+List of pre-defined events (to be used in -e):
+
+ cpu-cycles OR cycles                       [Hardware event]
+ instructions                               [Hardware event]
+ cache-references                           [Hardware event]
+ cache-misses                               [Hardware event]    可以统计cache-miss噢.
+ page-faults OR faults                      [Software event]
+</pre>
+<p>有点像strace 对系统调用计数 .</p>
+<p>使用:</p>
+<pre class="literal-block">
+perf stat -e cycles dd if=/dev/zero of=/dev/null count=100000
+</pre>
+<p>attach:</p>
+<pre class="literal-block">
+perf stat -e cycles -p 2262 sleep 2
+</pre>
+<div class="section" id="source-level-analysis-with-perf-annotate">
+<h4><a class="toc-backref" href="#id82">Source level analysis with perf annotate</a></h4>
+</div>
+<div class="section" id="perf-top">
+<h4><a class="toc-backref" href="#id83">perf top</a></h4>
+<p>系统级别top, 哪个函数正在占cpu. 很叼啊!!:</p>
+<pre class="literal-block">
+perf top
+Events: 4K cycles
+ 15.14%  libc-2.12.so            [.] memcpy
+  6.16%  libc-2.12.so            [.] _wordcopy_fwd_dest_aligned
+  4.79%  perf                    [.] 0x412d6
+  2.57%  libc-2.12.so            [.] malloc
+  2.53%  nutcracker              [.] msg_send_chain                                                 nutcracker
+  2.10%  [kernel]                [k] intel_idle
+  1.98%  [kernel]                [k] copy_user_generic_string
+  1.95%  nutcracker              [.] mbuf_get                                                       nutcracker
+  1.81%  nutcracker              [.] rbtree_insert                                                  nutcracker
+  1.65%  libc-2.12.so            [.] _int_free
+  1.55%  nutcracker              [.] redis_parse_req
+  1.50%  nutcracker              [.] req_done
+  1.46%  libc-2.12.so            [.] _int_malloc
+  1.39%  [kernel]                [k] tcp_sendmsg
+  1.23%  nutcracker              [.] rbtree_delete
+</pre>
+<p>可以只采样一个 CPU:</p>
+<pre class="literal-block">
+perf top -C &lt;cpu-list&gt;
+
+ 26.14%  libc-2.12.so        [.] memcpy
+  7.69%  nutcracker          [.] mbuf_get
+  7.11%  nutcracker          [.] _msg_get
+  6.82%  nutcracker          [.] msg_send_chain
+  4.40%  [kernel]            [k] copy_user_generic_string
+  3.87%  nutcracker          [.] mbuf_remove
+  3.79%  nutcracker          [.] req_done
+  3.08%  nutcracker          [.] rbtree_delete
+  3.02%  nutcracker          [.] rsp_recv_done
+  2.54%  nutcracker          [.] rsp_send_next
+  1.67%  nutcracker          [.] rbtree_insert
+  1.57%  libc-2.12.so        [.] _IO_default_xsputn
+  1.50%  nutcracker          [.] msg_get
+  1.45%  nutcracker          [.] redis_parse_req
+</pre>
+<p>不能只采样某个进程.</p>
+</div>
+</div>
+<div class="section" id="callgrind">
+<h3><a class="toc-backref" href="#id84">callgrind</a></h3>
+<p><a class="reference external" href="http://kcachegrind.sourceforge.net/html/Home.html">http://kcachegrind.sourceforge.net/html/Home.html</a></p>
+<p>This is the homepage of the profiling tool Callgrind and the profile data visualization KCachegrind</p>
+<img alt="" src="/imgs/callgrind-output-tile-2.png" />
+</div>
+<div class="section" id="oprofile">
+<h3><a class="toc-backref" href="#id85">oprofile</a></h3>
+<p>oprofile和Intel的VTune类似，都是利用CPU提供的性能计数功能对系统进行profiling. CPU提供一些性能计数器，经过配置可以对各种事件进行计数，当超过一定的threshold，会发出NMI中断，中断处理程序可以记录下当前的PC，current task等信息。用户可以对其dump进行分析。
+采样往往会对系统性能带来一些影响(想想测不准原理)，oprofile带来的影响为1%-8%，还好。特别是考虑到它可能是唯一能提供你所需要的信息的工具。</p>
+<p>但不需要像gprof一样，必须优雅退出才可以剖分</p>
+<ol class="arabic" start="3">
+<li><p class="first">这就可以开始使用oprofile了，不过需要注意的是，需要有root权限才可以运行，请向&gt;系统管理员索要sudo权限。</p>
+</li>
+<li><p class="first">对mysqld进行profile为例:</p>
+<pre class="literal-block">
+sudo opcontrol --reset
+sudo opcontrol --separate=lib --no-vmlinux --start --image=/home/software/output/libexec/mysqld
+在其他机器起压力,压力停止后再进行后续操作
+sudo opcontrol --dump
+sudo opcontrol --shutdown
+
+opreport -l /home/software/output/libexec/mysqld
+opannotate -s /home/software/output/libexec/mysqld
+</pre>
+</li>
+</ol>
+</div>
+<div class="section" id="systemtap-root">
+<h3><a class="toc-backref" href="#id86">systemtap(root)</a></h3>
+<p>非常好用.</p>
+</div>
+<div class="section" id="vtune-root">
+<h3><a class="toc-backref" href="#id87">vtune(root)</a></h3>
+<p>Intel® VTune™ Amplifier XE 2013 is the premier performance profiler for C, C++, C#, Fortran, Assembly and Java*.</p>
+<p>Intel 提供. 只能用在Intel CPU上.</p>
+<img alt="" src="/imgs/hotspots_xe_1.png" style="width: 463px; height: 307px;" />
+<p>三种数据收集方式:</p>
+<ul class="simple">
+<li>Sampling 采样, 打断处理器执行, (如每秒1000次)</li>
+<li>Call graph</li>
+<li>Counter Monitoring</li>
+</ul>
+<p>可以在linux上安装Smpling Driver, 启动VTune Server, 在windows 安装客户端.</p>
+<p>小结</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="18%" />
+<col width="23%" />
+<col width="16%" />
+<col width="16%" />
+<col width="16%" />
+<col width="10%" />
+</colgroup>
+<thead valign="bottom">
+<tr><th class="head">工具</th>
+<th class="head">需要修改代码</th>
+<th class="head">正常结束</th>
+<th class="head">需要root</th>
+<th class="head">影响性能</th>
+<th class="head">推荐</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr><td>gprof</td>
+<td>0</td>
+<td>1</td>
+<td>0</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<tr><td>google-perf</td>
+<td>0</td>
+<td>1</td>
+<td>0</td>
+<td>&nbsp;</td>
+<td>1</td>
+</tr>
+<tr><td>callgrind</td>
+<td>0</td>
+<td>&nbsp;</td>
+<td>0</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<tr><td>perf</td>
+<td>0</td>
+<td>不需要</td>
+<td>0.5</td>
+<td>&nbsp;</td>
+<td>1</td>
+</tr>
+<tr><td>systemtap</td>
+<td>0</td>
+<td>不需要</td>
+<td>1</td>
+<td>&nbsp;</td>
+<td>1</td>
+</tr>
+<tr><td>oprofile</td>
+<td>0</td>
+<td>&nbsp;</td>
+<td>1</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+<tr><td>vtune</td>
+<td>0</td>
+<td>&nbsp;</td>
+<td>1</td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+</tbody>
+</table>
+<ol class="arabic simple">
+<li>google-perf比gprof简单的一点是, 编译的时候不需要加 <tt class="docutils literal"><span class="pre">-pg</span></tt>.</li>
+<li>google-perf的方法应该和 systemtap 类似, 采样.</li>
+</ol>
+<p>推荐使用:
+- google-perf
+- systemtap</p>
+</div>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>
