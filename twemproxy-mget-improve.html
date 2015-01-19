@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>twemproxy-mget-improve</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/twemproxy-mget-improve.html">2014-04-01 17:22:35</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><p>I'm trying to import mget performance by rewrite it like this:</p>
+<p>orig:</p>
+<pre class="literal-block">
+mget k1 k2 k3 k4 k5 k6 k7 k8 k9
+</pre>
+<p>after rewrite:</p>
+<pre class="literal-block">
+mget k1 k3 k6
+mget k2 k4
+mget k5 k7 k8 k9
+</pre>
+<p>the code is here:</p>
+<p><a class="reference external" href="https://github.com/twitter/twemproxy/pull/210">https://github.com/twitter/twemproxy/pull/210</a></p>
+<p>benchmark result:</p>
+<pre class="literal-block">
+mget_size=10 on 4001: pqs: 22831.05, rtime: 3
+mget_size=10 on 4000: pqs: 36101.08, rtime: 1     =&gt; 1.5x
+mget_size=10 on 2000: pqs: 85470.09, rtime: 0
+
+mget_size=100 on 4001: pqs: 1336.90, rtime: 45
+mget_size=100 on 4000: pqs: 10526.32, rtime: 5    =&gt; 7.8x
+mget_size=100 on 2000: pqs: 27777.78, rtime: 2
+
+mget_size=1000 on 4001: pqs: 58.89, rtime: 909
+mget_size=1000 on 4000: pqs: 1063.83, rtime: 53   =&gt; 18x
+mget_size=1000 on 2000: pqs: 2777.78, rtime: 20
+
+mget_size=10000 on 4001: pqs: 0.53, rtime: 3751
+mget_size=10000 on 4000: pqs: 24.21, rtime: 48    =&gt; 45x
+mget_size=10000 on 2000: pqs: 256.41, rtime: 7
+</pre>
+<p>flame-graph before:</p>
+<img alt="" src="/imgs/twemproxy-flame-mget.png" style="width: 600px; height: 145px;" />
+<p><a class="reference external" href="imgs/twemproxy-flame-mget.svg">svg1</a></p>
+<p>flame-graph after:</p>
+<img alt="" src="/imgs/twemproxy-flame-mget-after-improve.png" style="width: 600px; height: 145px;" />
+<p><a class="reference external" href="imgs/twemproxy-flame-mget-after-improve.svg">svg2</a></p>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

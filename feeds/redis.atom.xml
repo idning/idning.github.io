@@ -1097,6 +1097,714 @@ array(10) {
 &lt;p&gt;接口会输出timeout.&lt;/p&gt;
 &lt;p&gt;所以fgets应该认为没bug, 修改Redis库即可.&lt;/p&gt;
 &lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>Redis/MySQL/MongoDB replication分析</title><link href="/replication.html" rel="alternate"></link><updated>2014-08-20T10:07:08+08:00</updated><author><name>ning</name></author><id>tag:,2014-08-20:replication.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id15"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;幂等&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis" id="id16"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mysql-binlog" id="id17"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql binlog格式&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mongo" id="id18"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id19"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;推/拉&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id20"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mysql" id="id21"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id22"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#oplog" id="id23"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;如何索引oplog&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id24"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id25"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mysql5-6-gtid" id="id26"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql5.6 GTID&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id27"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#failover" id="id28"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;failover&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id29"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id30"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id31"&gt;4.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;第一个问题:&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mysql-5-6" id="id32"&gt;4.2.1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql 5.6以前&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#mysql-gtid" id="id33"&gt;4.2.1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql GTID&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id11" id="id34"&gt;4.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;第二个问题&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id12" id="id35"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id13" id="id36"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id14" id="id37"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;参考:&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#gtid" id="id38"&gt;6.1&amp;nbsp;&amp;nbsp;&amp;nbsp;关于GTID&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;replication 这个问题, 包括同步和failover两个方面:&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;如何保存oplog &amp;amp; 如何实现同步.&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;oplog是否幂等&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;存操作: 不幂等(mysql 的binlog STATEMENT模式, redis的aof)&lt;/li&gt;
+&lt;li&gt;存结果: (MySQL binlog ROW模式)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;同步是master主动还是slave主动?&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;master主动推&lt;/li&gt;
+&lt;li&gt;slave主动拉&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;怎么索引一条oplog&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;常见三种方法:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;时间ts(mongo)&lt;/li&gt;
+&lt;li&gt;字节数(redis/mysql)&lt;/li&gt;
+&lt;li&gt;idx&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;这个问题其实涉及到发生主从切换后, 老主继续同步的问题.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;假设A=&amp;gt;master, B=&amp;gt;slave, 如果A挂掉, 发生主从切换, B变成主,&lt;/li&gt;
+&lt;li&gt;等A恢复后, A如何找到从B的什么位置去同步.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;如何failover.&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;master挂了之后, 如何选择新的master.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;master挂了又回来后的一致性问题&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;还是刚才的例子, 假设A=&amp;gt;master, B=&amp;gt;slave, 如果A挂掉, 发生主从切换, A上面的写是比B新的,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;当A恢复后, A再去找B同步时, A上多余的数据, 怎么办.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;对redis来说, 这时候A会从B做一次全量同步, 从而保证一致&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;关于一致性, 我们可以看这个例子:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+-------------------------------------------------------------
+
+   +-------+        +-------+
+   |   A   |        |   B   |
+   +-------+        +-------+
+
+t1 insert 1 --\
+      |        \
+t2 insert 2 --\ \-- insert 1
+      |        \
+t3 insert 3 --\ \-- insert 2
+      |        \
+t4 insert 4     \-- insert 3
+--------------------------------&amp;gt; A down, B is master now
+
+t5              /-- insert 5
+               /       |
+t6 insert 5 --/ /-- insert 6
+               /
+t7 insert 6 ---
+
+#到这里, 我们已经看到了不一致:
+
+1,2,3,4,5,6          1,2,3,5,6
+&lt;/pre&gt;
+&lt;p&gt;接下来我们从这几个方面, 研究redis/mysql/mongo如何实现&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id15"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;幂等&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="redis"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id16"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;redis 的主从同步和aof记录的都是操作, 而不是结果, 也就是非幂等&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;这造成重放aof时不可重入.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;仔细考虑, redis这样的设计是对的, 因为redis支持set, hash, list等数据结构.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;以list为例&lt;/li&gt;
+&lt;li&gt;list push操作转化为幂等aof需要将整个list记录到aof中, 这太浪费了.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mysql-binlog"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id17"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql binlog格式&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;关于格式&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;两种格式&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;STATEMENT-BASED format&lt;/li&gt;
+&lt;li&gt;ROW-BASED format&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;STATEMENT模式记录操作, ROW模式记录结果.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;考虑下面一些不同场景:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;每个sql操作从索引命中一条, 并更新这一条中一个字段:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;如果使用ROW模式, 每次要记录整个行, 较大, 在从库上插入也较慢, 所以会导致跟不上同步.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;如果一个sql操作很多条记录 update xxx while x &amp;gt; 10 , 或者改表(alter)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;ROW: 产生很多条binlog&lt;/li&gt;
+&lt;li&gt;STATEMENT: 只有一条binlog&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;一个sql需要扫描很多条, 最后才更新一条(比如不能命中索引), 然后更新.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;如果用STATEMENT模式, 着一个操作在从库上执行也会慢.&lt;/li&gt;
+&lt;li&gt;如果用ROW模式, 就很快.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;一般来说, 鉴于STATEMENT性能更好, 多数都是用STATEMENT模式.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;存在问题(jira报的一些bug):&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;&lt;tt class="docutils literal"&gt;INSERT DELAYED ... &lt;span class="pre"&gt;VALUES(LAST_INSERT_ID())&lt;/span&gt;&lt;/tt&gt; inserts a different value on the master and the slave. (Bug #20819)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;This is fixed in MySQL 5.1 when using row-based or mixed-format binary logging.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;Adding an AUTO_INCREMENT column to a table with ALTER TABLE might not produce the same ordering of the rows on the slave and the master&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Replication of LIMIT clauses in DELETE, UPDATE, and INSERT ... SELECT statements is not guaranteed, since the order of the rows affected is not defined. Such statements can be replicated correctly only if they also contain an ORDER BY clause.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;应该是 &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;STATEMENT-BASED&lt;/span&gt;&lt;/tt&gt; 格式有这个问题, &lt;tt class="docutils literal"&gt;ROW&lt;/tt&gt; 格式应该没有这个问题.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;不像redis那样全量同步数据, 很难避免这些问题.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;具体保存方法:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;多个文件, 每次启动或者写满一个max_binlog_size, 就新开一个.&lt;/li&gt;
+&lt;li&gt;binlog index文件,  记录当前哪些binlog文件在使用.&lt;/li&gt;
+&lt;li&gt;PURGE BINARY LOGS命令用于清除binlog&lt;/li&gt;
+&lt;/ul&gt;
+&lt;pre class="literal-block"&gt;
+shell&amp;gt; mysqlbinlog binlog.0000003
+The output includes events contained in binlog.000003. Event information includes the SQL statement, the ID of the server on which it was executed, the timestamp when the statement was executed, how much time it took, and so forth.
+
+Events are preceded by header comments that provide additional information. For example:
+
+# at 141
+#100309  9:28:36 server id 123  end_log_pos 245
+  Query thread_id=3350  exec_time=11  error_code=0
+In the first line, the number following at indicates the file offset, or starting position, of the event in the binary log file.
+
+The second line starts with a date and time indicating when the statement started on the server where the event originated. For replication, this timestamp is propagated to slave servers. server id is the server_id value of the server where the event originated. end_log_pos indicates where the next event starts (that is, it is the end position of the current event + 1). thread_id indicates which thread executed the event. exec_time is the time spent executing the event, on a master serve
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mongo"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id18"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;mongo 是记录记录结果, 幂等.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id19"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;推/拉&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id20"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;slave通过sync命令连上来后, master 每次做完一个写操作, 就会 调用replicationFeedSlaves, 向这个socket 发送命令&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;这个机制和 monitor一样:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;replicationFeedMonitors 方法是把cmd通过一定的格式把命令发到monitor客户端.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;也就是说, 是master主动推到slave&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mysql"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id21"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;slave 来拉&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;slave pulls the data from the master, rather than the master pushing the data to the slave&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;好处是: slave可以随时决定停止或重启repl, slave可以决定用什么样的速度.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;三个线程&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;master:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;Binlog Dump线程: slave连上来时启动, 加锁读binlog, 读完释放锁.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;slave:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;slave IO线程: 从master读取, 写到slave's relay log&lt;/li&gt;
+&lt;li&gt;slave SQL 线程: 从relay log 读, apply&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id22"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;slave拉&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;mongo的oplog里面是带时间戳的, 从库来同步的时候, 相当于: 找到这个时间点后的更新序列.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;主库上的一个操作oplog的time为t1, 同步到丛库上后, 丛库oplog的time应该也是t1&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;而redis, mysql 的同步都是用一个位置来记录, 比如redis是一个offset, mysql是file + pos&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;用时间戳 的好处:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;从库不需要像mysql一样, 开一个文件来记录 当前同步到了主库的哪条oplog, 只需要记录 每条记录的ts, ts在主库和从库上是一样的.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="oplog"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id23"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;如何索引oplog&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id24"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;repl_backlog用字节数做索引:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
++------------------------------------------------+
+|                                                |
+|                                                |
++------------------------------------------------+
+                           ^                     ^
+                           |                     |
+                           |                     |
+                           repl_backlog_idx      repl_backlog_size
+
+feed 10个byte::
+
++------------------------------------------------+
+|                                                |
+|                                                |
++------------------------------------------------+
+                                      ^          ^
+                                      |          |
+                                      |          |
+                                      idx        repl_backlog_size
+&lt;/pre&gt;
+&lt;p&gt;客户端连上后, 通过 &lt;tt class="docutils literal"&gt;addReplyReplicationBacklog&lt;/tt&gt; 发送backlog:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+/* Feed the slave 'c' with the replication backlog starting from the
+ * specified 'offset' up to the end of the backlog. */
+long long addReplyReplicationBacklog(redisClient *c, long long offset) {
+&lt;/pre&gt;
+&lt;p&gt;s和m之间有一个runid 来确认, 上次是从它开始同步的:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+int masterTryPartialResynchronization(redisClient *c) {
+&lt;/pre&gt;
+&lt;p&gt;如果master收到slave的sync命令, 要求的runid和master不同, 或者要求的oplog不在当前oplog范围内, 都要求客户端做全量同步.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id25"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;mysql 5.6以前, 主从同步依赖于每个mysql 实例的binlog file 和binlog pos(用binlog-file + binlog-pos作为索引)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mysql5-6-gtid"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id26"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql5.6 GTID&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;mysql 5.6 开始的GTID方案.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;一个binlog在master和所有slave上都有一个全局唯一的ID&lt;/li&gt;
+&lt;li&gt;由GTID索引.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id7"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id27"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;mongo的做法其实类似于GTID.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;mongo里面每个oplog都有一个ts子段, 它的值为写操作发生的时间戳 + 秒内自增id.&lt;/li&gt;
+&lt;li&gt;mongo主从同步逻辑保证在一个replset中, 一个操作的ts保持不变.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="failover"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id28"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;failover&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;假设这样一个场景:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+.  A
+ / | \
+B  C  D
+&lt;/pre&gt;
+&lt;p&gt;A是主库, BCD是丛库, A机器宕机后, 我们决定B成为新的主库:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+.  B
+   | \
+   C  D
+&lt;/pre&gt;
+&lt;p&gt;这里涉及第一个问题:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+问题一: 如何从三个丛库B, C, D里面选择B作为新的master
+&lt;/pre&gt;
+&lt;p&gt;我们考虑 主从切换后, 老主重新成为从库时的行为, 当A复活后, 我们希望把A挂回去, 这时候存在第二个问题:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+问题二: A上可能有领先于BCD的数据, 如何让A和BCD上数据一致
+&lt;/pre&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;最简单的做法是全量同步, 如redis/ledisdb, 实现简单, 但是太慢, 网卡打满等问题, 对于磁盘存储的数据来说, 不可接受&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;较好的办法是让A挂回去后, 利用已有数据, 从B继续同步, 这存在两个问题&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;A上领先的数据怎么办?&lt;/li&gt;
+&lt;li&gt;A挂回去后, 从B的什么位置开始继续同步?&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;div class="section" id="id8"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id29"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;redis&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;而redis的同步是用一个位置来记录(offset)&lt;/li&gt;
+&lt;li&gt;不保证主从上offset一致&lt;/li&gt;
+&lt;li&gt;slave上记录同步到主的什么offset, 网络瞬断后可以继续.&lt;/li&gt;
+&lt;li&gt;如果发生主从切换, 全量同步.&lt;/li&gt;
+&lt;li&gt;全量同步,  所以不存在第二个问题.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id9"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id30"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql&lt;/a&gt;&lt;/h3&gt;
+&lt;div class="section" id="id10"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id31"&gt;4.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;第一个问题:&lt;/a&gt;&lt;/h4&gt;
+&lt;div class="section" id="mysql-5-6"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id32"&gt;4.2.1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql 5.6以前&lt;/a&gt;&lt;/h5&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;mysql 5.6以前, 主从同步依赖于每个mysql 实例的binlog file 和binlog pos&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;发生主从切换时,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;通常BCD上都已经把A的binlog读到本地, 保存为relaylog&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;这种情况下, 可以等待BCD都apply完本地的relaylog, 这样数据就达到一个一致的点, 可以从BCD上随便选一个作为新的master&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;如果BCD上没有把binlog都拉到本地.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;需要通过人工找到同步点, 即找到B,C,D上哪个的binlog/relaylog最新.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;假设我们找到B的binlog最新, 在通过下面命令继续令CD向B同步:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+stop slave;
+change master to master_host='',master_port=,master_user='',master_password='',master_log_file='',master_log_pos=;
+start slave;
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;至于如何找到这个同步点, 有很多方法, 不过目前基本都是靠人工, 依靠DBA的经验,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;MHA貌似也能实现&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="mysql-gtid"&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id33"&gt;4.2.1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;mysql GTID&lt;/a&gt;&lt;/h5&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;mysql 5.6 开始的GTID方案.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;针对上面这个问题(可运维性差), mysql设计了GTID, 保证同一个事务, 在一个主从结构中的log_idx是一致的.&lt;/li&gt;
+&lt;li&gt;这样发生主从切换时, 只需要从BCD上找到GTID最新的一个binlog, 作为新的master.&lt;/li&gt;
+&lt;li&gt;之后CD只需要知道自己最后一条binlog的GTID, 然后到B上去找这个GTID之后的binlog同步过来即可.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id11"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id34"&gt;4.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;第二个问题&lt;/a&gt;&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;当A又加回来后，无论是使用人工找同步点, 还是GTID自动找点. 都可能出现A领先于B的情况(A上的数据没有被同步到B)&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;这时候可以有2个办法:&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic simple"&gt;
+&lt;li&gt;让A全量重新同步, 达成一致.&lt;/li&gt;
+&lt;li&gt;把A上多余的数据人工补充到B(这需要人工操作, 操作的结果很难保证一致)&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id12"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id35"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;mongo&lt;/a&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;通过rollback, 把A上多余的数据删掉/rollback, 达到于BCD一致的状态&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;p class="first"&gt;参看notes/mongo/rollback.rst&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;mongo的做法其实类似于GTID.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;mongo里面每个oplog都有一个ts子段, 它的值为写操作发生的时间戳 + 秒内自增id.&lt;/li&gt;
+&lt;li&gt;mongo主从同步逻辑保证在一个replset中, 一个操作的ts保持不变.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;关于A上领先的数据, mongo会通过一个回滚机制&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;把A上多余的数据删掉/rollback, 达到于BCD一致的状态&lt;/li&gt;
+&lt;li&gt;参看notes/mongo/rollback.rst&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id13"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id36"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;我们从推拉模式, binlog格式, 如何发生主从切换来考察&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+-               mysql           redis       mongo       hadooop
+模式            推              推          拉          推.
+格式            row/statement   statement   row         ?
+主从切换机制    人肉            sentinel    选举        ?
+主从切换        人肉找点/       全量同步    自动GTID    ?
+后如何继续同步  用GTID同步
+&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;在mysql这样复杂, 操作丰富的数据库里面实现binlog同步有很多难点, 比如LAST_INSERT_ID() 等.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;oplog记录操作和记录结果, 各有好处.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;failover时的一致性问题有很多解决方法&lt;/dt&gt;
+&lt;dd&gt;&lt;ol class="first last arabic simple"&gt;
+&lt;li&gt;忽略&lt;/li&gt;
+&lt;li&gt;重做&lt;/li&gt;
+&lt;li&gt;rollback.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id14"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id37"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;参考:&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://dev.mysql.com/doc/internals/en/binary-log.html"&gt;http://dev.mysql.com/doc/internals/en/binary-log.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://dev.mysql.com/doc/refman/5.0/en/replication-features.html"&gt;http://dev.mysql.com/doc/refman/5.0/en/replication-features.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference external" href="http://dev.mysql.com/doc/refman/5.1/en/mysqlbinlog-row-events.html"&gt;http://dev.mysql.com/doc/refman/5.1/en/mysqlbinlog-row-events.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;淘宝, 主库自动切换 &lt;a class="reference external" href="http://www.slideshare.net/mysqlops/ss-9183821"&gt;http://www.slideshare.net/mysqlops/ss-9183821&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;mysql5.6 GTID: &lt;a class="reference external" href="http://dev.mysql.com/doc/refman/5.6/en/replication-gtids.html"&gt;http://dev.mysql.com/doc/refman/5.6/en/replication-gtids.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;GTID 简介: &lt;a class="reference external" href="http://mysqllover.com/?p=87"&gt;http://mysqllover.com/?p=87&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="gtid"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id38"&gt;6.1&amp;nbsp;&amp;nbsp;&amp;nbsp;关于GTID&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;GTID的全称为 global transaction identifier  ， 可以翻译为全局事务标示符，GTID在原始master上的事务提交时被创建。GTID需要在全局的主-备拓扑结构中保持唯一性，GTID由两部分组成：&lt;/p&gt;
+&lt;p&gt;A global transaction identifier (GTID) is a unique identifier created and associated with each transaction committed on the server of origin (master). This identifier is unique not only to the server on which it originated, but is unique across all servers in a given replication setup. There is a 1-to-1 mapping between all transactions and all GTIDs.&lt;/p&gt;
+&lt;p&gt;GTID = source_id:transaction_id&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;source_id用于标示源服务器，用server_uuid来表示，这个值在第一次启动时生成，并写入到配置文件data/auto.cnf中&lt;/li&gt;
+&lt;li&gt;transaction_id则是根据在源服务器上第几个提交的事务来确定。&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;一个GTID的生命周期包括：
+1.事务在主库上执行并提交
+给事务分配一个gtid（由主库的uuid和该服务器上未使用的最小事务序列号），该GTID被写入到binlog中。
+2.备库读取relaylog中的gtid，并设置session级别的gtid_next的值，以告诉备库下一个事务必须使用这个值
+3.备库检查该gtid是否已经被其使用并记录到他自己的binlog中。slave需要担保之前的事务没有使用这个gtid，也要担保此时已分读取gtid，但未提交的事务也不恩呢过使用这个gtid.
+4.由于gtid_next非空，slave不会去生成一个新的gtid，而是使用从主库获得的gtid。这可以保证在一个复制拓扑中的同一个事务gtid不变。&lt;/p&gt;
+&lt;p&gt;支持启用GTID，对运维人员来说应该是一件令人高兴的事情，在配置主从复制，传统的方式里，你需要找到binlog和POS点，然后change master to指向，而不是很有经验的运维，往往会将其找错，造成主从同步复制报错，在mysql5.6里，无须再知道binlog和POS点，需要知道master的IP、端口，账号密码即可，因为同步复制是自动的，mysql通过内部机制GTID自动找点同步。&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+mysql&amp;gt; show slave status\G
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for master to send event
+                  Master_Host: 192.168.18.201
+                  Master_User: repluser
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: master-bin.000001
+          Read_Master_Log_Pos: 151
+               Relay_Log_File: relay-log.000002
+                Relay_Log_Pos: 363
+        Relay_Master_Log_File: master-bin.000001
+             Slave_IO_Running: Yes  #IO线程与SQL线程都是yes，说明复制启动完成。
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB:
+          Replicate_Ignore_DB:
+           Replicate_Do_Table:
+       Replicate_Ignore_Table:
+      Replicate_Wild_Do_Table:
+  Replicate_Wild_Ignore_Table:
+                   Last_Errno: 0
+                   Last_Error:
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 151
+              Relay_Log_Space: 561
+              Until_Condition: None
+               Until_Log_File:
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File:
+           Master_SSL_CA_Path:
+              Master_SSL_Cert:
+            Master_SSL_Cipher:
+               Master_SSL_Key:
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error:
+               Last_SQL_Errno: 0
+               Last_SQL_Error:
+  Replicate_Ignore_Server_Ids:
+             Master_Server_Id: 1
+                  Master_UUID: 6b27d8b7-0e14-11e3-9eab-000c291192e4
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: Slave has read all relay log; waiting for the slave I/O thread to update it
+           Master_Retry_Count: 86400
+                  Master_Bind:
+      Last_IO_Error_Timestamp:
+     Last_SQL_Error_Timestamp:
+               Master_SSL_Crl:
+           Master_SSL_Crlpath:
+           Retrieved_Gtid_Set:
+            Executed_Gtid_Set:
+                Auto_Position: 1
+1 row in set (0.00 sec)
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>ssdb-benchmark</title><link href="/ssdb-benchmark.html" rel="alternate"></link><updated>2014-08-13T14:48:03+08:00</updated><author><name>ning</name></author><id>tag:,2014-08-13:ssdb-benchmark.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
@@ -6431,6 +7139,43 @@ fds=3:8:72
 &lt;h2&gt;&lt;a class="toc-backref" href="#id17"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;结论&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;按照思路2, 实现: &lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/257"&gt;https://github.com/twitter/twemproxy/pull/257&lt;/a&gt;&lt;/p&gt;
 &lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>twemproxy-mget-improve</title><link href="/twemproxy-mget-improve.html" rel="alternate"></link><updated>2014-04-01T17:22:35+08:00</updated><author><name>ning</name></author><id>tag:,2014-04-01:twemproxy-mget-improve.html</id><summary type="html">&lt;p&gt;I'm trying to import mget performance by rewrite it like this:&lt;/p&gt;
+&lt;p&gt;orig:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+mget k1 k2 k3 k4 k5 k6 k7 k8 k9
+&lt;/pre&gt;
+&lt;p&gt;after rewrite:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+mget k1 k3 k6
+mget k2 k4
+mget k5 k7 k8 k9
+&lt;/pre&gt;
+&lt;p&gt;the code is here:&lt;/p&gt;
+&lt;p&gt;&lt;a class="reference external" href="https://github.com/twitter/twemproxy/pull/210"&gt;https://github.com/twitter/twemproxy/pull/210&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;benchmark result:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+mget_size=10 on 4001: pqs: 22831.05, rtime: 3
+mget_size=10 on 4000: pqs: 36101.08, rtime: 1     =&amp;gt; 1.5x
+mget_size=10 on 2000: pqs: 85470.09, rtime: 0
+
+mget_size=100 on 4001: pqs: 1336.90, rtime: 45
+mget_size=100 on 4000: pqs: 10526.32, rtime: 5    =&amp;gt; 7.8x
+mget_size=100 on 2000: pqs: 27777.78, rtime: 2
+
+mget_size=1000 on 4001: pqs: 58.89, rtime: 909
+mget_size=1000 on 4000: pqs: 1063.83, rtime: 53   =&amp;gt; 18x
+mget_size=1000 on 2000: pqs: 2777.78, rtime: 20
+
+mget_size=10000 on 4001: pqs: 0.53, rtime: 3751
+mget_size=10000 on 4000: pqs: 24.21, rtime: 48    =&amp;gt; 45x
+mget_size=10000 on 2000: pqs: 256.41, rtime: 7
+&lt;/pre&gt;
+&lt;p&gt;flame-graph before:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-flame-mget.png" style="width: 600px; height: 145px;" /&gt;
+&lt;p&gt;&lt;a class="reference external" href="imgs/twemproxy-flame-mget.svg"&gt;svg1&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;flame-graph after:&lt;/p&gt;
+&lt;img alt="" src="/imgs/twemproxy-flame-mget-after-improve.png" style="width: 600px; height: 145px;" /&gt;
+&lt;p&gt;&lt;a class="reference external" href="imgs/twemproxy-flame-mget-after-improve.svg"&gt;svg2&lt;/a&gt;&lt;/p&gt;
 </summary><category term="all"></category></entry><entry><title>redis-aof-replay</title><link href="/redis-aof-replay.html" rel="alternate"></link><updated>2014-02-27T09:44:50+08:00</updated><author><name>ning</name></author><id>tag:,2014-02-27:redis-aof-replay.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;

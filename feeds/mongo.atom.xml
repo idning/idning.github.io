@@ -173,4 +173,123 @@ NOTICE: 1000 { &amp;quot;xxxxxxxxx&amp;quot; : 1 } record_size:44.012 index_size
 &lt;p&gt;注意int64是带符号的.&lt;/p&gt;
 &lt;/div&gt;
 &lt;/div&gt;
+</summary><category term="all"></category><category term="mongo"></category></entry><entry><title>mongodb 的oplog</title><link href="/mongodb-oplog.html" rel="alternate"></link><updated>2013-09-22T09:09:47+08:00</updated><author><name>ning</name></author><id>tag:,2013-09-22:mongodb-oplog.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id4"&gt;基本格式&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#insert" id="id5"&gt;insert&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#update" id="id6"&gt;update&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#update-by-set" id="id7"&gt;update by $set&lt;/a&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#multi" id="id8"&gt;使用multi&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#inc" id="id9"&gt;使用$inc&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#delete" id="id10"&gt;delete&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id11"&gt;字段含义&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id12"&gt;注意&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;a class="reference external" href="http://www.kchodorow.com/blog/2010/10/12/replication-internals/"&gt;http://www.kchodorow.com/blog/2010/10/12/replication-internals/&lt;/a&gt; 对几种操作的oplog 做了个介绍，不过有个问题, 遗漏了一种update格式.&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;基本格式&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="insert"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id5"&gt;insert&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+PRIMARY&amp;gt; use test_mig
+switched to db test_mig
+PRIMARY&amp;gt; db.test_oplog.insert({'a': 1})
+PRIMARY&amp;gt; db.test_oplog.insert({'a': 1})
+PRIMARY&amp;gt; db.test_oplog.insert({'a': 2})
+
+PRIMARY&amp;gt; db.getSisterDB('local').oplog.rs.find().sort({$natural: -1}).limit(5)
+{ &amp;quot;ts&amp;quot; : { &amp;quot;t&amp;quot; : 1379811509000, &amp;quot;i&amp;quot; : 1 }, &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-541764781068148886&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;i&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea865b04265100d6f0598&amp;quot;), &amp;quot;a&amp;quot; : 2 } }
+{ &amp;quot;ts&amp;quot; : { &amp;quot;t&amp;quot; : 1379811508000, &amp;quot;i&amp;quot; : 1 }, &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-5437861844169095741&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;i&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea864b04265100d6f0597&amp;quot;), &amp;quot;a&amp;quot; : 1 } }
+{ &amp;quot;ts&amp;quot; : { &amp;quot;t&amp;quot; : 1379811505000, &amp;quot;i&amp;quot; : 1 }, &amp;quot;h&amp;quot; : NumberLong(&amp;quot;7009628162923571334&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;i&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea861b04265100d6f0596&amp;quot;), &amp;quot;a&amp;quot; : 1 } }
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="update"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id6"&gt;update&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+PRIMARY&amp;gt; db.test_oplog.update({'a': 2}, {'a': 2, 'b': 2})
+PRIMARY&amp;gt; db.test_oplog.update({'a': 2}, {'a': 2222})
+
+PRIMARY&amp;gt; db.getSisterDB('local').oplog.rs.find().sort({$natural: -1}).limit(5)
+{ &amp;quot;ts&amp;quot; : { &amp;quot;t&amp;quot; : 1379812156000, &amp;quot;i&amp;quot; : 1 }, &amp;quot;h&amp;quot; : NumberLong(&amp;quot;1839954846191959534&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea865b04265100d6f0598&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;a&amp;quot; : 2222 } }
+{ &amp;quot;ts&amp;quot; : { &amp;quot;t&amp;quot; : 1379812099000, &amp;quot;i&amp;quot; : 1 }, &amp;quot;h&amp;quot; : NumberLong(&amp;quot;1040690260917471023&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea865b04265100d6f0598&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;a&amp;quot; : 2, &amp;quot;b&amp;quot; : 2 } }
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="update-by-set"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id7"&gt;update by $set&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+PRIMARY&amp;gt; db.test_oplog.update({'a': 1}, {'$set': {'b': 1}})
+PRIMARY&amp;gt; db.getSisterDB('local').oplog.rs.find().sort({$natural: -1}).limit(5)
+{ &amp;quot;ts&amp;quot; : { &amp;quot;t&amp;quot; : 1379812316000, &amp;quot;i&amp;quot; : 1 }, &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-7531977215037588101&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea861b04265100d6f0596&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;$set&amp;quot; : { &amp;quot;b&amp;quot; : 1 } } }
+&lt;/pre&gt;
+&lt;div class="section" id="multi"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id8"&gt;使用multi&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;2.2 以前的mongoshell 是update(query, set, upsert, multi):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+set_test_1:PRIMARY&amp;gt; db.test_oplog.update({'a': 1}, {'$set': {'b': 'yyyy'}}, {multi:true} )
+set_test_1:PRIMARY&amp;gt; db.getSisterDB('local').oplog.rs.find().sort({$natural: -1}).limit(5)
+{ &amp;quot;ts&amp;quot; : Timestamp(1379812808000, 2), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;7954591165252070733&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea864b04265100d6f0597&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;$set&amp;quot; : { &amp;quot;b&amp;quot; : &amp;quot;yyyy&amp;quot; } } }
+{ &amp;quot;ts&amp;quot; : Timestamp(1379812808000, 1), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-1963375078122908247&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea861b04265100d6f0596&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;$set&amp;quot; : { &amp;quot;b&amp;quot; : &amp;quot;yyyy&amp;quot; } } }
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="inc"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id9"&gt;使用$inc&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;会转化为$set:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+set_test_1:PRIMARY&amp;gt; db.test_oplog.update({'a': 1}, {'$inc': {'c': 1}}, {multi:true} )
+set_test_1:PRIMARY&amp;gt; db.getSisterDB('local').oplog.rs.find().sort({$natural: -1}).limit(5)
+{ &amp;quot;ts&amp;quot; : Timestamp(1379812901000, 2), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;3836072815439856239&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea864b04265100d6f0597&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;$set&amp;quot; : { &amp;quot;c&amp;quot; : 2 } } }
+{ &amp;quot;ts&amp;quot; : Timestamp(1379812901000, 1), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-3961481879606589185&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea861b04265100d6f0596&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;$set&amp;quot; : { &amp;quot;c&amp;quot; : 2 } } }
+{ &amp;quot;ts&amp;quot; : Timestamp(1379812886000, 2), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-8702988464634388902&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea864b04265100d6f0597&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;$set&amp;quot; : { &amp;quot;c&amp;quot; : 1 } } }
+{ &amp;quot;ts&amp;quot; : Timestamp(1379812886000, 1), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-3933979447585942296&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;u&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;o2&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea861b04265100d6f0596&amp;quot;) }, &amp;quot;o&amp;quot; : { &amp;quot;$set&amp;quot; : { &amp;quot;c&amp;quot; : 1 } } }
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="delete"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id10"&gt;delete&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+set_test_1:PRIMARY&amp;gt; db.test_oplog.remove({'a': 1})
+set_test_1:PRIMARY&amp;gt; db.getSisterDB('local').oplog.rs.find().sort({$natural: -1}).limit(5)
+{ &amp;quot;ts&amp;quot; : Timestamp(1379813007000, 2), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-6184108545915471156&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;d&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;b&amp;quot; : true, &amp;quot;o&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea864b04265100d6f0597&amp;quot;) } }
+{ &amp;quot;ts&amp;quot; : Timestamp(1379813007000, 1), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;-7842531010992739410&amp;quot;), &amp;quot;v&amp;quot; : 2, &amp;quot;op&amp;quot; : &amp;quot;d&amp;quot;, &amp;quot;ns&amp;quot; : &amp;quot;test_mig.test_oplog&amp;quot;, &amp;quot;b&amp;quot; : true, &amp;quot;o&amp;quot; : { &amp;quot;_id&amp;quot; : ObjectId(&amp;quot;523ea861b04265100d6f0596&amp;quot;) } }
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id11"&gt;字段含义&lt;/a&gt;&lt;/h2&gt;
+&lt;pre class="literal-block"&gt;
+&amp;quot;ts&amp;quot; : Timestamp(1379812901000, 2), &amp;quot;h&amp;quot; : NumberLong(&amp;quot;3836072815439856239&amp;quot;),
+&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;ts: the time this operation occurred.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;8字节的时间戳，由4字节unix timestamp + 4字节秒内自增计数表示:&lt;/li&gt;
+&lt;li&gt;ts字段用处很多&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;h: a unique ID for this operation. Each operation will have a different value in this field.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;h字段对回滚有影响.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id12"&gt;注意&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;update 有两种格式.&lt;/li&gt;
+&lt;li&gt;oplog记录的是记过, 可以重放.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
 </summary><category term="all"></category><category term="mongo"></category></entry></feed>
