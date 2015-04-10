@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>redis-slow-query-20140528</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/slow-query-20140528.html">2014-05-29 22:38:30</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+tags: <a href="/tag/all.html">all</a> </div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id4">1&nbsp;&nbsp;&nbsp;表现</a></li>
+<li><a class="reference internal" href="#id2" id="id5">2&nbsp;&nbsp;&nbsp;分析</a></li>
+<li><a class="reference internal" href="#id3" id="id6">3&nbsp;&nbsp;&nbsp;后续工作</a></li>
+</ul>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id4">1&nbsp;&nbsp;&nbsp;表现</a></h2>
+<p>昨天, 我们优化过之后的twemproxy终于全流量上线了, 这个上线是通过数据迁移的方式, 把老的单实例redis上的数据导到redis集群的方式完成的.</p>
+<p>上线后, 发现切流量到集群后, 前端响应时间从7ms左右上升到15ms左右. 这和我们线下测试的结果严重不符.</p>
+<p>为此, 给proxy增加了一条notice日志, 用于观察响应时间.</p>
+<p>通过日志观察, 多数请求在proxy上看的响应时间都在1ms以下(从收到第一个包, 到最后响应发送完成):</p>
+<pre class="literal-block">
+$ tail -f log/nutcracker.log  | grep nc_request.c:59 | grep MGET
+[Thu May 29 22:45:13 2014] nc_request.c:59 req 2794795960 done on c 160 req_time: 0.274 type: MGET narg: 2 mlen: 48 key0: ccccccc_5965730729490562984, done: 1, error:0
+[Thu May 29 22:45:13 2014] nc_request.c:59 req 2794795741 done on c 238 req_time: 2.230 type: MGET narg: 3 mlen: 82 key0: ccccccc_8781424545207799628, done: 1, error:0
+[Thu May 29 22:45:13 2014] nc_request.c:59 req 2794795846 done on c 965 req_time: 1.635 type: MGET narg: 9 mlen: 284 key0: ccccccc_8734244876870904753, done: 1, error:0
+</pre>
+<p>同时很多MGET, set, get等请求变得很慢. 而且, <strong>慢请求总是集中出现</strong>.</p>
+</div>
+<div class="section" id="id2">
+<h2><a class="toc-backref" href="#id5">2&nbsp;&nbsp;&nbsp;分析</a></h2>
+<p>鉴于刚修改了proxy, 所以问题很可能出在 proxy上.</p>
+<ol class="arabic">
+<li><p class="first">会不会是被某种慢请求拖累.</p>
+<p>proxy是单进程模型, 如果某个连接上的一个请求慢, 那么后续的请求都会受到影响. 这比较符合我们观察到的 慢请求集中出现的特点.</p>
+<p>在日志中, 观察一批慢请求中, 第一个拖慢大家的请求是什么, 并未发现明显特点.</p>
+</li>
+<li><p class="first">会不会是因为客户端随机选择proxy不均匀?
+这个问题之前出现过, 客户端使用time取模的方式选proxy, 于是同一秒内, 所有客户端都选择同一个proxy.</p>
+<p>针对今天的情况, 发现确实有不均匀的现象:</p>
+<pre class="literal-block">
+$ tail -200000 log/nutcracker.log  | grep nc_request.c:59 | grep cou |  awk '{print $4}' | sort | uniq -c
+    269 22:54:41
+   2199 22:54:42
+   1098 22:54:43
+    578 22:54:44
+   1448 22:54:45
+   2720 22:54:46
+    558 22:54:47
+    507 22:54:48
+   3084 22:54:49
+   1677 22:54:50
+    991 22:54:51
+    396 22:54:52
+    561 22:54:53
+    423 22:54:54
+    341 22:54:55
+   1945 22:54:56
+    727 22:54:57
+    585 22:54:58
+    453 22:54:59
+    523 22:55:00
+    520 22:55:01
+    394 22:55:02
+   2373 22:55:03
+   3421 22:55:04
+   3254 22:55:05
+    595 22:55:06
+</pre>
+<p>于是, 这个原因成了重点怀疑对象, 我甚至写了个脚本, 把每秒请求数和每秒慢请求化成图, 观察两者的相关性, 结果发现并无直接的相关.</p>
+<p>而且, 3000/s 的请求对proxy来说压力不算大, 看cpu也只占20%左右, 我们线下压力, cpu100%的时候大约能撑5w/s.</p>
+<p>到这时, 半天已然过去, 依然毫无头绪</p>
+</li>
+<li><p class="first">第二天一大早, 开始着手从网络上去分析, 通过抓包, 观察客户端发给proxy, proxy再转给后端请求和响应, 这样可以确定是redis会给proxy慢呢, 还是proxy接收到响应后, 迟迟不回复给客户端.</p>
+<p>我先从proxy日志中找到一条慢日志, 然后到tcpdump的文件中通过key找, 找到:</p>
+<pre class="literal-block">
+20:21:10.517897 IP 10.57.92.61.13766 &gt; 10.57.85.40.2108: Flags [P.], ack 8852, win 4878, options [nop,nop,TS val 1266302405 ecr 1266305407], length 48
+..A... ..+....E..d.i&#64;.&#64;..S
+9\=
+9U(5..&lt;...x.........-.....
+Kz=.KzI.*2^M
+$4^M
+mget^M
+$27^M
+ccccccc_1421521409803306481^M
+20:21:10.518978 IP 10.57.92.61.13766 &gt; 10.57.85.40.2108: Flags [P.], ack 8852, win 4878, options [nop,nop,TS val 1266302406 ecr 1266305408], length 48
+..A... ..+....E..d.j&#64;.&#64;..R
+9\=
+9U(5..&lt;.............-.....
+Kz=.KzI.*2^M
+$4^M
+mget^M
+$27^M
+ccccccc_4472738999812611775^M
+20:21:10.519474 IP 10.57.92.61.13766 &gt; 10.57.85.40.2108: Flags [P.], ack 8852, win 4878, options [nop,nop,TS val 1266302406 ecr 1266305409], length 48
+..A... ..+....E..d.k&#64;.&#64;..Q
+9\=
+9U(5..&lt;.............-.....
+Kz=.KzI.*2^M
+$4^M
+mget^M
+$27^M
+ccccccc_6172459129631416052^M
+20:21:10.564537 IP 10.57.85.40.2108 &gt; 10.57.92.61.13766: Flags [P.], ack 14768, win 4878, options [nop,nop,TS val 1266305454 ecr 1266302445], length 119
+ ..+....A.....E...?Z&#64;.=.8.
+9U(
+9\=.&lt;5.............A......
+KzI.Kz=.*1^M
+$2^M
+86^M      通过直接查询proxy, 发现ccccccc_1421521409803306481对应的value是86, 所以这里应该是前面第一个mget对应的response, 此时已经过去47ms.
+*1^M
+$-1^M
+*1^M
+$-1^M
+*1^M
+$3^M
+287^M
+*1^M
+$-1^M
+*1^M
+$-1^M
+:1^M
+</pre>
+<p>我们发现这些请求的响应是一起回来的, 所以很有可能是因为后端hang住没有及时发回response.</p>
+<p>但是, 同一个tcp-stream上的前一个请求, 却是很快就响应的. 没有抓住有力证据.</p>
+<p>再用同样的方法, 就没有发现类似的case. 因为有的key很热, 没法定位到向后端转发的请求, 而且这基本靠肉眼, 太费劲了.</p>
+<p>还发现有一个case是proxy收到包之后过了5ms才转发给客户端的.</p>
+</li>
+<li><p class="first">从前在http服务上也遇到不少慢请求的问题, 记得有一次把一小时的tcpdump用脚本分成了1,000,000 多个流, 然后对每个流里面相邻两个包的时间做度量, 如果超过xx ms, 就说明有慢请求.
+翻了一下脚本, 是把 tcpdump 出来的一行一行的文件用正则式做分析, 每个流切到一个文件去:</p>
+<pre class="literal-block">
+def deal(cap_file = '20110629-2000.all.txt'):
+    all_line = int( system('cat %s | wc -l ' % cap_file))
+    print all_line, 'lines'
+    i = 0;
+    for line in file(cap_file):
+        if len(line) &lt; 10: continue
+        a = line.split(' ')[2].replace(':', '')
+        b = line.split(' ')[4].replace(':', '')
+        if (a.endswith('.80')):
+            server = a
+            client = b
+            type = 'server-&gt;client'
+        else:
+            server = b
+            client = a
+            type = 'client-&gt;server'
+        #print '##', client, server
+
+        path = 'rst/' + client.replace('.', '/', 2)
+        dirname = os.path.dirname(path)
+
+        if not os.path.exists(dirname):
+           os.makedirs(dirname)
+        #print path
+    #os.system('mkdir -p %s' % os.path.dirname(path))
+        print &gt;&gt; file(path, 'a') , line,
+
+        i += 1;
+        if i % 10000 == 0:
+            print i, 'lines finished'
+</pre>
+<p>各种正则式... 无比费心.</p>
+<p>后来还用过一个tcpflow的工具, 可以帮助做这个切流的动作, 切完了之后再用一个脚本来分析.
+重新下了个tcpfolw, 发现新版完全没法编译, 失去信心...</p>
+</li>
+<li><p class="first">打算自己解pcap文件算了.
+尝试了一下pypcap, 发现真是难用..</p>
+<p>于是乎, 自己python实现了一个pcap文件的解析库, 代码: <a class="reference external" href="https://github.com/idning/py-pcap-parser">py-pcap-parser</a></p>
+<p>然后利用这个库做分析, 分析代码:</p>
+<pre class="literal-block">
+def dump():  #全量导出.
+    pcap = PcapFile('a.pcap')
+    cnt = 0
+    for p in pcap.tcp_packets():
+        cnt += 1
+        if cnt % 100000 == 0:
+            print '%d done' % cnt
+
+        if not p.body:
+            continue
+        if filter(p):
+            continue
+
+        p.body = p.body.replace('\r\n', ' ')
+
+        print TT('$ts $source:$source_port-&gt;$dest:$dest_port  # $body', vars(p))
+
+def findslow(): 找到慢的req-response对.
+    pcap = PcapFile('a.pcap')
+    cnt = 0
+    for p in pcap.tcp_packets():
+        cnt += 1
+        if cnt % 100000 == 0:
+            print '%d done' % cnt
+
+        if not p.body:
+            continue
+        if filter(p):
+            continue
+
+        p.body = p.body.replace('\r\n', ' ')
+        #print TT('$ts $source:$source_port-$dest:$dest_port  # $body', vars(p))
+
+        key = gen_key(p)
+        if key in last_active:
+            diff = p.ts - last_active[gen_key(p)]
+            #print diff
+            if diff &gt; 0.03 and not isreq(p):
+                print '===========', TT('$ts $source:$source_port-&gt;$dest:$dest_port  # $body', vars(last_pack[key]))
+                print 'diff: %.3f' % diff,  TT('$ts $source:$source_port-&gt;$dest:$dest_port  # $body', vars(p))
+        else:
+            #print 'nodiff: ',  TT('$ts $source:$source_port-$dest:$dest_port  # $body', vars(p))
+            pass
+</pre>
+<p>分析结果, 在 <tt class="docutils literal">findslow</tt> 输出里面, 慢请求一目了然:</p>
+<pre class="literal-block">
+=========== 1401353285.95 10.57.27.53:56267-10.57.92.61:4101  # *4 $4 MGET $27 ccccccc_2111745379895909519 $27 ccccccc_4657069178215479939 $27 ccccccc_9137275223978700551
+diff: 0.048 1401353285.99 10.57.92.61:4101-10.57.27.53:56267  # *3 $-1 $-1 $-1
+=========== 1401353285.95 10.50.20.40:22796-10.57.92.61:4101  # *2 $4 MGET $27 ccccccc_5103351455575634229
+diff: 0.047 1401353285.99 10.57.92.61:4101-10.50.20.40:22796  # *1 $-1
+=========== 1401353285.96 10.38.12.42:42076-10.57.92.61:4101  # *2 $4 MGET $27 ccccccc_8030835834922447023
+diff: 0.039 1401353285.99 10.57.92.61:4101-10.38.12.42:42076  # *1 $1 0
+</pre>
+<p>上面这三个请求在不同时间点开始, 但是都是 <tt class="docutils literal">1401353285.99</tt> 才完成.</p>
+<p>在把这个慢请求(ccccccc_2111745379895909519)放到全量的 <tt class="docutils literal">dump</tt> 文件里面去找:</p>
+<pre class="literal-block">
+1401353285.95 10.57.27.53:56267-&gt;10.57.92.61:4101  # *4 $4 MGET $27 ccccccc_2111745379895909519 $27 ccccccc_4657069178215479939 $27 ccccccc_9137275223978700551
+1401353285.95 10.57.92.61:44471-&gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_2111745379895909519
+1401353285.96 10.57.92.61:44471-&gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_8030835834922447023
+1401353285.97 10.57.92.61:44471-&gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_7981749853668200998
+1401353285.98 10.57.92.61:44471-&gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_8204274828390831284
+</pre>
+<p>下面用 <tt class="docutils literal">10.57.92.61:44471</tt> 去找, 我们又发现大量请求在同一时间点回来了:</p>
+<pre class="literal-block">
+1401353285.99 10.42.194.43:2111-&gt;10.57.92.61:44471  # *1 $-1 *1 $-1 *1 $1 0 *1 $1 2 $303
+</pre>
+<p>类似, 可以找到不少case, 说明确实是redis回的慢, 之前居然一直没有考虑过这个原因.</p>
+</li>
+<li><p class="first">查redis为什么慢. 很快就定位到SLOWLOG. 发现很多redis每秒有几个SLOWLOG, 每次耗时20-40ms, 这和proxy上看到的数值很吻合:</p>
+<pre class="literal-block">
+./bin/deploy.py cluster1 mastercmd 'slowlog get 10'
+...
+
+1016892
+1401377576
+24807
+HGETALL
+xxxxxxxxxxxxxxxxxxxxxxx:1194330698
+1016891
+1401377576
+24523
+HGETALL
+xxxxxxxxxxxxxxxxxxxxxxx:1194330698
+1016890
+1401377576
+25147
+HGETALL
+xxxxxxxxxxxxxxxxxxxxxxx:1194330698
+
+这些key很多都是2w+ hash
+</pre>
+</li>
+</ol>
+</div>
+<div class="section" id="id3">
+<h2><a class="toc-backref" href="#id6">3&nbsp;&nbsp;&nbsp;后续工作</a></h2>
+<ol class="arabic simple">
+<li>把slowlog监控加入到 <a class="reference external" href="https://github.com/idning/redis-mgr">redis-mgr</a> 常规监控</li>
+<li>遇到响应时间问题, 优先排查SLOWLOG.</li>
+<li>向业务限制HGETALL的使用</li>
+</ol>
+<p>ps: HGETALL果然是个坑, 虽然早有耳闻, 一直未引起重视.</p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

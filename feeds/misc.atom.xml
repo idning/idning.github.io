@@ -1133,9 +1133,17 @@ if(msg_list.size() &amp;gt;= ServerConfig::channel_buffer_size * 1.5){
 &lt;p&gt;ideawu 提供了一个 c1000k 代码:&lt;/p&gt;
 &lt;p&gt;&lt;a class="reference external" href="https://github.com/ideawu/c1000k"&gt;https://github.com/ideawu/c1000k&lt;/a&gt;&lt;/p&gt;
 &lt;p&gt;要测试c1000k 主要两个问题:&lt;/p&gt;
-&lt;ol class="arabic simple"&gt;
-&lt;li&gt;是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.&lt;/li&gt;
-&lt;li&gt;client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)&lt;/li&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;相同的四元组只能存在一个.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
 &lt;/ol&gt;
 &lt;p&gt;ideawu是这样解决的:
 1. server 端每accept一个连接, 都设置它的缓冲区大小为5k:&lt;/p&gt;

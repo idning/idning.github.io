@@ -407,9 +407,17 @@ if(msg_list.size() &gt;= ServerConfig::channel_buffer_size * 1.5){
 <p>ideawu 提供了一个 c1000k 代码:</p>
 <p><a class="reference external" href="https://github.com/ideawu/c1000k">https://github.com/ideawu/c1000k</a></p>
 <p>要测试c1000k 主要两个问题:</p>
-<ol class="arabic simple">
-<li>是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.</li>
-<li>client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)</li>
+<ol class="arabic">
+<li><p class="first">是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.</p>
+</li>
+<li><dl class="first docutils">
+<dt>client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)</dt>
+<dd><ul class="first last simple">
+<li>相同的四元组只能存在一个.</li>
+</ul>
+</dd>
+</dl>
+</li>
 </ol>
 <p>ideawu是这样解决的:
 1. server 端每accept一个连接, 都设置它的缓冲区大小为5k:</p>

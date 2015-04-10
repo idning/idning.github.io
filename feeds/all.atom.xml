@@ -1518,10 +1518,11 @@ t7 insert 6 ---
 &lt;dt&gt;关于格式&lt;/dt&gt;
 &lt;dd&gt;&lt;ul class="first last"&gt;
 &lt;li&gt;&lt;dl class="first docutils"&gt;
-&lt;dt&gt;两种格式&lt;/dt&gt;
+&lt;dt&gt;三种格式&lt;/dt&gt;
 &lt;dd&gt;&lt;ul class="first last simple"&gt;
 &lt;li&gt;STATEMENT-BASED format&lt;/li&gt;
 &lt;li&gt;ROW-BASED format&lt;/li&gt;
+&lt;li&gt;mised: 是上面两种的混合.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/dd&gt;
 &lt;/dl&gt;
@@ -1565,7 +1566,7 @@ t7 insert 6 ---
 &lt;/dd&gt;
 &lt;/dl&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;p class="first"&gt;一般来说, 鉴于STATEMENT性能更好, 多数都是用STATEMENT模式.&lt;/p&gt;
+&lt;li&gt;&lt;p class="first"&gt;一般来说, mixed性能可能更好, 多数都是用mixed模式.&lt;/p&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;dl class="first docutils"&gt;
 &lt;dt&gt;存在问题(jira报的一些bug):&lt;/dt&gt;
@@ -1598,8 +1599,9 @@ t7 insert 6 ---
 &lt;p&gt;具体保存方法:&lt;/p&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;多个文件, 每次启动或者写满一个max_binlog_size, 就新开一个.&lt;/li&gt;
-&lt;li&gt;binlog index文件,  记录当前哪些binlog文件在使用.&lt;/li&gt;
+&lt;li&gt;binlog index文件, 记录当前哪些binlog文件在使用.&lt;/li&gt;
 &lt;li&gt;PURGE BINARY LOGS命令用于清除binlog&lt;/li&gt;
+&lt;li&gt;binlog也可以自动清理, &lt;tt class="docutils literal"&gt;expire_logs_days&lt;/tt&gt; .&lt;/li&gt;
 &lt;/ul&gt;
 &lt;pre class="literal-block"&gt;
 shell&amp;gt; mysqlbinlog binlog.0000003
@@ -2768,67 +2770,69 @@ sqlite3_exec(db, query, callback, 0, &amp;amp;szErrMsg);
 </summary><category term="all"></category></entry><entry><title>cr-ssdb</title><link href="/cr-ssdb.html" rel="alternate"></link><updated>2014-07-24T15:12:18+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-24:cr-ssdb.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id18"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id19"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;代码&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#util" id="id20"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;util&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id21"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;请求处理模型&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#link" id="id22"&gt;2.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;Link&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#redislink" id="id23"&gt;2.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;RedisLink&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id24"&gt;2.2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;命令表&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id25"&gt;2.2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;处理模型&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#serv-proc" id="id26"&gt;2.2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;serv.proc&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#workerpool" id="id27"&gt;2.2.6&amp;nbsp;&amp;nbsp;&amp;nbsp;WorkerPool&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id28"&gt;2.2.7&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id19"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id20"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;代码&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#util" id="id21"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;util&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id22"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;请求处理模型&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#link" id="id23"&gt;2.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;Link&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redislink" id="id24"&gt;2.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;RedisLink&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id25"&gt;2.2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;命令表&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id26"&gt;2.2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;处理模型&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#serv-proc" id="id27"&gt;2.2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;serv.proc&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#workerpool" id="id28"&gt;2.2.6&amp;nbsp;&amp;nbsp;&amp;nbsp;WorkerPool&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id29"&gt;2.2.7&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id29"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;功能&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#kv" id="id30"&gt;2.3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;kv&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#hash" id="id31"&gt;2.3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;hash&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#hscan-hkeys" id="id32"&gt;2.3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;hscan/hkeys的实现&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id30"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;功能&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#kv" id="id31"&gt;2.3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;kv&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hash" id="id32"&gt;2.3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;hash&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#hscan-hkeys" id="id33"&gt;2.3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;hscan/hkeys的实现&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#queue" id="id33"&gt;2.3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;queue&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#zset" id="id34"&gt;2.3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;zset&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#zrank" id="id35"&gt;2.3.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;zrank&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#queue" id="id34"&gt;2.3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;queue&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#zset" id="id35"&gt;2.3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;zset&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#zrank" id="id36"&gt;2.3.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;zrank&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id36"&gt;2.3.5&amp;nbsp;&amp;nbsp;&amp;nbsp;名字空间划分&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id37"&gt;2.3.5&amp;nbsp;&amp;nbsp;&amp;nbsp;名字空间划分&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id37"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从相关&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#binlog" id="id38"&gt;2.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;binlog&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#binlogqueue" id="id39"&gt;2.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;BinlogQueue&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id40"&gt;2.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Binlog&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id11" id="id41"&gt;2.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从同步&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#slave" id="id42"&gt;2.4.5&amp;nbsp;&amp;nbsp;&amp;nbsp;slave&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#dump" id="id43"&gt;2.4.6&amp;nbsp;&amp;nbsp;&amp;nbsp;dump&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id38"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从相关&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#binlog" id="id39"&gt;2.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;binlog&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#binlogqueue" id="id40"&gt;2.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;BinlogQueue&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id41"&gt;2.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Binlog&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id11" id="id42"&gt;2.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从同步&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#slave" id="id43"&gt;2.4.5&amp;nbsp;&amp;nbsp;&amp;nbsp;slave&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#dump" id="id44"&gt;2.4.6&amp;nbsp;&amp;nbsp;&amp;nbsp;dump&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id12" id="id44"&gt;2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#incr" id="id45"&gt;2.5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;incr 如何保证原子性&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#expire" id="id46"&gt;2.5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何实现expire&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#benchmark" id="id47"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;benchmark&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id13" id="id48"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id14" id="id49"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;读性能的问题&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#compact" id="id50"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何compact&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#expirekey" id="id51"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;所有expire的key记录在内存&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id15" id="id52"&gt;4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;兼容问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#del" id="id53"&gt;4.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;del 兼容&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#ttlkey" id="id54"&gt;4.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;ttl一个不存在的key&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id16" id="id55"&gt;4.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;没有expire命令&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#scan" id="id56"&gt;4.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;scan类&lt;/a&gt;&lt;ul class="auto-toc"&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#id17" id="id57"&gt;4.4.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;scan&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a class="reference internal" href="#redis-hscan" id="id58"&gt;4.4.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;没有redis 的hscan&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id12" id="id45"&gt;2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#incr" id="id46"&gt;2.5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;incr 如何保证原子性&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#expire" id="id47"&gt;2.5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何实现expire&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#benchmark" id="id48"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;benchmark&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id13" id="id49"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id14" id="id50"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;读性能的问题&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#compact" id="id51"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何compact&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#expirekey" id="id52"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;所有expire的key记录在内存&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id15" id="id53"&gt;4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;兼容问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#del" id="id54"&gt;4.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;del 兼容&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#ttlkey" id="id55"&gt;4.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;ttl一个不存在的key&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id16" id="id56"&gt;4.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;没有expire命令&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#set-key-val-ex-nx" id="id57"&gt;4.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;不支持set key val ex nx&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#scan" id="id58"&gt;4.4.5&amp;nbsp;&amp;nbsp;&amp;nbsp;scan类&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id17" id="id59"&gt;4.4.5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;scan&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#redis-hscan" id="id60"&gt;4.4.5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;没有redis 的hscan&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id18" id="id61"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;style type="text/css"&gt;
@@ -2836,7 +2840,7 @@ sqlite3_exec(db, query, callback, 0, &amp;amp;szErrMsg);
         width: 30%
       }
 &lt;/style&gt;&lt;div class="section" id="id1"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id18"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id19"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;请求处理模型, 每个线程一个req?&lt;/li&gt;
 &lt;li&gt;如何在kv上实现hash/zset/queue&lt;/li&gt;
@@ -2847,7 +2851,7 @@ sqlite3_exec(db, query, callback, 0, &amp;amp;szErrMsg);
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id2"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id19"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;代码&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id20"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;代码&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;代码量大约9000行:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 ning&amp;#64;ning-laptop:~/test/ssdb/src$ cat *.cpp *.h | wc -l
@@ -2909,7 +2913,7 @@ iterator.cpp
 iterator.h
 &lt;/pre&gt;
 &lt;div class="section" id="util"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id20"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;util&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id21"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;util&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;和icomet一样:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 config.cpp
@@ -2934,9 +2938,9 @@ sorted_set.h&lt;/p&gt;
 &lt;p&gt;SelectableQueue: 提供一个基于管道实现的Queue, 从而使得这个Queue 可以做Select.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id3"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id21"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;请求处理模型&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id22"&gt;2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;请求处理模型&lt;/a&gt;&lt;/h3&gt;
 &lt;div class="section" id="link"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id22"&gt;2.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;Link&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id23"&gt;2.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;Link&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 class Link{
     int sock;
@@ -2977,7 +2981,7 @@ read, write 为内部函数, 如果改为 _read, _write 就好懂些.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;/div&gt;
 &lt;div class="section" id="redislink"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id23"&gt;2.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;RedisLink&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id24"&gt;2.2.2&amp;nbsp;&amp;nbsp;&amp;nbsp;RedisLink&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;两个函数, 处理对象是input, output:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 send_resp(Buffer *output, const std::vector&amp;lt;std::string&amp;gt; &amp;amp;resp)  //发送redis格式的响应, resp是一个 string 构成的vector.
@@ -2987,7 +2991,7 @@ recv_req(Buffer *input)                                          //调用parse_r
 &lt;p&gt;parse_req 对input的处理是, 如果一次没有解析到一个完整的命令, 那么input buffer不动, 下次继续.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id4"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id24"&gt;2.2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;命令表&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id25"&gt;2.2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;命令表&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;命令表:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 #define PROC(c, f) {#c, f, 0, proc_##c, 0, 0, 0}
@@ -3010,7 +3014,7 @@ for(Command *cmd=commands; cmd-&amp;gt;name; cmd++){
 &lt;p&gt;收到请求后, Server::proc函数会在proc_map里面查找&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id5"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id25"&gt;2.2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;处理模型&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id26"&gt;2.2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;处理模型&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;ssdb-server.cpp&lt;/p&gt;
 &lt;p&gt;全局:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
@@ -3088,7 +3092,7 @@ run(){
 &lt;p&gt;TODO: 为什么最后把ready_list_2 里面的元素放到ready_list里面去了, 但是到下一个循环一开始就   &lt;tt class="docutils literal"&gt;&lt;span class="pre"&gt;ready_list.clear();&lt;/span&gt;&lt;/tt&gt;, 这个clear() 是不是不应该有?&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="serv-proc"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id26"&gt;2.2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;serv.proc&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id27"&gt;2.2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;serv.proc&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;这个函数会根据command_table里的标记, 决定是在主线程处理, 还是在线程池处理, 或者新开一个线程处理:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 void Server::proc(ProcJob *job){
@@ -3127,7 +3131,7 @@ static int proc_hdel(Server *serv, Link *link, const Request &amp;amp;req, Respo
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="workerpool"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id27"&gt;2.2.6&amp;nbsp;&amp;nbsp;&amp;nbsp;WorkerPool&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id28"&gt;2.2.6&amp;nbsp;&amp;nbsp;&amp;nbsp;WorkerPool&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;thread.h 提供线程池(WorkerPool), ssdb里面一个writer 线程池, 一个reader 线程池:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 WorkerPool&amp;lt;ProcWorker, ProcJob&amp;gt; *writer;
@@ -3190,13 +3194,13 @@ int Server::ProcWorker::proc(ProcJob *job){
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id6"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id28"&gt;2.2.7&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id29"&gt;2.2.7&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;这种请求处理模型没见过, 觉得很巧妙.&lt;/p&gt;
 &lt;p&gt;HERE&lt;/p&gt;
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id7"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id29"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;功能&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id30"&gt;2.3&amp;nbsp;&amp;nbsp;&amp;nbsp;功能&lt;/a&gt;&lt;/h3&gt;
 &lt;table border="1" class="docutils"&gt;
 &lt;colgroup&gt;
 &lt;col width="30%" /&gt;
@@ -3251,7 +3255,7 @@ DEF_PROC(qback);
 DEF_PROC(qpush);
 &lt;/pre&gt;
 &lt;div class="section" id="kv"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id30"&gt;2.3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;kv&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id31"&gt;2.3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;kv&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;get:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 static int proc_get(Server *serv, Link *link, const Request &amp;amp;req, Response *resp){
@@ -3277,7 +3281,7 @@ typedef std::vector&amp;lt;std::string&amp;gt; Response;
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="hash"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id31"&gt;2.3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;hash&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id32"&gt;2.3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;hash&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;实现了:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 DEF_PROC(hsize);        // O(1)
@@ -3330,7 +3334,7 @@ std::string encode_hash_key(const Bytes &amp;amp;name, const Bytes &amp;amp;key)
 static int incr_hsize(SSDB *ssdb, const Bytes &amp;amp;name, int64_t incr){
 &lt;/pre&gt;
 &lt;div class="section" id="hscan-hkeys"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id32"&gt;2.3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;hscan/hkeys的实现&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id33"&gt;2.3.2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;hscan/hkeys的实现&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;需要客户端传来, 从那个key scan到哪个key:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 static int proc_hscan(Server *serv, Link *link, const Request &amp;amp;req, Response *resp){
@@ -3351,7 +3355,7 @@ hscan hkey a '' 100
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="queue"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id33"&gt;2.3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;queue&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id34"&gt;2.3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;queue&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;实现了这些命令:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 {STRATEGY_AUTO,         &amp;quot;lpush&amp;quot;,                &amp;quot;qpush_front&amp;quot;,          REPLY_STATUS},
@@ -3377,7 +3381,7 @@ qkey_4611686018427387904                //msg
 &lt;p&gt;这里 &lt;tt class="docutils literal"&gt;qkey_4611686018427387904&lt;/tt&gt; 后面这个数字在leveldb key里面是直接存binary格式, 8个字节.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="zset"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id34"&gt;2.3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;zset&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id35"&gt;2.3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;zset&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;每个zset中的元素对应2个key: zset_key, zscore_key:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 k2 = encode_zscore_key(name, key, new_score);
@@ -3399,7 +3403,7 @@ zkey_a: 3               #zset_key
 &lt;p&gt;每次zset, 先用zset_key 取的score, 构造zscore_key, 删除老记录.&lt;/p&gt;
 &lt;p&gt;再写新的zset_key和zscore_key.&lt;/p&gt;
 &lt;div class="section" id="zrank"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id35"&gt;2.3.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;zrank&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id36"&gt;2.3.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;zrank&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;利用zscore_key, 遍历:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 int64_t SSDB::zrank(const Bytes &amp;amp;name, const Bytes &amp;amp;key) const{
@@ -3423,7 +3427,7 @@ int64_t SSDB::zrank(const Bytes &amp;amp;name, const Bytes &amp;amp;key) const{
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id8"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id36"&gt;2.3.5&amp;nbsp;&amp;nbsp;&amp;nbsp;名字空间划分&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id37"&gt;2.3.5&amp;nbsp;&amp;nbsp;&amp;nbsp;名字空间划分&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;LevelDB里面, 每种key都有一个前缀:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 class DataType{
@@ -3444,9 +3448,9 @@ public:
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id9"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id37"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从相关&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id38"&gt;2.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从相关&lt;/a&gt;&lt;/h3&gt;
 &lt;div class="section" id="binlog"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id38"&gt;2.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;binlog&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id39"&gt;2.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;binlog&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;class Binlog
 class BinlogQueue
 class Transaction&lt;/p&gt;
@@ -3470,7 +3474,7 @@ public:
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="binlogqueue"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id39"&gt;2.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;BinlogQueue&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id40"&gt;2.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;BinlogQueue&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;整个SSDB只有一个BinlogQueue, 而且和数据存放在同一个leveldb里面:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 ssdb-&amp;gt;binlogs = new BinlogQueue(ssdb-&amp;gt;db);
@@ -3504,7 +3508,7 @@ int64_t SSDB::qsize(const Bytes &amp;amp;name){
 &lt;p&gt;这就不太统一, 不方便换下面的存储引擎.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id10"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id40"&gt;2.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Binlog&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id41"&gt;2.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Binlog&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;有多种类型:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 class BinlogCommand{
@@ -3527,7 +3531,7 @@ ssdb-&amp;gt;binlogs-&amp;gt;add(log_type, BinlogCommand::HSET, hkey);
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id11"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id41"&gt;2.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从同步&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id42"&gt;2.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;主从同步&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;由Master 主动向从数据, 一个Server 有一个BackendSync实例:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 Server::Server(SSDB *ssdb){
@@ -3538,7 +3542,7 @@ Server::Server(SSDB *ssdb){
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="slave"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id42"&gt;2.4.5&amp;nbsp;&amp;nbsp;&amp;nbsp;slave&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id43"&gt;2.4.5&amp;nbsp;&amp;nbsp;&amp;nbsp;slave&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 void Slave::start(){
     load_status();
@@ -3588,7 +3592,7 @@ int BackendSync::Client::sync(BinlogQueue *logs){
 &lt;p&gt;问题: 基准数据怎么过去呢? =&amp;gt; 可以拷贝.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="dump"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id43"&gt;2.4.6&amp;nbsp;&amp;nbsp;&amp;nbsp;dump&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id44"&gt;2.4.6&amp;nbsp;&amp;nbsp;&amp;nbsp;dump&lt;/a&gt;&lt;/h4&gt;
 &lt;pre class="literal-block"&gt;
 backend_dump.cpp
 backend_dump.h
@@ -3643,13 +3647,13 @@ ning&amp;#64;ning-laptop ~/idning-github/ndb$ printf '*1\r\n$4\r\ndump\r\n' | so
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id12"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id44"&gt;2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id45"&gt;2.5&amp;nbsp;&amp;nbsp;&amp;nbsp;其它&lt;/a&gt;&lt;/h3&gt;
 &lt;div class="section" id="incr"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id45"&gt;2.5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;incr 如何保证原子性&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id46"&gt;2.5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;incr 如何保证原子性&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;通过Transaction上的锁实现.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="expire"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id46"&gt;2.5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何实现expire&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id47"&gt;2.5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何实现expire&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;ssdb为每个带有过期设置的key, 保存了2个结构:&lt;/p&gt;
 &lt;ol class="arabic simple"&gt;
 &lt;li&gt;内存里面的一个sorted_set (全量)&lt;/li&gt;
@@ -3698,30 +3702,30 @@ if(handler-&amp;gt;expiration_keys.front(&amp;amp;key, &amp;amp;score)){
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;div class="section" id="benchmark"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id47"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;benchmark&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id48"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;benchmark&lt;/a&gt;&lt;/h2&gt;
 &lt;p&gt;请看:&lt;/p&gt;
 &lt;ul class="simple"&gt;
 &lt;li&gt;&lt;a class="reference external" href="/ssdb-benchmark.html"&gt;ssdb benchmark&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id13"&gt;
-&lt;h2&gt;&lt;a class="toc-backref" href="#id48"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id49"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
 &lt;div class="section" id="id14"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id49"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;读性能的问题&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id50"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;读性能的问题&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;benchmark结果: &lt;strong&gt;100G数据&lt;/strong&gt; 时, 读性能稳定在大约5000qps&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="compact"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id50"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何compact&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id51"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;如何compact&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;貌似是一个命令. 需要人工调用.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="expirekey"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id51"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;所有expire的key记录在内存&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id52"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;所有expire的key记录在内存&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;如果有10亿条, 每条100字节, 就需要100G+内存.&lt;/p&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id15"&gt;
-&lt;h3&gt;&lt;a class="toc-backref" href="#id52"&gt;4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;兼容问题&lt;/a&gt;&lt;/h3&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id53"&gt;4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;兼容问题&lt;/a&gt;&lt;/h3&gt;
 &lt;div class="section" id="del"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id53"&gt;4.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;del 兼容&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id54"&gt;4.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;del 兼容&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;因为leveldb 的接口, 删除实际上是一个写操作(写为空串).
 所以删除接口不能返回这个key在是真的删了, 还是本来就不存在.&lt;/p&gt;
 &lt;p&gt;所以在删除一个不存在的key时 for redis:&lt;/p&gt;
@@ -3736,7 +3740,8 @@ ning&amp;#64;ning-laptop ~/idning-github/redis/src$ redis-cli -p 8888 del xxx
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="ttlkey"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id54"&gt;4.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;ttl一个不存在的key&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id55"&gt;4.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;ttl一个不存在的key&lt;/a&gt;&lt;/h4&gt;
+&lt;p&gt;ssdb:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 127.0.0.1:8888&amp;gt; ttl k
 (error) ERR
@@ -3748,13 +3753,16 @@ ning&amp;#64;ning-laptop ~/idning-github/redis/src$ redis-cli -p 8888 del xxx
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="id16"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id55"&gt;4.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;没有expire命令&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id56"&gt;4.4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;没有expire命令&lt;/a&gt;&lt;/h4&gt;
 &lt;p&gt;改为通过ttl命令设置expire.&lt;/p&gt;
 &lt;/div&gt;
+&lt;div class="section" id="set-key-val-ex-nx"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id57"&gt;4.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;不支持set key val ex nx&lt;/a&gt;&lt;/h4&gt;
+&lt;/div&gt;
 &lt;div class="section" id="scan"&gt;
-&lt;h4&gt;&lt;a class="toc-backref" href="#id56"&gt;4.4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;scan类&lt;/a&gt;&lt;/h4&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id58"&gt;4.4.5&amp;nbsp;&amp;nbsp;&amp;nbsp;scan类&lt;/a&gt;&lt;/h4&gt;
 &lt;div class="section" id="id17"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id57"&gt;4.4.4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;scan&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id59"&gt;4.4.5.1&amp;nbsp;&amp;nbsp;&amp;nbsp;scan&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;一次在一个连接上吐回所有key, 而且要全放到内存resp里面再一次吐出:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 static int proc_scan(Server *serv, Link *link, const Request &amp;amp;req, Response *resp){
@@ -3775,12 +3783,19 @@ static int proc_scan(Server *serv, Link *link, const Request &amp;amp;req, Respo
 &lt;/pre&gt;
 &lt;/div&gt;
 &lt;div class="section" id="redis-hscan"&gt;
-&lt;h5&gt;&lt;a class="toc-backref" href="#id58"&gt;4.4.4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;没有redis 的hscan&lt;/a&gt;&lt;/h5&gt;
+&lt;h5&gt;&lt;a class="toc-backref" href="#id60"&gt;4.4.5.2&amp;nbsp;&amp;nbsp;&amp;nbsp;没有redis 的hscan&lt;/a&gt;&lt;/h5&gt;
 &lt;p&gt;只有ssdb协议支持hscan, 用法是给出范围.&lt;/p&gt;
 &lt;p&gt;支持redis的hgetall, hkeys, hvals&lt;/p&gt;
 &lt;/div&gt;
 &lt;/div&gt;
 &lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id18"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id61"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;ssdb 设计上, expire用区别于主key的另一个key存储&lt;/li&gt;
+&lt;li&gt;oplog只记录key&lt;/li&gt;
+&lt;/ul&gt;
 &lt;/div&gt;
 </summary><category term="all"></category><category term="redis"></category></entry><entry><title>twemproxy错误处理</title><link href="/twemproxy-error-handler.html" rel="alternate"></link><updated>2014-07-23T09:37:30+08:00</updated><author><name>ning</name></author><id>tag:,2014-07-23:twemproxy-error-handler.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
@@ -5756,6 +5771,273 @@ size_t my_safe_printf_stderr(const char* fmt, ...)
 &lt;li&gt;reentrant，thread-safe 和 async-signal-safe: &lt;a class="reference external" href="http://wangcong.org/blog/archives/506"&gt;http://wangcong.org/blog/archives/506&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;redis源码中之前也存在这个问题: &lt;a class="reference external" href="https://github.com/antirez/redis/issues/213"&gt;https://github.com/antirez/redis/issues/213&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
+&lt;/div&gt;
+</summary><category term="all"></category></entry><entry><title>redis-slow-query-20140528</title><link href="/slow-query-20140528.html" rel="alternate"></link><updated>2014-05-29T22:38:30+08:00</updated><author><name>ning</name></author><id>tag:,2014-05-29:slow-query-20140528.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;表现&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id5"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;分析&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id6"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;后续工作&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id4"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;表现&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;昨天, 我们优化过之后的twemproxy终于全流量上线了, 这个上线是通过数据迁移的方式, 把老的单实例redis上的数据导到redis集群的方式完成的.&lt;/p&gt;
+&lt;p&gt;上线后, 发现切流量到集群后, 前端响应时间从7ms左右上升到15ms左右. 这和我们线下测试的结果严重不符.&lt;/p&gt;
+&lt;p&gt;为此, 给proxy增加了一条notice日志, 用于观察响应时间.&lt;/p&gt;
+&lt;p&gt;通过日志观察, 多数请求在proxy上看的响应时间都在1ms以下(从收到第一个包, 到最后响应发送完成):&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ tail -f log/nutcracker.log  | grep nc_request.c:59 | grep MGET
+[Thu May 29 22:45:13 2014] nc_request.c:59 req 2794795960 done on c 160 req_time: 0.274 type: MGET narg: 2 mlen: 48 key0: ccccccc_5965730729490562984, done: 1, error:0
+[Thu May 29 22:45:13 2014] nc_request.c:59 req 2794795741 done on c 238 req_time: 2.230 type: MGET narg: 3 mlen: 82 key0: ccccccc_8781424545207799628, done: 1, error:0
+[Thu May 29 22:45:13 2014] nc_request.c:59 req 2794795846 done on c 965 req_time: 1.635 type: MGET narg: 9 mlen: 284 key0: ccccccc_8734244876870904753, done: 1, error:0
+&lt;/pre&gt;
+&lt;p&gt;同时很多MGET, set, get等请求变得很慢. 而且, &lt;strong&gt;慢请求总是集中出现&lt;/strong&gt;.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;分析&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;鉴于刚修改了proxy, 所以问题很可能出在 proxy上.&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;会不会是被某种慢请求拖累.&lt;/p&gt;
+&lt;p&gt;proxy是单进程模型, 如果某个连接上的一个请求慢, 那么后续的请求都会受到影响. 这比较符合我们观察到的 慢请求集中出现的特点.&lt;/p&gt;
+&lt;p&gt;在日志中, 观察一批慢请求中, 第一个拖慢大家的请求是什么, 并未发现明显特点.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;会不会是因为客户端随机选择proxy不均匀?
+这个问题之前出现过, 客户端使用time取模的方式选proxy, 于是同一秒内, 所有客户端都选择同一个proxy.&lt;/p&gt;
+&lt;p&gt;针对今天的情况, 发现确实有不均匀的现象:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+$ tail -200000 log/nutcracker.log  | grep nc_request.c:59 | grep cou |  awk '{print $4}' | sort | uniq -c
+    269 22:54:41
+   2199 22:54:42
+   1098 22:54:43
+    578 22:54:44
+   1448 22:54:45
+   2720 22:54:46
+    558 22:54:47
+    507 22:54:48
+   3084 22:54:49
+   1677 22:54:50
+    991 22:54:51
+    396 22:54:52
+    561 22:54:53
+    423 22:54:54
+    341 22:54:55
+   1945 22:54:56
+    727 22:54:57
+    585 22:54:58
+    453 22:54:59
+    523 22:55:00
+    520 22:55:01
+    394 22:55:02
+   2373 22:55:03
+   3421 22:55:04
+   3254 22:55:05
+    595 22:55:06
+&lt;/pre&gt;
+&lt;p&gt;于是, 这个原因成了重点怀疑对象, 我甚至写了个脚本, 把每秒请求数和每秒慢请求化成图, 观察两者的相关性, 结果发现并无直接的相关.&lt;/p&gt;
+&lt;p&gt;而且, 3000/s 的请求对proxy来说压力不算大, 看cpu也只占20%左右, 我们线下压力, cpu100%的时候大约能撑5w/s.&lt;/p&gt;
+&lt;p&gt;到这时, 半天已然过去, 依然毫无头绪&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;第二天一大早, 开始着手从网络上去分析, 通过抓包, 观察客户端发给proxy, proxy再转给后端请求和响应, 这样可以确定是redis会给proxy慢呢, 还是proxy接收到响应后, 迟迟不回复给客户端.&lt;/p&gt;
+&lt;p&gt;我先从proxy日志中找到一条慢日志, 然后到tcpdump的文件中通过key找, 找到:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+20:21:10.517897 IP 10.57.92.61.13766 &amp;gt; 10.57.85.40.2108: Flags [P.], ack 8852, win 4878, options [nop,nop,TS val 1266302405 ecr 1266305407], length 48
+..A... ..+....E..d.i&amp;#64;.&amp;#64;..S
+9\=
+9U(5..&amp;lt;...x.........-.....
+Kz=.KzI.*2^M
+$4^M
+mget^M
+$27^M
+ccccccc_1421521409803306481^M
+20:21:10.518978 IP 10.57.92.61.13766 &amp;gt; 10.57.85.40.2108: Flags [P.], ack 8852, win 4878, options [nop,nop,TS val 1266302406 ecr 1266305408], length 48
+..A... ..+....E..d.j&amp;#64;.&amp;#64;..R
+9\=
+9U(5..&amp;lt;.............-.....
+Kz=.KzI.*2^M
+$4^M
+mget^M
+$27^M
+ccccccc_4472738999812611775^M
+20:21:10.519474 IP 10.57.92.61.13766 &amp;gt; 10.57.85.40.2108: Flags [P.], ack 8852, win 4878, options [nop,nop,TS val 1266302406 ecr 1266305409], length 48
+..A... ..+....E..d.k&amp;#64;.&amp;#64;..Q
+9\=
+9U(5..&amp;lt;.............-.....
+Kz=.KzI.*2^M
+$4^M
+mget^M
+$27^M
+ccccccc_6172459129631416052^M
+20:21:10.564537 IP 10.57.85.40.2108 &amp;gt; 10.57.92.61.13766: Flags [P.], ack 14768, win 4878, options [nop,nop,TS val 1266305454 ecr 1266302445], length 119
+ ..+....A.....E...?Z&amp;#64;.=.8.
+9U(
+9\=.&amp;lt;5.............A......
+KzI.Kz=.*1^M
+$2^M
+86^M      通过直接查询proxy, 发现ccccccc_1421521409803306481对应的value是86, 所以这里应该是前面第一个mget对应的response, 此时已经过去47ms.
+*1^M
+$-1^M
+*1^M
+$-1^M
+*1^M
+$3^M
+287^M
+*1^M
+$-1^M
+*1^M
+$-1^M
+:1^M
+&lt;/pre&gt;
+&lt;p&gt;我们发现这些请求的响应是一起回来的, 所以很有可能是因为后端hang住没有及时发回response.&lt;/p&gt;
+&lt;p&gt;但是, 同一个tcp-stream上的前一个请求, 却是很快就响应的. 没有抓住有力证据.&lt;/p&gt;
+&lt;p&gt;再用同样的方法, 就没有发现类似的case. 因为有的key很热, 没法定位到向后端转发的请求, 而且这基本靠肉眼, 太费劲了.&lt;/p&gt;
+&lt;p&gt;还发现有一个case是proxy收到包之后过了5ms才转发给客户端的.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;从前在http服务上也遇到不少慢请求的问题, 记得有一次把一小时的tcpdump用脚本分成了1,000,000 多个流, 然后对每个流里面相邻两个包的时间做度量, 如果超过xx ms, 就说明有慢请求.
+翻了一下脚本, 是把 tcpdump 出来的一行一行的文件用正则式做分析, 每个流切到一个文件去:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+def deal(cap_file = '20110629-2000.all.txt'):
+    all_line = int( system('cat %s | wc -l ' % cap_file))
+    print all_line, 'lines'
+    i = 0;
+    for line in file(cap_file):
+        if len(line) &amp;lt; 10: continue
+        a = line.split(' ')[2].replace(':', '')
+        b = line.split(' ')[4].replace(':', '')
+        if (a.endswith('.80')):
+            server = a
+            client = b
+            type = 'server-&amp;gt;client'
+        else:
+            server = b
+            client = a
+            type = 'client-&amp;gt;server'
+        #print '##', client, server
+
+        path = 'rst/' + client.replace('.', '/', 2)
+        dirname = os.path.dirname(path)
+
+        if not os.path.exists(dirname):
+           os.makedirs(dirname)
+        #print path
+    #os.system('mkdir -p %s' % os.path.dirname(path))
+        print &amp;gt;&amp;gt; file(path, 'a') , line,
+
+        i += 1;
+        if i % 10000 == 0:
+            print i, 'lines finished'
+&lt;/pre&gt;
+&lt;p&gt;各种正则式... 无比费心.&lt;/p&gt;
+&lt;p&gt;后来还用过一个tcpflow的工具, 可以帮助做这个切流的动作, 切完了之后再用一个脚本来分析.
+重新下了个tcpfolw, 发现新版完全没法编译, 失去信心...&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;打算自己解pcap文件算了.
+尝试了一下pypcap, 发现真是难用..&lt;/p&gt;
+&lt;p&gt;于是乎, 自己python实现了一个pcap文件的解析库, 代码: &lt;a class="reference external" href="https://github.com/idning/py-pcap-parser"&gt;py-pcap-parser&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;然后利用这个库做分析, 分析代码:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+def dump():  #全量导出.
+    pcap = PcapFile('a.pcap')
+    cnt = 0
+    for p in pcap.tcp_packets():
+        cnt += 1
+        if cnt % 100000 == 0:
+            print '%d done' % cnt
+
+        if not p.body:
+            continue
+        if filter(p):
+            continue
+
+        p.body = p.body.replace('\r\n', ' ')
+
+        print TT('$ts $source:$source_port-&amp;gt;$dest:$dest_port  # $body', vars(p))
+
+def findslow(): 找到慢的req-response对.
+    pcap = PcapFile('a.pcap')
+    cnt = 0
+    for p in pcap.tcp_packets():
+        cnt += 1
+        if cnt % 100000 == 0:
+            print '%d done' % cnt
+
+        if not p.body:
+            continue
+        if filter(p):
+            continue
+
+        p.body = p.body.replace('\r\n', ' ')
+        #print TT('$ts $source:$source_port-$dest:$dest_port  # $body', vars(p))
+
+        key = gen_key(p)
+        if key in last_active:
+            diff = p.ts - last_active[gen_key(p)]
+            #print diff
+            if diff &amp;gt; 0.03 and not isreq(p):
+                print '===========', TT('$ts $source:$source_port-&amp;gt;$dest:$dest_port  # $body', vars(last_pack[key]))
+                print 'diff: %.3f' % diff,  TT('$ts $source:$source_port-&amp;gt;$dest:$dest_port  # $body', vars(p))
+        else:
+            #print 'nodiff: ',  TT('$ts $source:$source_port-$dest:$dest_port  # $body', vars(p))
+            pass
+&lt;/pre&gt;
+&lt;p&gt;分析结果, 在 &lt;tt class="docutils literal"&gt;findslow&lt;/tt&gt; 输出里面, 慢请求一目了然:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+=========== 1401353285.95 10.57.27.53:56267-10.57.92.61:4101  # *4 $4 MGET $27 ccccccc_2111745379895909519 $27 ccccccc_4657069178215479939 $27 ccccccc_9137275223978700551
+diff: 0.048 1401353285.99 10.57.92.61:4101-10.57.27.53:56267  # *3 $-1 $-1 $-1
+=========== 1401353285.95 10.50.20.40:22796-10.57.92.61:4101  # *2 $4 MGET $27 ccccccc_5103351455575634229
+diff: 0.047 1401353285.99 10.57.92.61:4101-10.50.20.40:22796  # *1 $-1
+=========== 1401353285.96 10.38.12.42:42076-10.57.92.61:4101  # *2 $4 MGET $27 ccccccc_8030835834922447023
+diff: 0.039 1401353285.99 10.57.92.61:4101-10.38.12.42:42076  # *1 $1 0
+&lt;/pre&gt;
+&lt;p&gt;上面这三个请求在不同时间点开始, 但是都是 &lt;tt class="docutils literal"&gt;1401353285.99&lt;/tt&gt; 才完成.&lt;/p&gt;
+&lt;p&gt;在把这个慢请求(ccccccc_2111745379895909519)放到全量的 &lt;tt class="docutils literal"&gt;dump&lt;/tt&gt; 文件里面去找:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+1401353285.95 10.57.27.53:56267-&amp;gt;10.57.92.61:4101  # *4 $4 MGET $27 ccccccc_2111745379895909519 $27 ccccccc_4657069178215479939 $27 ccccccc_9137275223978700551
+1401353285.95 10.57.92.61:44471-&amp;gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_2111745379895909519
+1401353285.96 10.57.92.61:44471-&amp;gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_8030835834922447023
+1401353285.97 10.57.92.61:44471-&amp;gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_7981749853668200998
+1401353285.98 10.57.92.61:44471-&amp;gt;10.42.194.43:2111  # *2 $4 mget $27 ccccccc_8204274828390831284
+&lt;/pre&gt;
+&lt;p&gt;下面用 &lt;tt class="docutils literal"&gt;10.57.92.61:44471&lt;/tt&gt; 去找, 我们又发现大量请求在同一时间点回来了:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+1401353285.99 10.42.194.43:2111-&amp;gt;10.57.92.61:44471  # *1 $-1 *1 $-1 *1 $1 0 *1 $1 2 $303
+&lt;/pre&gt;
+&lt;p&gt;类似, 可以找到不少case, 说明确实是redis回的慢, 之前居然一直没有考虑过这个原因.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;查redis为什么慢. 很快就定位到SLOWLOG. 发现很多redis每秒有几个SLOWLOG, 每次耗时20-40ms, 这和proxy上看到的数值很吻合:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+./bin/deploy.py cluster1 mastercmd 'slowlog get 10'
+...
+
+1016892
+1401377576
+24807
+HGETALL
+xxxxxxxxxxxxxxxxxxxxxxx:1194330698
+1016891
+1401377576
+24523
+HGETALL
+xxxxxxxxxxxxxxxxxxxxxxx:1194330698
+1016890
+1401377576
+25147
+HGETALL
+xxxxxxxxxxxxxxxxxxxxxxx:1194330698
+
+这些key很多都是2w+ hash
+&lt;/pre&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id6"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;后续工作&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;把slowlog监控加入到 &lt;a class="reference external" href="https://github.com/idning/redis-mgr"&gt;redis-mgr&lt;/a&gt; 常规监控&lt;/li&gt;
+&lt;li&gt;遇到响应时间问题, 优先排查SLOWLOG.&lt;/li&gt;
+&lt;li&gt;向业务限制HGETALL的使用&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;ps: HGETALL果然是个坑, 虽然早有耳闻, 一直未引起重视.&lt;/p&gt;
 &lt;/div&gt;
 </summary><category term="all"></category></entry><entry><title>twemproxy-core-20140523</title><link href="/twemproxy-core-20140523.html" rel="alternate"></link><updated>2014-05-25T12:56:48+08:00</updated><author><name>ning</name></author><id>tag:,2014-05-25:twemproxy-core-20140523.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
@@ -8273,9 +8555,17 @@ if(msg_list.size() &amp;gt;= ServerConfig::channel_buffer_size * 1.5){
 &lt;p&gt;ideawu 提供了一个 c1000k 代码:&lt;/p&gt;
 &lt;p&gt;&lt;a class="reference external" href="https://github.com/ideawu/c1000k"&gt;https://github.com/ideawu/c1000k&lt;/a&gt;&lt;/p&gt;
 &lt;p&gt;要测试c1000k 主要两个问题:&lt;/p&gt;
-&lt;ol class="arabic simple"&gt;
-&lt;li&gt;是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.&lt;/li&gt;
-&lt;li&gt;client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)&lt;/li&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;是server 端, 每个sokcet 大约需要占用0.5M内存(内核sokcet缓冲区内存), 所以总共需要500G内存.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;client端, client 只能开大约3w-5w个client端口(对每个server ip+port, 只能有3w-5w连接)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;相同的四元组只能存在一个.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
 &lt;/ol&gt;
 &lt;p&gt;ideawu是这样解决的:
 1. server 端每accept一个连接, 都设置它的缓冲区大小为5k:&lt;/p&gt;

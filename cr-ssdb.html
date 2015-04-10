@@ -47,67 +47,69 @@ tags: <a href="/tag/all.html">all</a> <a href="/tag/redis.html">redis</a> </div>
 		<div><div class="contents topic" id="table-of-contents">
 <p class="topic-title first">Table of Contents</p>
 <ul class="auto-toc simple">
-<li><a class="reference internal" href="#id1" id="id18">1&nbsp;&nbsp;&nbsp;问题</a></li>
-<li><a class="reference internal" href="#id2" id="id19">2&nbsp;&nbsp;&nbsp;代码</a><ul class="auto-toc">
-<li><a class="reference internal" href="#util" id="id20">2.1&nbsp;&nbsp;&nbsp;util</a></li>
-<li><a class="reference internal" href="#id3" id="id21">2.2&nbsp;&nbsp;&nbsp;请求处理模型</a><ul class="auto-toc">
-<li><a class="reference internal" href="#link" id="id22">2.2.1&nbsp;&nbsp;&nbsp;Link</a></li>
-<li><a class="reference internal" href="#redislink" id="id23">2.2.2&nbsp;&nbsp;&nbsp;RedisLink</a></li>
-<li><a class="reference internal" href="#id4" id="id24">2.2.3&nbsp;&nbsp;&nbsp;命令表</a></li>
-<li><a class="reference internal" href="#id5" id="id25">2.2.4&nbsp;&nbsp;&nbsp;处理模型</a></li>
-<li><a class="reference internal" href="#serv-proc" id="id26">2.2.5&nbsp;&nbsp;&nbsp;serv.proc</a></li>
-<li><a class="reference internal" href="#workerpool" id="id27">2.2.6&nbsp;&nbsp;&nbsp;WorkerPool</a></li>
-<li><a class="reference internal" href="#id6" id="id28">2.2.7&nbsp;&nbsp;&nbsp;小结</a></li>
+<li><a class="reference internal" href="#id1" id="id19">1&nbsp;&nbsp;&nbsp;问题</a></li>
+<li><a class="reference internal" href="#id2" id="id20">2&nbsp;&nbsp;&nbsp;代码</a><ul class="auto-toc">
+<li><a class="reference internal" href="#util" id="id21">2.1&nbsp;&nbsp;&nbsp;util</a></li>
+<li><a class="reference internal" href="#id3" id="id22">2.2&nbsp;&nbsp;&nbsp;请求处理模型</a><ul class="auto-toc">
+<li><a class="reference internal" href="#link" id="id23">2.2.1&nbsp;&nbsp;&nbsp;Link</a></li>
+<li><a class="reference internal" href="#redislink" id="id24">2.2.2&nbsp;&nbsp;&nbsp;RedisLink</a></li>
+<li><a class="reference internal" href="#id4" id="id25">2.2.3&nbsp;&nbsp;&nbsp;命令表</a></li>
+<li><a class="reference internal" href="#id5" id="id26">2.2.4&nbsp;&nbsp;&nbsp;处理模型</a></li>
+<li><a class="reference internal" href="#serv-proc" id="id27">2.2.5&nbsp;&nbsp;&nbsp;serv.proc</a></li>
+<li><a class="reference internal" href="#workerpool" id="id28">2.2.6&nbsp;&nbsp;&nbsp;WorkerPool</a></li>
+<li><a class="reference internal" href="#id6" id="id29">2.2.7&nbsp;&nbsp;&nbsp;小结</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id7" id="id29">2.3&nbsp;&nbsp;&nbsp;功能</a><ul class="auto-toc">
-<li><a class="reference internal" href="#kv" id="id30">2.3.1&nbsp;&nbsp;&nbsp;kv</a></li>
-<li><a class="reference internal" href="#hash" id="id31">2.3.2&nbsp;&nbsp;&nbsp;hash</a><ul class="auto-toc">
-<li><a class="reference internal" href="#hscan-hkeys" id="id32">2.3.2.1&nbsp;&nbsp;&nbsp;hscan/hkeys的实现</a></li>
+<li><a class="reference internal" href="#id7" id="id30">2.3&nbsp;&nbsp;&nbsp;功能</a><ul class="auto-toc">
+<li><a class="reference internal" href="#kv" id="id31">2.3.1&nbsp;&nbsp;&nbsp;kv</a></li>
+<li><a class="reference internal" href="#hash" id="id32">2.3.2&nbsp;&nbsp;&nbsp;hash</a><ul class="auto-toc">
+<li><a class="reference internal" href="#hscan-hkeys" id="id33">2.3.2.1&nbsp;&nbsp;&nbsp;hscan/hkeys的实现</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#queue" id="id33">2.3.3&nbsp;&nbsp;&nbsp;queue</a></li>
-<li><a class="reference internal" href="#zset" id="id34">2.3.4&nbsp;&nbsp;&nbsp;zset</a><ul class="auto-toc">
-<li><a class="reference internal" href="#zrank" id="id35">2.3.4.1&nbsp;&nbsp;&nbsp;zrank</a></li>
+<li><a class="reference internal" href="#queue" id="id34">2.3.3&nbsp;&nbsp;&nbsp;queue</a></li>
+<li><a class="reference internal" href="#zset" id="id35">2.3.4&nbsp;&nbsp;&nbsp;zset</a><ul class="auto-toc">
+<li><a class="reference internal" href="#zrank" id="id36">2.3.4.1&nbsp;&nbsp;&nbsp;zrank</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id8" id="id36">2.3.5&nbsp;&nbsp;&nbsp;名字空间划分</a></li>
+<li><a class="reference internal" href="#id8" id="id37">2.3.5&nbsp;&nbsp;&nbsp;名字空间划分</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id9" id="id37">2.4&nbsp;&nbsp;&nbsp;主从相关</a><ul class="auto-toc">
-<li><a class="reference internal" href="#binlog" id="id38">2.4.1&nbsp;&nbsp;&nbsp;binlog</a></li>
-<li><a class="reference internal" href="#binlogqueue" id="id39">2.4.2&nbsp;&nbsp;&nbsp;BinlogQueue</a></li>
-<li><a class="reference internal" href="#id10" id="id40">2.4.3&nbsp;&nbsp;&nbsp;Binlog</a></li>
-<li><a class="reference internal" href="#id11" id="id41">2.4.4&nbsp;&nbsp;&nbsp;主从同步</a></li>
-<li><a class="reference internal" href="#slave" id="id42">2.4.5&nbsp;&nbsp;&nbsp;slave</a></li>
-<li><a class="reference internal" href="#dump" id="id43">2.4.6&nbsp;&nbsp;&nbsp;dump</a></li>
+<li><a class="reference internal" href="#id9" id="id38">2.4&nbsp;&nbsp;&nbsp;主从相关</a><ul class="auto-toc">
+<li><a class="reference internal" href="#binlog" id="id39">2.4.1&nbsp;&nbsp;&nbsp;binlog</a></li>
+<li><a class="reference internal" href="#binlogqueue" id="id40">2.4.2&nbsp;&nbsp;&nbsp;BinlogQueue</a></li>
+<li><a class="reference internal" href="#id10" id="id41">2.4.3&nbsp;&nbsp;&nbsp;Binlog</a></li>
+<li><a class="reference internal" href="#id11" id="id42">2.4.4&nbsp;&nbsp;&nbsp;主从同步</a></li>
+<li><a class="reference internal" href="#slave" id="id43">2.4.5&nbsp;&nbsp;&nbsp;slave</a></li>
+<li><a class="reference internal" href="#dump" id="id44">2.4.6&nbsp;&nbsp;&nbsp;dump</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id12" id="id44">2.5&nbsp;&nbsp;&nbsp;其它</a><ul class="auto-toc">
-<li><a class="reference internal" href="#incr" id="id45">2.5.1&nbsp;&nbsp;&nbsp;incr 如何保证原子性</a></li>
-<li><a class="reference internal" href="#expire" id="id46">2.5.2&nbsp;&nbsp;&nbsp;如何实现expire</a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li><a class="reference internal" href="#benchmark" id="id47">3&nbsp;&nbsp;&nbsp;benchmark</a></li>
-<li><a class="reference internal" href="#id13" id="id48">4&nbsp;&nbsp;&nbsp;问题</a><ul class="auto-toc">
-<li><a class="reference internal" href="#id14" id="id49">4.1&nbsp;&nbsp;&nbsp;读性能的问题</a></li>
-<li><a class="reference internal" href="#compact" id="id50">4.2&nbsp;&nbsp;&nbsp;如何compact</a></li>
-<li><a class="reference internal" href="#expirekey" id="id51">4.3&nbsp;&nbsp;&nbsp;所有expire的key记录在内存</a></li>
-<li><a class="reference internal" href="#id15" id="id52">4.4&nbsp;&nbsp;&nbsp;兼容问题</a><ul class="auto-toc">
-<li><a class="reference internal" href="#del" id="id53">4.4.1&nbsp;&nbsp;&nbsp;del 兼容</a></li>
-<li><a class="reference internal" href="#ttlkey" id="id54">4.4.2&nbsp;&nbsp;&nbsp;ttl一个不存在的key</a></li>
-<li><a class="reference internal" href="#id16" id="id55">4.4.3&nbsp;&nbsp;&nbsp;没有expire命令</a></li>
-<li><a class="reference internal" href="#scan" id="id56">4.4.4&nbsp;&nbsp;&nbsp;scan类</a><ul class="auto-toc">
-<li><a class="reference internal" href="#id17" id="id57">4.4.4.1&nbsp;&nbsp;&nbsp;scan</a></li>
-<li><a class="reference internal" href="#redis-hscan" id="id58">4.4.4.2&nbsp;&nbsp;&nbsp;没有redis 的hscan</a></li>
+<li><a class="reference internal" href="#id12" id="id45">2.5&nbsp;&nbsp;&nbsp;其它</a><ul class="auto-toc">
+<li><a class="reference internal" href="#incr" id="id46">2.5.1&nbsp;&nbsp;&nbsp;incr 如何保证原子性</a></li>
+<li><a class="reference internal" href="#expire" id="id47">2.5.2&nbsp;&nbsp;&nbsp;如何实现expire</a></li>
 </ul>
 </li>
 </ul>
 </li>
+<li><a class="reference internal" href="#benchmark" id="id48">3&nbsp;&nbsp;&nbsp;benchmark</a></li>
+<li><a class="reference internal" href="#id13" id="id49">4&nbsp;&nbsp;&nbsp;问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id14" id="id50">4.1&nbsp;&nbsp;&nbsp;读性能的问题</a></li>
+<li><a class="reference internal" href="#compact" id="id51">4.2&nbsp;&nbsp;&nbsp;如何compact</a></li>
+<li><a class="reference internal" href="#expirekey" id="id52">4.3&nbsp;&nbsp;&nbsp;所有expire的key记录在内存</a></li>
+<li><a class="reference internal" href="#id15" id="id53">4.4&nbsp;&nbsp;&nbsp;兼容问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#del" id="id54">4.4.1&nbsp;&nbsp;&nbsp;del 兼容</a></li>
+<li><a class="reference internal" href="#ttlkey" id="id55">4.4.2&nbsp;&nbsp;&nbsp;ttl一个不存在的key</a></li>
+<li><a class="reference internal" href="#id16" id="id56">4.4.3&nbsp;&nbsp;&nbsp;没有expire命令</a></li>
+<li><a class="reference internal" href="#set-key-val-ex-nx" id="id57">4.4.4&nbsp;&nbsp;&nbsp;不支持set key val ex nx</a></li>
+<li><a class="reference internal" href="#scan" id="id58">4.4.5&nbsp;&nbsp;&nbsp;scan类</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id17" id="id59">4.4.5.1&nbsp;&nbsp;&nbsp;scan</a></li>
+<li><a class="reference internal" href="#redis-hscan" id="id60">4.4.5.2&nbsp;&nbsp;&nbsp;没有redis 的hscan</a></li>
 </ul>
 </li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id18" id="id61">5&nbsp;&nbsp;&nbsp;小结</a></li>
 </ul>
 </div>
 <style type="text/css">
@@ -115,7 +117,7 @@ tags: <a href="/tag/all.html">all</a> <a href="/tag/redis.html">redis</a> </div>
         width: 30%
       }
 </style><div class="section" id="id1">
-<h2><a class="toc-backref" href="#id18">1&nbsp;&nbsp;&nbsp;问题</a></h2>
+<h2><a class="toc-backref" href="#id19">1&nbsp;&nbsp;&nbsp;问题</a></h2>
 <ul class="simple">
 <li>请求处理模型, 每个线程一个req?</li>
 <li>如何在kv上实现hash/zset/queue</li>
@@ -126,7 +128,7 @@ tags: <a href="/tag/all.html">all</a> <a href="/tag/redis.html">redis</a> </div>
 </ul>
 </div>
 <div class="section" id="id2">
-<h2><a class="toc-backref" href="#id19">2&nbsp;&nbsp;&nbsp;代码</a></h2>
+<h2><a class="toc-backref" href="#id20">2&nbsp;&nbsp;&nbsp;代码</a></h2>
 <p>代码量大约9000行:</p>
 <pre class="literal-block">
 ning&#64;ning-laptop:~/test/ssdb/src$ cat *.cpp *.h | wc -l
@@ -188,7 +190,7 @@ iterator.cpp
 iterator.h
 </pre>
 <div class="section" id="util">
-<h3><a class="toc-backref" href="#id20">2.1&nbsp;&nbsp;&nbsp;util</a></h3>
+<h3><a class="toc-backref" href="#id21">2.1&nbsp;&nbsp;&nbsp;util</a></h3>
 <p>和icomet一样:</p>
 <pre class="literal-block">
 config.cpp
@@ -213,9 +215,9 @@ sorted_set.h</p>
 <p>SelectableQueue: 提供一个基于管道实现的Queue, 从而使得这个Queue 可以做Select.</p>
 </div>
 <div class="section" id="id3">
-<h3><a class="toc-backref" href="#id21">2.2&nbsp;&nbsp;&nbsp;请求处理模型</a></h3>
+<h3><a class="toc-backref" href="#id22">2.2&nbsp;&nbsp;&nbsp;请求处理模型</a></h3>
 <div class="section" id="link">
-<h4><a class="toc-backref" href="#id22">2.2.1&nbsp;&nbsp;&nbsp;Link</a></h4>
+<h4><a class="toc-backref" href="#id23">2.2.1&nbsp;&nbsp;&nbsp;Link</a></h4>
 <pre class="literal-block">
 class Link{
     int sock;
@@ -256,7 +258,7 @@ read, write 为内部函数, 如果改为 _read, _write 就好懂些.</li>
 </ol>
 </div>
 <div class="section" id="redislink">
-<h4><a class="toc-backref" href="#id23">2.2.2&nbsp;&nbsp;&nbsp;RedisLink</a></h4>
+<h4><a class="toc-backref" href="#id24">2.2.2&nbsp;&nbsp;&nbsp;RedisLink</a></h4>
 <p>两个函数, 处理对象是input, output:</p>
 <pre class="literal-block">
 send_resp(Buffer *output, const std::vector&lt;std::string&gt; &amp;resp)  //发送redis格式的响应, resp是一个 string 构成的vector.
@@ -266,7 +268,7 @@ recv_req(Buffer *input)                                          //调用parse_r
 <p>parse_req 对input的处理是, 如果一次没有解析到一个完整的命令, 那么input buffer不动, 下次继续.</p>
 </div>
 <div class="section" id="id4">
-<h4><a class="toc-backref" href="#id24">2.2.3&nbsp;&nbsp;&nbsp;命令表</a></h4>
+<h4><a class="toc-backref" href="#id25">2.2.3&nbsp;&nbsp;&nbsp;命令表</a></h4>
 <p>命令表:</p>
 <pre class="literal-block">
 #define PROC(c, f) {#c, f, 0, proc_##c, 0, 0, 0}
@@ -289,7 +291,7 @@ for(Command *cmd=commands; cmd-&gt;name; cmd++){
 <p>收到请求后, Server::proc函数会在proc_map里面查找</p>
 </div>
 <div class="section" id="id5">
-<h4><a class="toc-backref" href="#id25">2.2.4&nbsp;&nbsp;&nbsp;处理模型</a></h4>
+<h4><a class="toc-backref" href="#id26">2.2.4&nbsp;&nbsp;&nbsp;处理模型</a></h4>
 <p>ssdb-server.cpp</p>
 <p>全局:</p>
 <pre class="literal-block">
@@ -367,7 +369,7 @@ run(){
 <p>TODO: 为什么最后把ready_list_2 里面的元素放到ready_list里面去了, 但是到下一个循环一开始就   <tt class="docutils literal"><span class="pre">ready_list.clear();</span></tt>, 这个clear() 是不是不应该有?</p>
 </div>
 <div class="section" id="serv-proc">
-<h4><a class="toc-backref" href="#id26">2.2.5&nbsp;&nbsp;&nbsp;serv.proc</a></h4>
+<h4><a class="toc-backref" href="#id27">2.2.5&nbsp;&nbsp;&nbsp;serv.proc</a></h4>
 <p>这个函数会根据command_table里的标记, 决定是在主线程处理, 还是在线程池处理, 或者新开一个线程处理:</p>
 <pre class="literal-block">
 void Server::proc(ProcJob *job){
@@ -406,7 +408,7 @@ static int proc_hdel(Server *serv, Link *link, const Request &amp;req, Response 
 </pre>
 </div>
 <div class="section" id="workerpool">
-<h4><a class="toc-backref" href="#id27">2.2.6&nbsp;&nbsp;&nbsp;WorkerPool</a></h4>
+<h4><a class="toc-backref" href="#id28">2.2.6&nbsp;&nbsp;&nbsp;WorkerPool</a></h4>
 <p>thread.h 提供线程池(WorkerPool), ssdb里面一个writer 线程池, 一个reader 线程池:</p>
 <pre class="literal-block">
 WorkerPool&lt;ProcWorker, ProcJob&gt; *writer;
@@ -469,13 +471,13 @@ int Server::ProcWorker::proc(ProcJob *job){
 </pre>
 </div>
 <div class="section" id="id6">
-<h4><a class="toc-backref" href="#id28">2.2.7&nbsp;&nbsp;&nbsp;小结</a></h4>
+<h4><a class="toc-backref" href="#id29">2.2.7&nbsp;&nbsp;&nbsp;小结</a></h4>
 <p>这种请求处理模型没见过, 觉得很巧妙.</p>
 <p>HERE</p>
 </div>
 </div>
 <div class="section" id="id7">
-<h3><a class="toc-backref" href="#id29">2.3&nbsp;&nbsp;&nbsp;功能</a></h3>
+<h3><a class="toc-backref" href="#id30">2.3&nbsp;&nbsp;&nbsp;功能</a></h3>
 <table border="1" class="docutils">
 <colgroup>
 <col width="30%" />
@@ -530,7 +532,7 @@ DEF_PROC(qback);
 DEF_PROC(qpush);
 </pre>
 <div class="section" id="kv">
-<h4><a class="toc-backref" href="#id30">2.3.1&nbsp;&nbsp;&nbsp;kv</a></h4>
+<h4><a class="toc-backref" href="#id31">2.3.1&nbsp;&nbsp;&nbsp;kv</a></h4>
 <p>get:</p>
 <pre class="literal-block">
 static int proc_get(Server *serv, Link *link, const Request &amp;req, Response *resp){
@@ -556,7 +558,7 @@ typedef std::vector&lt;std::string&gt; Response;
 </pre>
 </div>
 <div class="section" id="hash">
-<h4><a class="toc-backref" href="#id31">2.3.2&nbsp;&nbsp;&nbsp;hash</a></h4>
+<h4><a class="toc-backref" href="#id32">2.3.2&nbsp;&nbsp;&nbsp;hash</a></h4>
 <p>实现了:</p>
 <pre class="literal-block">
 DEF_PROC(hsize);        // O(1)
@@ -609,7 +611,7 @@ std::string encode_hash_key(const Bytes &amp;name, const Bytes &amp;key){
 static int incr_hsize(SSDB *ssdb, const Bytes &amp;name, int64_t incr){
 </pre>
 <div class="section" id="hscan-hkeys">
-<h5><a class="toc-backref" href="#id32">2.3.2.1&nbsp;&nbsp;&nbsp;hscan/hkeys的实现</a></h5>
+<h5><a class="toc-backref" href="#id33">2.3.2.1&nbsp;&nbsp;&nbsp;hscan/hkeys的实现</a></h5>
 <p>需要客户端传来, 从那个key scan到哪个key:</p>
 <pre class="literal-block">
 static int proc_hscan(Server *serv, Link *link, const Request &amp;req, Response *resp){
@@ -630,7 +632,7 @@ hscan hkey a '' 100
 </div>
 </div>
 <div class="section" id="queue">
-<h4><a class="toc-backref" href="#id33">2.3.3&nbsp;&nbsp;&nbsp;queue</a></h4>
+<h4><a class="toc-backref" href="#id34">2.3.3&nbsp;&nbsp;&nbsp;queue</a></h4>
 <p>实现了这些命令:</p>
 <pre class="literal-block">
 {STRATEGY_AUTO,         &quot;lpush&quot;,                &quot;qpush_front&quot;,          REPLY_STATUS},
@@ -656,7 +658,7 @@ qkey_4611686018427387904                //msg
 <p>这里 <tt class="docutils literal">qkey_4611686018427387904</tt> 后面这个数字在leveldb key里面是直接存binary格式, 8个字节.</p>
 </div>
 <div class="section" id="zset">
-<h4><a class="toc-backref" href="#id34">2.3.4&nbsp;&nbsp;&nbsp;zset</a></h4>
+<h4><a class="toc-backref" href="#id35">2.3.4&nbsp;&nbsp;&nbsp;zset</a></h4>
 <p>每个zset中的元素对应2个key: zset_key, zscore_key:</p>
 <pre class="literal-block">
 k2 = encode_zscore_key(name, key, new_score);
@@ -678,7 +680,7 @@ zkey_a: 3               #zset_key
 <p>每次zset, 先用zset_key 取的score, 构造zscore_key, 删除老记录.</p>
 <p>再写新的zset_key和zscore_key.</p>
 <div class="section" id="zrank">
-<h5><a class="toc-backref" href="#id35">2.3.4.1&nbsp;&nbsp;&nbsp;zrank</a></h5>
+<h5><a class="toc-backref" href="#id36">2.3.4.1&nbsp;&nbsp;&nbsp;zrank</a></h5>
 <p>利用zscore_key, 遍历:</p>
 <pre class="literal-block">
 int64_t SSDB::zrank(const Bytes &amp;name, const Bytes &amp;key) const{
@@ -702,7 +704,7 @@ int64_t SSDB::zrank(const Bytes &amp;name, const Bytes &amp;key) const{
 </div>
 </div>
 <div class="section" id="id8">
-<h4><a class="toc-backref" href="#id36">2.3.5&nbsp;&nbsp;&nbsp;名字空间划分</a></h4>
+<h4><a class="toc-backref" href="#id37">2.3.5&nbsp;&nbsp;&nbsp;名字空间划分</a></h4>
 <p>LevelDB里面, 每种key都有一个前缀:</p>
 <pre class="literal-block">
 class DataType{
@@ -723,9 +725,9 @@ public:
 </div>
 </div>
 <div class="section" id="id9">
-<h3><a class="toc-backref" href="#id37">2.4&nbsp;&nbsp;&nbsp;主从相关</a></h3>
+<h3><a class="toc-backref" href="#id38">2.4&nbsp;&nbsp;&nbsp;主从相关</a></h3>
 <div class="section" id="binlog">
-<h4><a class="toc-backref" href="#id38">2.4.1&nbsp;&nbsp;&nbsp;binlog</a></h4>
+<h4><a class="toc-backref" href="#id39">2.4.1&nbsp;&nbsp;&nbsp;binlog</a></h4>
 <p>class Binlog
 class BinlogQueue
 class Transaction</p>
@@ -749,7 +751,7 @@ public:
 </pre>
 </div>
 <div class="section" id="binlogqueue">
-<h4><a class="toc-backref" href="#id39">2.4.2&nbsp;&nbsp;&nbsp;BinlogQueue</a></h4>
+<h4><a class="toc-backref" href="#id40">2.4.2&nbsp;&nbsp;&nbsp;BinlogQueue</a></h4>
 <p>整个SSDB只有一个BinlogQueue, 而且和数据存放在同一个leveldb里面:</p>
 <pre class="literal-block">
 ssdb-&gt;binlogs = new BinlogQueue(ssdb-&gt;db);
@@ -783,7 +785,7 @@ int64_t SSDB::qsize(const Bytes &amp;name){
 <p>这就不太统一, 不方便换下面的存储引擎.</p>
 </div>
 <div class="section" id="id10">
-<h4><a class="toc-backref" href="#id40">2.4.3&nbsp;&nbsp;&nbsp;Binlog</a></h4>
+<h4><a class="toc-backref" href="#id41">2.4.3&nbsp;&nbsp;&nbsp;Binlog</a></h4>
 <p>有多种类型:</p>
 <pre class="literal-block">
 class BinlogCommand{
@@ -806,7 +808,7 @@ ssdb-&gt;binlogs-&gt;add(log_type, BinlogCommand::HSET, hkey);
 </pre>
 </div>
 <div class="section" id="id11">
-<h4><a class="toc-backref" href="#id41">2.4.4&nbsp;&nbsp;&nbsp;主从同步</a></h4>
+<h4><a class="toc-backref" href="#id42">2.4.4&nbsp;&nbsp;&nbsp;主从同步</a></h4>
 <p>由Master 主动向从数据, 一个Server 有一个BackendSync实例:</p>
 <pre class="literal-block">
 Server::Server(SSDB *ssdb){
@@ -817,7 +819,7 @@ Server::Server(SSDB *ssdb){
 </pre>
 </div>
 <div class="section" id="slave">
-<h4><a class="toc-backref" href="#id42">2.4.5&nbsp;&nbsp;&nbsp;slave</a></h4>
+<h4><a class="toc-backref" href="#id43">2.4.5&nbsp;&nbsp;&nbsp;slave</a></h4>
 <pre class="literal-block">
 void Slave::start(){
     load_status();
@@ -867,7 +869,7 @@ int BackendSync::Client::sync(BinlogQueue *logs){
 <p>问题: 基准数据怎么过去呢? =&gt; 可以拷贝.</p>
 </div>
 <div class="section" id="dump">
-<h4><a class="toc-backref" href="#id43">2.4.6&nbsp;&nbsp;&nbsp;dump</a></h4>
+<h4><a class="toc-backref" href="#id44">2.4.6&nbsp;&nbsp;&nbsp;dump</a></h4>
 <pre class="literal-block">
 backend_dump.cpp
 backend_dump.h
@@ -922,13 +924,13 @@ ning&#64;ning-laptop ~/idning-github/ndb$ printf '*1\r\n$4\r\ndump\r\n' | socat 
 </div>
 </div>
 <div class="section" id="id12">
-<h3><a class="toc-backref" href="#id44">2.5&nbsp;&nbsp;&nbsp;其它</a></h3>
+<h3><a class="toc-backref" href="#id45">2.5&nbsp;&nbsp;&nbsp;其它</a></h3>
 <div class="section" id="incr">
-<h4><a class="toc-backref" href="#id45">2.5.1&nbsp;&nbsp;&nbsp;incr 如何保证原子性</a></h4>
+<h4><a class="toc-backref" href="#id46">2.5.1&nbsp;&nbsp;&nbsp;incr 如何保证原子性</a></h4>
 <p>通过Transaction上的锁实现.</p>
 </div>
 <div class="section" id="expire">
-<h4><a class="toc-backref" href="#id46">2.5.2&nbsp;&nbsp;&nbsp;如何实现expire</a></h4>
+<h4><a class="toc-backref" href="#id47">2.5.2&nbsp;&nbsp;&nbsp;如何实现expire</a></h4>
 <p>ssdb为每个带有过期设置的key, 保存了2个结构:</p>
 <ol class="arabic simple">
 <li>内存里面的一个sorted_set (全量)</li>
@@ -977,30 +979,30 @@ if(handler-&gt;expiration_keys.front(&amp;key, &amp;score)){
 </div>
 </div>
 <div class="section" id="benchmark">
-<h2><a class="toc-backref" href="#id47">3&nbsp;&nbsp;&nbsp;benchmark</a></h2>
+<h2><a class="toc-backref" href="#id48">3&nbsp;&nbsp;&nbsp;benchmark</a></h2>
 <p>请看:</p>
 <ul class="simple">
 <li><a class="reference external" href="/ssdb-benchmark.html">ssdb benchmark</a></li>
 </ul>
 </div>
 <div class="section" id="id13">
-<h2><a class="toc-backref" href="#id48">4&nbsp;&nbsp;&nbsp;问题</a></h2>
+<h2><a class="toc-backref" href="#id49">4&nbsp;&nbsp;&nbsp;问题</a></h2>
 <div class="section" id="id14">
-<h3><a class="toc-backref" href="#id49">4.1&nbsp;&nbsp;&nbsp;读性能的问题</a></h3>
+<h3><a class="toc-backref" href="#id50">4.1&nbsp;&nbsp;&nbsp;读性能的问题</a></h3>
 <p>benchmark结果: <strong>100G数据</strong> 时, 读性能稳定在大约5000qps</p>
 </div>
 <div class="section" id="compact">
-<h3><a class="toc-backref" href="#id50">4.2&nbsp;&nbsp;&nbsp;如何compact</a></h3>
+<h3><a class="toc-backref" href="#id51">4.2&nbsp;&nbsp;&nbsp;如何compact</a></h3>
 <p>貌似是一个命令. 需要人工调用.</p>
 </div>
 <div class="section" id="expirekey">
-<h3><a class="toc-backref" href="#id51">4.3&nbsp;&nbsp;&nbsp;所有expire的key记录在内存</a></h3>
+<h3><a class="toc-backref" href="#id52">4.3&nbsp;&nbsp;&nbsp;所有expire的key记录在内存</a></h3>
 <p>如果有10亿条, 每条100字节, 就需要100G+内存.</p>
 </div>
 <div class="section" id="id15">
-<h3><a class="toc-backref" href="#id52">4.4&nbsp;&nbsp;&nbsp;兼容问题</a></h3>
+<h3><a class="toc-backref" href="#id53">4.4&nbsp;&nbsp;&nbsp;兼容问题</a></h3>
 <div class="section" id="del">
-<h4><a class="toc-backref" href="#id53">4.4.1&nbsp;&nbsp;&nbsp;del 兼容</a></h4>
+<h4><a class="toc-backref" href="#id54">4.4.1&nbsp;&nbsp;&nbsp;del 兼容</a></h4>
 <p>因为leveldb 的接口, 删除实际上是一个写操作(写为空串).
 所以删除接口不能返回这个key在是真的删了, 还是本来就不存在.</p>
 <p>所以在删除一个不存在的key时 for redis:</p>
@@ -1015,7 +1017,8 @@ ning&#64;ning-laptop ~/idning-github/redis/src$ redis-cli -p 8888 del xxx
 </pre>
 </div>
 <div class="section" id="ttlkey">
-<h4><a class="toc-backref" href="#id54">4.4.2&nbsp;&nbsp;&nbsp;ttl一个不存在的key</a></h4>
+<h4><a class="toc-backref" href="#id55">4.4.2&nbsp;&nbsp;&nbsp;ttl一个不存在的key</a></h4>
+<p>ssdb:</p>
 <pre class="literal-block">
 127.0.0.1:8888&gt; ttl k
 (error) ERR
@@ -1027,13 +1030,16 @@ ning&#64;ning-laptop ~/idning-github/redis/src$ redis-cli -p 8888 del xxx
 </pre>
 </div>
 <div class="section" id="id16">
-<h4><a class="toc-backref" href="#id55">4.4.3&nbsp;&nbsp;&nbsp;没有expire命令</a></h4>
+<h4><a class="toc-backref" href="#id56">4.4.3&nbsp;&nbsp;&nbsp;没有expire命令</a></h4>
 <p>改为通过ttl命令设置expire.</p>
 </div>
+<div class="section" id="set-key-val-ex-nx">
+<h4><a class="toc-backref" href="#id57">4.4.4&nbsp;&nbsp;&nbsp;不支持set key val ex nx</a></h4>
+</div>
 <div class="section" id="scan">
-<h4><a class="toc-backref" href="#id56">4.4.4&nbsp;&nbsp;&nbsp;scan类</a></h4>
+<h4><a class="toc-backref" href="#id58">4.4.5&nbsp;&nbsp;&nbsp;scan类</a></h4>
 <div class="section" id="id17">
-<h5><a class="toc-backref" href="#id57">4.4.4.1&nbsp;&nbsp;&nbsp;scan</a></h5>
+<h5><a class="toc-backref" href="#id59">4.4.5.1&nbsp;&nbsp;&nbsp;scan</a></h5>
 <p>一次在一个连接上吐回所有key, 而且要全放到内存resp里面再一次吐出:</p>
 <pre class="literal-block">
 static int proc_scan(Server *serv, Link *link, const Request &amp;req, Response *resp){
@@ -1054,12 +1060,19 @@ static int proc_scan(Server *serv, Link *link, const Request &amp;req, Response 
 </pre>
 </div>
 <div class="section" id="redis-hscan">
-<h5><a class="toc-backref" href="#id58">4.4.4.2&nbsp;&nbsp;&nbsp;没有redis 的hscan</a></h5>
+<h5><a class="toc-backref" href="#id60">4.4.5.2&nbsp;&nbsp;&nbsp;没有redis 的hscan</a></h5>
 <p>只有ssdb协议支持hscan, 用法是给出范围.</p>
 <p>支持redis的hgetall, hkeys, hvals</p>
 </div>
 </div>
 </div>
+</div>
+<div class="section" id="id18">
+<h2><a class="toc-backref" href="#id61">5&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ul class="simple">
+<li>ssdb 设计上, expire用区别于主key的另一个key存储</li>
+<li>oplog只记录key</li>
+</ul>
 </div>
 </div>
 		<div>

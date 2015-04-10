@@ -222,10 +222,11 @@ t7 insert 6 ---
 <dt>关于格式</dt>
 <dd><ul class="first last">
 <li><dl class="first docutils">
-<dt>两种格式</dt>
+<dt>三种格式</dt>
 <dd><ul class="first last simple">
 <li>STATEMENT-BASED format</li>
 <li>ROW-BASED format</li>
+<li>mised: 是上面两种的混合.</li>
 </ul>
 </dd>
 </dl>
@@ -269,7 +270,7 @@ t7 insert 6 ---
 </dd>
 </dl>
 </li>
-<li><p class="first">一般来说, 鉴于STATEMENT性能更好, 多数都是用STATEMENT模式.</p>
+<li><p class="first">一般来说, mixed性能可能更好, 多数都是用mixed模式.</p>
 </li>
 <li><dl class="first docutils">
 <dt>存在问题(jira报的一些bug):</dt>
@@ -302,8 +303,9 @@ t7 insert 6 ---
 <p>具体保存方法:</p>
 <ul class="simple">
 <li>多个文件, 每次启动或者写满一个max_binlog_size, 就新开一个.</li>
-<li>binlog index文件,  记录当前哪些binlog文件在使用.</li>
+<li>binlog index文件, 记录当前哪些binlog文件在使用.</li>
 <li>PURGE BINARY LOGS命令用于清除binlog</li>
+<li>binlog也可以自动清理, <tt class="docutils literal">expire_logs_days</tt> .</li>
 </ul>
 <pre class="literal-block">
 shell&gt; mysqlbinlog binlog.0000003
