@@ -1,5 +1,112 @@
 <?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom"><title>ning</title><link href="/" rel="alternate"></link><link href="http://idning.github.io/feeds/all.atom.xml" rel="self"></link><id>/</id><updated>2014-11-02T11:41:38+08:00</updated><entry><title>redis-data-migrate</title><link href="/redis-data-migrate.html" rel="alternate"></link><updated>2014-11-02T11:41:38+08:00</updated><author><name>ning</name></author><id>tag:,2014-11-02:redis-data-migrate.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+<feed xmlns="http://www.w3.org/2005/Atom"><title>ning</title><link href="/" rel="alternate"></link><link href="http://idning.github.io/feeds/all.atom.xml" rel="self"></link><id>/</id><updated>2015-01-22T17:33:51+08:00</updated><entry><title>leveldb和rocksdb在大value场景下的一些问题</title><link href="/leveldb-rocksdb-on-large-value.html" rel="alternate"></link><updated>2015-01-22T17:33:51+08:00</updated><author><name>ning</name></author><id>tag:,2015-01-22:leveldb-rocksdb-on-large-value.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#compaction" id="id6"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;compaction不可控.&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id7"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;写放大&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id8"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它问题&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id9"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;p&gt;Leveldb 2011年7月开源, 到现在有3年了, 原理上已经有很多文章介绍了, 我们就不多说.&lt;/p&gt;
+&lt;p&gt;其中最好的是淘宝那岩写的 &lt;tt class="docutils literal"&gt;leveldb 实现解析&lt;/tt&gt; 和 TokuMX作者写的那个300页ppt: &lt;tt class="docutils literal"&gt;A Comparison of Fractal Trees &lt;span class="pre"&gt;toLog-Structured&lt;/span&gt; Merge (LSM) Trees&lt;/tt&gt; (这个PPT 对读放大写放大分析很好, 值得再读一次)&lt;/p&gt;
+&lt;p&gt;最近基于LevelDB, RocksDB 做了一点东西, 我们的目标场景是存储平均50K大小的value, 遇到一些问题, 总结一下:&lt;/p&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id5"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="compaction"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id6"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;compaction不可控.&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;当L0文件达到12个, 而compaction来不及的时候, 写入完全阻塞, 这个阻塞时间可能长达10s.&lt;/p&gt;
+&lt;p&gt;LevelDB实现上是L0达到4个时开始触发compaction, 8个时开始减慢写入, 12个时完全停止写入. 具体配置是写死的, 不过可以在编译时修改:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+// Level-0 compaction is started when we hit this many files.
+static const int kL0_CompactionTrigger = 4;
+
+// Soft limit on number of level-0 files.  We slow down writes at this point.
+static const int kL0_SlowdownWritesTrigger = 8;
+
+// Maximum number of level-0 files.  We stop writes at this point.
+static const int kL0_StopWritesTrigger = 12;
+&lt;/pre&gt;
+&lt;p&gt;RocksDB这几个数字都可以通过参数设置, 相对来说好一些:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+options.level0_slowdown_writes_trigger
+options.level0_stop_writes_trigger
+&lt;/pre&gt;
+&lt;p&gt;但是&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;p class="first"&gt;一旦写入速度&amp;gt;compaction速度, 不论这几个阈值设置多大, L0都迟早会满的.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;阈值调大会导致数据都堆积在L0, 而L0的每个文件key范围是重叠的,
+意味着一次查询要到L0的每个文件中都查一下, 如果L0文件有100个的话，这大约就是100次IO, 读性能会急剧降低.&lt;/p&gt;
+&lt;p&gt;实际上, RocksDB的 &lt;tt class="docutils literal"&gt;Universal Style&lt;/tt&gt; 就是把所有的数据都放在L0, 不再做compaction, 这样显然没有写放大了,&lt;/p&gt;
+&lt;p&gt;但是读的速度就更慢了, 所以限制单个DB大小小于100G, 而且最好在内存.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id7"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;写放大&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;基准数据100G的情况下, 50K的value, 用200qps写入, 磁盘带宽达到100MB/s 以上.&lt;/p&gt;
+&lt;p&gt;真实写入数据大约只有50K*200=10MB/s, 但是磁盘上看到的写大约是10-20倍, 这些写都是compaction在写,&lt;/p&gt;
+&lt;p&gt;此时的性能瓶颈已经不是CPU或者是LevelDB代码层，而是磁盘带宽了, 所以这个性能很难提上去,&lt;/p&gt;
+&lt;p&gt;而且HDD和SSD在顺序写上性能差别不大, 所以换SSD后性能依然很差.&lt;/p&gt;
+&lt;p&gt;其它同学发现的issue:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;a class="reference external" href="https://github.com/facebook/rocksdb/issues/210"&gt;https://github.com/facebook/rocksdb/issues/210&lt;/a&gt;
+提到的case, 12MB/s的写入, 磁盘IO大约100MB/s&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;&lt;a class="reference external" href="https://github.com/facebook/rocksdb/issues/182"&gt;https://github.com/facebook/rocksdb/issues/182&lt;/a&gt;
+发现100G基础数据时, 写1K的value性能也比较差.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;Hbase也有这个问题 &lt;a class="reference external" href="http://www.infoq.com/cn/articles/hbase-casestudy-facebook-messages"&gt;http://www.infoq.com/cn/articles/hbase-casestudy-facebook-messages&lt;/a&gt;:
+Compaction操作就是读取小的HFile到内存merge-sorting成大的HFile然后输出，加速HBase读操作。Compaction操作导致写被放大17倍以上，&lt;/p&gt;
+&lt;p&gt;不过HBase社区很少关注这个问题.&lt;/p&gt;
+&lt;p&gt;猜测原因可能是HBase是一种批处理思路, 数据都是批量写入进去, 写进去后再一次性做一个Compaction.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id8"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;其它问题&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;这几个问题只针对LevelDB, RocksDB已经解决了:&lt;/p&gt;
+&lt;ol class="arabic"&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;每个mmtable太小(2M), 存在如下问题:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;如果写入200G数据, 在db目录下就会有20w个文件, 需要频繁打开/关闭文件, 一个目录里面20w个文件的性能会很差(当然btrfs之类好些)&lt;/li&gt;
+&lt;li&gt;对于50K的value, 一个文件只能放40个key-value对, 效率很低&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Write Ahead Log 不能禁掉.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;对于大value来说, 一个写请求, leveldb会写2份, write-ahead-log和真实数据, 浪费.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;不能自定义compaction函数, 如果可以自定义, 则可以在compaction的时候做ttl功能.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;compaction不能限速.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;读触发compaction (allowed_seeks), 在某些场景不合适.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id9"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&lt;/a&gt;&lt;/h2&gt;
+&lt;ol class="arabic simple"&gt;
+&lt;li&gt;leveldb 适用于小的kv库(value小(&amp;lt;1K), 总size小(&amp;lt;100G)), 比如chrome客户端 或者小的cache(比如某些模块自带的cache)&lt;/li&gt;
+&lt;li&gt;由于LevelDB把key和value都放在同一个文件里面, compaction的时候必须key和value一起读写, 所以写放大显得更为明显.
+其实我们只需要保证key有序, compaction只需对key做就行了，key和value分开来存放也许一个不错的优化思路.&lt;/li&gt;
+&lt;li&gt;在程序里面, 可以把leveldb/rocksdb当做一个 自动扩容, 持久化 的hash表来用.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+</summary></entry><entry><title>redis-data-migrate</title><link href="/redis-data-migrate.html" rel="alternate"></link><updated>2014-11-02T11:41:38+08:00</updated><author><name>ning</name></author><id>tag:,2014-11-02:redis-data-migrate.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
 &lt;ul class="auto-toc simple"&gt;
 &lt;li&gt;&lt;a class="reference internal" href="#id1" id="id7"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;为什么要设计这样的扩容方式&lt;/a&gt;&lt;/li&gt;

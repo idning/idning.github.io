@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container-fluid">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>leveldb和rocksdb在大value场景下的一些问题</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/leveldb-rocksdb-on-large-value.html">2015-01-22 17:33:51</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+</div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id5">1&nbsp;&nbsp;&nbsp;问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#compaction" id="id6">1.1&nbsp;&nbsp;&nbsp;compaction不可控.</a></li>
+<li><a class="reference internal" href="#id2" id="id7">1.2&nbsp;&nbsp;&nbsp;写放大</a></li>
+<li><a class="reference internal" href="#id3" id="id8">1.3&nbsp;&nbsp;&nbsp;其它问题</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id4" id="id9">2&nbsp;&nbsp;&nbsp;小结</a></li>
+</ul>
+</div>
+<p>Leveldb 2011年7月开源, 到现在有3年了, 原理上已经有很多文章介绍了, 我们就不多说.</p>
+<p>其中最好的是淘宝那岩写的 <tt class="docutils literal">leveldb 实现解析</tt> 和 TokuMX作者写的那个300页ppt: <tt class="docutils literal">A Comparison of Fractal Trees <span class="pre">toLog-Structured</span> Merge (LSM) Trees</tt> (这个PPT 对读放大写放大分析很好, 值得再读一次)</p>
+<p>最近基于LevelDB, RocksDB 做了一点东西, 我们的目标场景是存储平均50K大小的value, 遇到一些问题, 总结一下:</p>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id5">1&nbsp;&nbsp;&nbsp;问题</a></h2>
+<div class="section" id="compaction">
+<h3><a class="toc-backref" href="#id6">1.1&nbsp;&nbsp;&nbsp;compaction不可控.</a></h3>
+<p>当L0文件达到12个, 而compaction来不及的时候, 写入完全阻塞, 这个阻塞时间可能长达10s.</p>
+<p>LevelDB实现上是L0达到4个时开始触发compaction, 8个时开始减慢写入, 12个时完全停止写入. 具体配置是写死的, 不过可以在编译时修改:</p>
+<pre class="literal-block">
+// Level-0 compaction is started when we hit this many files.
+static const int kL0_CompactionTrigger = 4;
+
+// Soft limit on number of level-0 files.  We slow down writes at this point.
+static const int kL0_SlowdownWritesTrigger = 8;
+
+// Maximum number of level-0 files.  We stop writes at this point.
+static const int kL0_StopWritesTrigger = 12;
+</pre>
+<p>RocksDB这几个数字都可以通过参数设置, 相对来说好一些:</p>
+<pre class="literal-block">
+options.level0_slowdown_writes_trigger
+options.level0_stop_writes_trigger
+</pre>
+<p>但是</p>
+<ol class="arabic">
+<li><p class="first">一旦写入速度&gt;compaction速度, 不论这几个阈值设置多大, L0都迟早会满的.</p>
+</li>
+<li><p class="first">阈值调大会导致数据都堆积在L0, 而L0的每个文件key范围是重叠的,
+意味着一次查询要到L0的每个文件中都查一下, 如果L0文件有100个的话，这大约就是100次IO, 读性能会急剧降低.</p>
+<p>实际上, RocksDB的 <tt class="docutils literal">Universal Style</tt> 就是把所有的数据都放在L0, 不再做compaction, 这样显然没有写放大了,</p>
+<p>但是读的速度就更慢了, 所以限制单个DB大小小于100G, 而且最好在内存.</p>
+</li>
+</ol>
+</div>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id7">1.2&nbsp;&nbsp;&nbsp;写放大</a></h3>
+<p>基准数据100G的情况下, 50K的value, 用200qps写入, 磁盘带宽达到100MB/s 以上.</p>
+<p>真实写入数据大约只有50K*200=10MB/s, 但是磁盘上看到的写大约是10-20倍, 这些写都是compaction在写,</p>
+<p>此时的性能瓶颈已经不是CPU或者是LevelDB代码层，而是磁盘带宽了, 所以这个性能很难提上去,</p>
+<p>而且HDD和SSD在顺序写上性能差别不大, 所以换SSD后性能依然很差.</p>
+<p>其它同学发现的issue:</p>
+<ul>
+<li><p class="first"><a class="reference external" href="https://github.com/facebook/rocksdb/issues/210">https://github.com/facebook/rocksdb/issues/210</a>
+提到的case, 12MB/s的写入, 磁盘IO大约100MB/s</p>
+</li>
+<li><p class="first"><a class="reference external" href="https://github.com/facebook/rocksdb/issues/182">https://github.com/facebook/rocksdb/issues/182</a>
+发现100G基础数据时, 写1K的value性能也比较差.</p>
+</li>
+<li><p class="first">Hbase也有这个问题 <a class="reference external" href="http://www.infoq.com/cn/articles/hbase-casestudy-facebook-messages">http://www.infoq.com/cn/articles/hbase-casestudy-facebook-messages</a>:
+Compaction操作就是读取小的HFile到内存merge-sorting成大的HFile然后输出，加速HBase读操作。Compaction操作导致写被放大17倍以上，</p>
+<p>不过HBase社区很少关注这个问题.</p>
+<p>猜测原因可能是HBase是一种批处理思路, 数据都是批量写入进去, 写进去后再一次性做一个Compaction.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id8">1.3&nbsp;&nbsp;&nbsp;其它问题</a></h3>
+<p>这几个问题只针对LevelDB, RocksDB已经解决了:</p>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>每个mmtable太小(2M), 存在如下问题:</dt>
+<dd><ul class="first last simple">
+<li>如果写入200G数据, 在db目录下就会有20w个文件, 需要频繁打开/关闭文件, 一个目录里面20w个文件的性能会很差(当然btrfs之类好些)</li>
+<li>对于50K的value, 一个文件只能放40个key-value对, 效率很低</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Write Ahead Log 不能禁掉.</dt>
+<dd><ul class="first last simple">
+<li>对于大value来说, 一个写请求, leveldb会写2份, write-ahead-log和真实数据, 浪费.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">不能自定义compaction函数, 如果可以自定义, 则可以在compaction的时候做ttl功能.</p>
+</li>
+<li><p class="first">compaction不能限速.</p>
+</li>
+<li><p class="first">读触发compaction (allowed_seeks), 在某些场景不合适.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="section" id="id4">
+<h2><a class="toc-backref" href="#id9">2&nbsp;&nbsp;&nbsp;小结</a></h2>
+<ol class="arabic simple">
+<li>leveldb 适用于小的kv库(value小(&lt;1K), 总size小(&lt;100G)), 比如chrome客户端 或者小的cache(比如某些模块自带的cache)</li>
+<li>由于LevelDB把key和value都放在同一个文件里面, compaction的时候必须key和value一起读写, 所以写放大显得更为明显.
+其实我们只需要保证key有序, compaction只需对key做就行了，key和value分开来存放也许一个不错的优化思路.</li>
+<li>在程序里面, 可以把leveldb/rocksdb当做一个 自动扩容, 持久化 的hash表来用.</li>
+</ol>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>
