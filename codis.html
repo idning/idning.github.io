@@ -214,9 +214,15 @@
 <div class="section" id="id5">
 <h3><a class="toc-backref" href="#id23">1.6&nbsp;&nbsp;&nbsp;问题</a></h3>
 <ul>
-<li><p class="first">redis中每个key会多存一份(slots hash表), 如果key比较大, 就浪费redis内存( <strong>大约1.5倍</strong> ).</p>
+<li><p class="first">redis中每个key会多存一份(slots hash表), 如果key比较大, 很浪费redis内存( <strong>大约1.5倍</strong> ).</p>
 </li>
-<li><p class="first">阻塞式迁移对大set, 大list等大value不友好, 可能导致redis <strong>阻塞1-2s</strong></p>
+<li><dl class="first docutils">
+<dt>阻塞式迁移, 为了一致性降低可用性.</dt>
+<dd><ul class="first last simple">
+<li>对大set, 大list等大value不友好, 可能导致redis <strong>阻塞1-2s</strong></li>
+</ul>
+</dd>
+</dl>
 </li>
 <li><p class="first">主从切换不是自动, 需要手动操作(建议自动操作, 操作后人工后验检查)</p>
 </li>

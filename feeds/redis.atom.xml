@@ -169,9 +169,15 @@
 &lt;div class="section" id="id5"&gt;
 &lt;h3&gt;&lt;a class="toc-backref" href="#id23"&gt;1.6&amp;nbsp;&amp;nbsp;&amp;nbsp;问题&lt;/a&gt;&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;p class="first"&gt;redis中每个key会多存一份(slots hash表), 如果key比较大, 就浪费redis内存( &lt;strong&gt;大约1.5倍&lt;/strong&gt; ).&lt;/p&gt;
+&lt;li&gt;&lt;p class="first"&gt;redis中每个key会多存一份(slots hash表), 如果key比较大, 很浪费redis内存( &lt;strong&gt;大约1.5倍&lt;/strong&gt; ).&lt;/p&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;p class="first"&gt;阻塞式迁移对大set, 大list等大value不友好, 可能导致redis &lt;strong&gt;阻塞1-2s&lt;/strong&gt;&lt;/p&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;阻塞式迁移, 为了一致性降低可用性.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;对大set, 大list等大value不友好, 可能导致redis &lt;strong&gt;阻塞1-2s&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;主从切换不是自动, 需要手动操作(建议自动操作, 操作后人工后验检查)&lt;/p&gt;
 &lt;/li&gt;
