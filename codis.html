@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li ><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li class="active"><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>codis-notes</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/codis.html">2015-04-27 09:27:51</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/redis.html">redis</a>
+</div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id17">1&nbsp;&nbsp;&nbsp;概况</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id2" id="id18">1.1&nbsp;&nbsp;&nbsp;设计特点</a></li>
+<li><a class="reference internal" href="#redis-clueter" id="id19">1.2&nbsp;&nbsp;&nbsp;和redis-clueter对比</a></li>
+<li><a class="reference internal" href="#why-not-twemproxy" id="id20">1.3&nbsp;&nbsp;&nbsp;Why not Twemproxy &amp; 我的反驳</a></li>
+<li><a class="reference internal" href="#id3" id="id21">1.4&nbsp;&nbsp;&nbsp;迁移</a></li>
+<li><a class="reference internal" href="#id4" id="id22">1.5&nbsp;&nbsp;&nbsp;优点</a></li>
+<li><a class="reference internal" href="#id5" id="id23">1.6&nbsp;&nbsp;&nbsp;问题</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id6" id="id24">2&nbsp;&nbsp;&nbsp;使用&amp;部署</a></li>
+<li><a class="reference internal" href="#zk" id="id25">3&nbsp;&nbsp;&nbsp;zk 设计</a></li>
+<li><a class="reference internal" href="#id7" id="id26">4&nbsp;&nbsp;&nbsp;代码</a><ul class="auto-toc">
+<li><a class="reference internal" href="#redis" id="id27">4.1&nbsp;&nbsp;&nbsp;redis改动</a><ul class="auto-toc">
+<li><a class="reference internal" href="#hash-slots" id="id28">4.1.1&nbsp;&nbsp;&nbsp;增加hash_slots</a></li>
+<li><a class="reference internal" href="#id8" id="id29">4.1.2&nbsp;&nbsp;&nbsp;阻塞迁移</a></li>
+<li><a class="reference internal" href="#id9" id="id30">4.1.3&nbsp;&nbsp;&nbsp;问题</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#proxy" id="id31">4.2&nbsp;&nbsp;&nbsp;proxy</a><ul class="auto-toc">
+<li><a class="reference internal" href="#actions" id="id32">4.2.1&nbsp;&nbsp;&nbsp;actions</a></li>
+<li><a class="reference internal" href="#router-go" id="id33">4.2.2&nbsp;&nbsp;&nbsp;router.go</a></li>
+<li><a class="reference internal" href="#id10" id="id34">4.2.3&nbsp;&nbsp;&nbsp;更新路由</a></li>
+<li><a class="reference internal" href="#pipeline" id="id35">4.2.4&nbsp;&nbsp;&nbsp;pipeline</a></li>
+<li><a class="reference internal" href="#mget" id="id36">4.2.5&nbsp;&nbsp;&nbsp;mget</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id11" id="id37">5&nbsp;&nbsp;&nbsp;几个问题</a><ul class="auto-toc">
+<li><a class="reference internal" href="#slot" id="id38">5.1&nbsp;&nbsp;&nbsp;slot内存</a></li>
+<li><a class="reference internal" href="#value" id="id39">5.2&nbsp;&nbsp;&nbsp;阻塞迁移大value</a></li>
+<li><a class="reference internal" href="#id12" id="id40">5.3&nbsp;&nbsp;&nbsp;pipeline 性能</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id13" id="id41">5.3.1&nbsp;&nbsp;&nbsp;性能问题</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id14" id="id42">5.4&nbsp;&nbsp;&nbsp;使用时遇到的其它小问题</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#redis-port" id="id43">6&nbsp;&nbsp;&nbsp;redis-port</a></li>
+<li><a class="reference internal" href="#id15" id="id44">7&nbsp;&nbsp;&nbsp;参考</a></li>
+<li><a class="reference internal" href="#id16" id="id45">8&nbsp;&nbsp;&nbsp;总结</a></li>
+</ul>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id17">1&nbsp;&nbsp;&nbsp;概况</a></h2>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id18">1.1&nbsp;&nbsp;&nbsp;设计特点</a></h3>
+<ul>
+<li><p class="first">分1024个slot</p>
+</li>
+<li><p class="first">zk保存拓扑.</p>
+</li>
+<li><p class="first">go实现proxy, 无状态.</p>
+</li>
+<li><p class="first">预分配: 1024个slot (单实例5G, 大约可以支撑5-10T规模)</p>
+</li>
+<li><p class="first">平滑扩容.</p>
+</li>
+<li><dl class="first docutils">
+<dt>5个组件:</dt>
+<dd><ul class="first last simple">
+<li>ZooKeeper</li>
+<li>Codis Redis   (codis-server)  修改后的redis.</li>
+<li>Codis Proxy   (codis-proxy)   实现proxy逻辑</li>
+<li>Dashboard                     需要作为服务运行</li>
+<li>Codis Manager (codis-config)  作为工具运行, 调用dashboard api修改配置.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="redis-clueter">
+<h3><a class="toc-backref" href="#id19">1.2&nbsp;&nbsp;&nbsp;和redis-clueter对比</a></h3>
+<ul>
+<li><dl class="first docutils">
+<dt>在以下方面很像</dt>
+<dd><ul class="first last simple">
+<li>分slot</li>
+<li>redis单机引擎知道slot逻辑.</li>
+<li>阻塞迁移</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>不同:</dt>
+<dd><ul class="first last simple">
+<li>使用中心存储 保存路由, 而不是goisp协议.</li>
+<li>使用proxy而不是客户端lib</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="why-not-twemproxy">
+<h3><a class="toc-backref" href="#id20">1.3&nbsp;&nbsp;&nbsp;Why not Twemproxy &amp; 我的反驳</a></h3>
+<ul>
+<li><dl class="first docutils">
+<dt>最大痛点：无法平滑的扩/缩容（Scale!!!!）</dt>
+<dd><ul class="first last simple">
+<li>实际上, 可以通过迁移redis实例来做( <strong>不过确实很痛苦, 我们一般直接迁移整个集群</strong> )</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>没有HA机制，没有容错能力</dt>
+<dd><ul class="first last simple">
+<li>实际上, 通过外部工具来做, 效果不错.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>修改配置需要重启服务</dt>
+<dd><ul class="first last simple">
+<li>实际上, 在作出修改配置决定前, 服务已经出问题至少30s了, 重启花1s并没有问题.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id21">1.4&nbsp;&nbsp;&nbsp;迁移</a></h3>
+<ol class="arabic simple">
+<li>把一个slot标记为pre-migrate</li>
+<li>等待所有proxy确认</li>
+<li>标记slot状态为migrating</li>
+<li>外部工具不断发送slotmigrate给源redis, 每次一个key, 把这个slot中所有key迁移走</li>
+<li>标记slot状态为online</li>
+</ol>
+<p>notes:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>一次迁移一个key, 原子, 阻塞(有的文档说: 我们每次只原子的迁走一个 key，不会把主线程 block 住, 这是不对的)</dt>
+<dd><ul class="first last simple">
+<li>这里为了实现一致性, 降低了可用性(根据CAP, 在分布式系统中, 选择了C, A就会降低)</li>
+<li>为什么说放弃了可用性呢? 假设我们在迁移, 迁移1个key需要1ms, 那么这个分片的qps就会降到1000qps以下了.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>proxy 也可能发起迁移命令.</dt>
+<dd><ul class="first last simple">
+<li>迁移某个slot的过程中, proxy 会提前要求迁移这个key到目标分片.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">必须保证不能同时有多个 slots 处于迁移状态 =&gt; 决定了很慢, 不能扩展到很大的集群(不过够用了)</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id22">1.5&nbsp;&nbsp;&nbsp;优点</a></h3>
+<ul class="simple">
+<li>给redis一个扩容方案.</li>
+<li>proxy能利用多核, 单机性能比Twemproxy好.</li>
+</ul>
+</div>
+<div class="section" id="id5">
+<h3><a class="toc-backref" href="#id23">1.6&nbsp;&nbsp;&nbsp;问题</a></h3>
+<ul>
+<li><p class="first">redis中每个key会多存一份(slots hash表), 如果key比较大, 就浪费redis内存( <strong>大约1.5倍</strong> ).</p>
+</li>
+<li><p class="first">阻塞式迁移对大set, 大list等大value不友好, 可能导致redis <strong>阻塞1-2s</strong></p>
+</li>
+<li><p class="first">主从切换不是自动, 需要手动操作(建议自动操作, 操作后人工后验检查)</p>
+</li>
+<li><p class="first">不能并发迁移，影响集群规模.</p>
+</li>
+<li><p class="first">直接把redis代码包进来了, 对redis的后续升级, bugfix等难以merge.</p>
+</li>
+<li><p class="first">使用crc32做sharding, 不是很均匀, 不过分了slot, 所以没关系了.</p>
+</li>
+<li><dl class="first docutils">
+<dt>proxy</dt>
+<dd><ul class="first last simple">
+<li>pipeline 性能差(后面优化了, 尚未测试)</li>
+<li>mget/mset 都是串行执行, 性能较差.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">需要一个部署工具.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id24">2&nbsp;&nbsp;&nbsp;使用&amp;部署</a></h2>
+<pre class="literal-block">
+DATE=`date +'%Y%m%d%H%M'`
+DIR=&quot;$( cd &quot;$( dirname &quot;${BASH_SOURCE[0]}&quot; )&quot; &amp;&amp; pwd )&quot;
+
+# clean &amp; start zk
+cd ~/xredis/zookeeper-3.4.6 &amp;&amp; ./bin/zkServer.sh stop
+
+rm /tmp/zookeeper -rf
+pkill -f codis-config
+
+cd ~/xredis/zookeeper-3.4.6 &amp;&amp; ./bin/zkServer.sh start
+
+cd $DIR
+
+nohup ./bin/codis-config -c sample/config.ini dashboard &amp;
+
+sleep 3
+
+echo 'dash running'
+
+./bin/codis-config -c sample/config.ini server add 0 localhost:2000 master
+./bin/codis-config -c sample/config.ini server add 0 localhost:3000 slave
+
+./bin/codis-config -c sample/config.ini server add 1 localhost:2001 master
+./bin/codis-config -c sample/config.ini server add 1 localhost:3001 slave
+
+./bin/codis-config -c sample/config.ini server add 2 localhost:2002 master
+./bin/codis-config -c sample/config.ini server add 2 localhost:3002 slave
+
+./bin/codis-config -c sample/config.ini server add 3 localhost:2003 master
+./bin/codis-config -c sample/config.ini server add 3 localhost:3003 slave
+
+./bin/codis-config -c sample/config.ini slot init
+./bin/codis-config -c sample/config.ini slot range-set 0 511    0 online
+./bin/codis-config -c sample/config.ini slot range-set 512 1023 1 online
+
+./bin/codis-proxy -c sample/config.ini -L ./log/proxy.log  --cpu=8 --addr=0.0.0.0:19000 --http-addr=0.0.0.0:11000
+</pre>
+</div>
+<div class="section" id="zk">
+<h2><a class="toc-backref" href="#id25">3&nbsp;&nbsp;&nbsp;zk 设计</a></h2>
+<p>zk 设计:</p>
+<pre class="literal-block">
+/codis/db_{xx}
+{xx} means 产品名， 如: /codis/db_sync , /codis/db_applist
+/codis/db_{xx}/servers/group_{N}/{ server addr (e.g. 127.0.0.1:6379) }
+存储真实的 redis 组 (主master、从slave), N为一个自定义的整数编号, in JSON, 内容包括服务器地址，
+角色（master or slave）等信息
+
+/codis/db_{xx}/slots/slot_{N}
+</pre>
+<p>举例, zk中存储的数据如下:</p>
+<pre class="literal-block">
+$ zk-shell 127.1:2181
+Welcome to zk-shell (1.0.05)
+(CONNECTING) /&gt;
+(CONNECTED) /&gt; tree
+├── zk
+│   ├── codis
+│   │   ├── db_test
+│   │   │   ├── migrate_manager
+│   │   │   ├── fence
+│   │   │   ├── servers
+│   │   │   │   ├── group_0
+│   │   │   │   │   ├── localhost:2000
+│   │   │   │   │   ├── localhost:3000
+│   │   │   │   ├── group_1
+│   │   │   │   │   ├── localhost:2001
+│   │   │   │   │   ├── localhost:3001
+│   │   │   ├── slots
+│   │   │   │   ├── slot_0
+│   │   │   │   ├── slot_1
+│   │   │   │   ├── slot_2
+│   │   │   │   ├── slot_3
+│   │   │   │   ├── ...
+│   │   │   │   ├── ...
+│   │   │   │   ├── slot_1023
+│   │   │   ├── proxy
+|   │   │   │   ├── proxy_1
+│   │   │   ├── migrate_tasks
+│   │   │   ├── LOCK
+│   │   │   ├── actions
+│   │   │   │   ├── 0000000004
+│   │   │   │   ├── 0000000010
+│   │   │   │   ├── 0000000006
+│   │   │   │   ├── 0000000008
+│   │   │   │   ├── 0000000000
+│   │   │   │   ├── 0000000002
+│   │   │   ├── ActionResponse
+│   │   │   │   ├── 0000000004
+│   │   │   │   ├── 0000000010
+│   │   │   │   ├── 0000000006
+│   │   │   │   ├── 0000000008
+│   │   │   │   ├── 0000000000
+│   │   │   │   ├── 0000000002
+</pre>
+<p>其中几种节点数据:</p>
+<pre class="literal-block">
+(CONNECTED) /&gt; get zk/codis/db_test/servers/group_0/localhost:2000
+{&quot;type&quot;:&quot;master&quot;,&quot;group_id&quot;:0,&quot;addr&quot;:&quot;localhost:2000&quot;}
+
+(CONNECTED) /&gt; get zk/codis/db_test/slots/slot_0
+{&quot;product_name&quot;:&quot;test&quot;,&quot;id&quot;:0,&quot;group_id&quot;:1,&quot;state&quot;:{&quot;status&quot;:&quot;online&quot;,&quot;migrate_status&quot;:{&quot;from&quot;:-1,&quot;to&quot;:-1},&quot;last_op_ts&quot;:&quot;0&quot;}}
+
+(CONNECTED) /&gt; get zk/codis/db_test/proxy/proxy_1
+{&quot;id&quot;:&quot;proxy_1&quot;,&quot;addr&quot;:&quot;127.1:19000&quot;,&quot;last_event&quot;:&quot;&quot;,&quot;last_event_ts&quot;:0,&quot;state&quot;:&quot;offline&quot;,&quot;description&quot;:&quot;&quot;,&quot;debug_var_addr&quot;:&quot;127.1:11000&quot;,&quot;pid&quot;:12438,&quot;start_at&quot;:&quot;2015-04-28 15:20:23.739459751 +0800 CST&quot;}
+</pre>
+</div>
+<div class="section" id="id7">
+<h2><a class="toc-backref" href="#id26">4&nbsp;&nbsp;&nbsp;代码</a></h2>
+<div class="section" id="redis">
+<h3><a class="toc-backref" href="#id27">4.1&nbsp;&nbsp;&nbsp;redis改动</a></h3>
+<p>ext/redis-2.8.13/</p>
+<ul>
+<li><dl class="first docutils">
+<dt>每个db增加N个slot. 每个slot里面是一个hash, 用于保存每个slot有哪些个key(导致每个key多存一份)</dt>
+<dd><ul class="first last simple">
+<li>key是raw_key, val 是crc(key).</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">dictadd/dictDel/dictResize的时候都要在每个slot里面操作</p>
+</li>
+<li><p class="first">增加一系列命令(slotsxxx) slots.c</p>
+</li>
+</ul>
+<div class="section" id="hash-slots">
+<h4><a class="toc-backref" href="#id28">4.1.1&nbsp;&nbsp;&nbsp;增加hash_slots</a></h4>
+<pre class="literal-block">
+typedef struct redisDb {
+    dict *dict;                 /* The keyspace for this DB */
+    dict *expires;              /* Timeout of keys with a timeout set */
+    ...
+    dict *hash_slots[HASH_SLOTS_SIZE];
+} redisDb;
+
+initServer() {
+    for (i = 0; i &lt; HASH_SLOTS_SIZE; i ++) {
+        server.db[j].hash_slots[i] = dictCreate(&amp;hashSlotType, NULL);
+    }
+</pre>
+<pre class="literal-block">
+void dbAdd(redisDb *db, robj *key, robj *val) {
+    sds copy = sdsdup(key-&gt;ptr);
+
+    int retval = dictAdd(db-&gt;dict, copy, val);
+
+    do {
+        uint32_t crc;
+        int slot = slots_num(key-&gt;ptr, &amp;crc);
+        dictAdd(db-&gt;hash_slots[slot], sdsdup(key-&gt;ptr), (void *)(long)crc);
+    } while (0);
+    ...
+}
+</pre>
+<p>增加了一些命令:</p>
+<pre class="literal-block">
+{&quot;slotsinfo&quot;,slotsinfoCommand,-1,&quot;rF&quot;,0,NULL,0,0,0,0,0},
+{&quot;slotsdel&quot;,slotsdelCommand,-2,&quot;w&quot;,0,NULL,1,-1,1,0,0},
+{&quot;slotsmgrtslot&quot;,slotsmgrtslotCommand,5,&quot;aw&quot;,0,NULL,0,0,0,0,0},
+{&quot;slotsmgrtone&quot;,slotsmgrtoneCommand,5,&quot;aw&quot;,0,NULL,0,0,0,0,0},
+{&quot;slotsmgrttagslot&quot;,slotsmgrttagslotCommand,5,&quot;aw&quot;,0,NULL,0,0,0,0,0},
+{&quot;slotsmgrttagone&quot;,slotsmgrttagoneCommand,5,&quot;aw&quot;,0,NULL,0,0,0,0,0},
+{&quot;slotshashkey&quot;,slotshashkeyCommand,-1,&quot;rF&quot;,0,NULL,0,0,0,0,0},
+{&quot;slotscheck&quot;,slotscheckCommand,0,&quot;r&quot;,0,NULL,0,0,0,0,0},
+{&quot;slotsrestore&quot;,slotsrestoreCommand,-4,&quot;awm&quot;,0,NULL,1,1,1,0,0},
+</pre>
+</div>
+<div class="section" id="id8">
+<h4><a class="toc-backref" href="#id29">4.1.2&nbsp;&nbsp;&nbsp;阻塞迁移</a></h4>
+<pre class="literal-block">
+static int
+slotsmgrt(redisClient *c, sds host, sds port, int fd, int dbid, int timeout, robj *keys[], robj *vals[], int n) {
+    ...
+    syncWrite(fd, buf + pos, towrite, timeout);
+    syncReadLine(fd, buf1, sizeof(buf1), timeout)
+}
+</pre>
+</div>
+<div class="section" id="id9">
+<h4><a class="toc-backref" href="#id30">4.1.3&nbsp;&nbsp;&nbsp;问题</a></h4>
+<ol class="arabic">
+<li><dl class="first docutils">
+<dt>它会记录每个slot有哪些key, 这就会导致key多存一份, 这在某些情况下带来的内存消耗大约是1.5倍.(详见后面测试)</dt>
+<dd><ul class="first last simple">
+<li>而对redis来说, 空间很珍贵, 这里可以用时间换空间, 会更好.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">阻塞迁移造成的短时拒绝服务(详见后面测试).</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="section" id="proxy">
+<h3><a class="toc-backref" href="#id31">4.2&nbsp;&nbsp;&nbsp;proxy</a></h3>
+<p>代码量大约6000:</p>
+<pre class="literal-block">
+-------------------------------------------------------------------------------
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Go                              42            975            171           5113
+Javascript                       7             84             99            596
+HTML                             4             48             24            588
+JSON                             3              0              0             52
+CSS                              3              2              4             11
+Bourne Shell                     2              3              0              6
+-------------------------------------------------------------------------------
+SUM:                            61           1112            298           6366
+-------------------------------------------------------------------------------
+</pre>
+<p>代码结构:</p>
+<pre class="literal-block">
+▾ pkg/
+  ▾ models/                 # 对应zk中的几个结构.
+      server_group.go
+      slot.go
+      action.go
+      proxy.go
+  ▾ proxy/
+    ▾ parser/
+        parser.go           # 解析请求.
+    ▾ redispool/
+        conn.go             # 连接
+        redispool.go        # 连接池
+    ▾ cachepool/
+        cachepool.go        # 由后端名字到连接池的map. [127.0.0.1:2000] =&gt; redispool {conn1, conn2, conn3}
+    ▾ group/
+        group.go            # 简单包装.
+    ▾ router/
+      ▸ topology/           # InitZkConn, watch
+        helper.go           # redis命令黑名单, isMulOp, PING, SELECT 几个命令的处理.
+        mapper.go           # mapKey2Slot (crc32 % 1024)
+        session.go          # 记录当前实例的ops, starttime.
+        router.go           # 主要proxy逻辑.
+        multioperator.go    # mget/mset/del 的实现.
+</pre>
+<ul class="simple">
+<li>pkg/models定义几种角色, slot, server_group, proxy 和几种动作, action, 它是zk的的数据模型.</li>
+<li>pkg/proxy 是proxy逻辑的实现.</li>
+</ul>
+<p>看一个获得所有ServerGroups的代码:</p>
+<pre class="literal-block">
+func ServerGroups(zkConn zkhelper.Conn, productName string) ([]ServerGroup, error) {
+    var ret []ServerGroup
+    root := fmt.Sprintf(&quot;/zk/codis/db_%s/servers&quot;, productName)
+    groups, _, err := zkConn.Children(root)
+
+    for _, group := range groups {
+        groupId, err := strconv.Atoi(strings.Split(group, &quot;_&quot;)[1])
+        g, err := GetGroup(zkConn, productName, groupId)
+        ret = append(ret, *g)
+    }
+    return ret, nil
+}
+</pre>
+<div class="section" id="actions">
+<h4><a class="toc-backref" href="#id32">4.2.1&nbsp;&nbsp;&nbsp;actions</a></h4>
+<ul>
+<li><dl class="first docutils">
+<dt>codis 对每个topo变化的操作, 都会记录到actions, 同时对于某些action, 会要求每个proxy ack确保更新到最新拓扑.</dt>
+<dd><ul class="first last simple">
+<li>TODO: 如何实现确保ack</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="router-go">
+<h4><a class="toc-backref" href="#id33">4.2.2&nbsp;&nbsp;&nbsp;router.go</a></h4>
+<p>加载拓扑信息(一个slot指向那个group):</p>
+<pre class="literal-block">
+//use it in lock
+func (s *Server) fillSlot(i int, force bool) {
+    slotInfo, groupInfo, err := s.top.GetSlotByIndex(i)             # 从zk中获取slot信息
+
+    slot := &amp;Slot{
+        slotInfo:  slotInfo,
+        dst:       group.NewGroup(*groupInfo),
+        groupInfo: groupInfo,
+    }
+
+    s.pools.AddPool(slot.dst.Master())                              # 准备连接池
+
+    if slot.slotInfo.State.Status == models.SLOT_STATUS_MIGRATE {   # 处理MIGRATE状态.
+        //get migrate src group and fill it
+        from, err := s.top.GetGroup(slot.slotInfo.State.MigrateStatus.From)
+        slot.migrateFrom = group.NewGroup(*from)
+        s.pools.AddPool(slot.migrateFrom.Master())
+    }
+
+    s.slots[i] = slot
+}
+
+#如果状态是migrate 的slot, 发migrate命令
+func (s *Server) handleMigrateState(slotIndex int, key []byte) error {
+    ...
+    err = WriteMigrateKeyCmd(redisConn.(*redispool.PooledConn), shd.dst.Master(), 30*1000, key)
+    ...
+}
+</pre>
+<p>转发逻辑, 读一个请求, 向后端转发一个:</p>
+<pre class="literal-block">
+func (s *Server) redisTunnel(c *session) error {
+    resp, err := parser.Parse(c.r) // read client request
+
+    op, k, err := getOpKey(resp)
+    i := mapKey2Slot(k)
+
+check_state:        # 这里是一个循环来检查, 等待SLOT_STATUS_PRE_MIGRATE结束
+    s.mu.RLock()
+    if s.slots[i] == nil {
+        s.mu.Unlock()
+        return errors.Errorf(&quot;should never happend, slot %d is empty&quot;, i)
+    }
+    //wait for state change, should be soon
+    if s.slots[i].slotInfo.State.Status == models.SLOT_STATUS_PRE_MIGRATE {
+        s.mu.RUnlock()
+        time.Sleep(10 * time.Millisecond)
+        goto check_state
+    }
+
+    s.handleMigrateState(i, k);
+
+    //get redis connection
+    redisConn, err := s.pools.GetConn(s.slots[i].dst.Master())
+    redisErr, clientErr := forward(c, redisConn.(*redispool.PooledConn), resp)
+}
+
+func (s *Server) handleConn(c net.Conn) {
+    for {
+        err = s.redisTunnel(client)
+        client.Ops++
+    }
+}
+
+func (s *Server) Run() {
+    log.Info(&quot;listening on&quot;, s.addr)
+    listener, err := net.Listen(&quot;tcp&quot;, s.addr)
+    for {
+        conn, err := listener.Accept()
+        go s.handleConn(conn)       #起一个
+    }
+}
+</pre>
+</div>
+<div class="section" id="id10">
+<h4><a class="toc-backref" href="#id34">4.2.3&nbsp;&nbsp;&nbsp;更新路由</a></h4>
+<p>proxy 会watch action 树下的变更, 有变化时 重新加载路由:</p>
+<pre class="literal-block">
+func (s *Server) OnGroupChange(groupId int) {
+    log.Warning(&quot;group changed&quot;, groupId)
+
+    for i, slot := range s.slots {
+        if slot.slotInfo.GroupId == groupId {
+            s.fillSlot(i, true)
+        }
+    }
+}
+</pre>
+</div>
+<div class="section" id="pipeline">
+<h4><a class="toc-backref" href="#id35">4.2.4&nbsp;&nbsp;&nbsp;pipeline</a></h4>
+<p>上面代码是&#64;ngaut同学pipeline优化前的代码,</p>
+<p>一般来说, 实现pipeline可能存在下面两个问题, 不过测试发现: <strong>codis都没有问题</strong> .</p>
+<ol class="arabic">
+<li><p class="first">返回乱序:</p>
+<pre class="literal-block">
+get     k1 k2 k3 k4
+return  v2 v1 v3 vj
+</pre>
+</li>
+</ol>
+<p>原因是k1,k2发到不同后端,  如果其中一个后端很慢, 而先返回的后端就先写客户端, 就是这个错误.</p>
+<p>测试发现codis没有这个问题, 但是看代码没有看懂为什么. 涉及到多个channel中传递消息(TODO).</p>
+<ol class="arabic" start="2">
+<li><p class="first">乱序执行:</p>
+<pre class="literal-block">
+lpush   lst 1
+lpush   lst 2
+lpush   lst 3
+lpush   lst 4
+
+lpop return 2 1 3 4
+</pre>
+</li>
+</ol>
+<p>第二种情况是发到同一个后端, 但是如果向同一个后端有多个连接, 就可能出这个问题.
+某个连接上的请求先执行.</p>
+<p>codis一个后端只有一个TaskRunner(一个连接), 所以应该不会出这个问题.</p>
+</div>
+<div class="section" id="mget">
+<h4><a class="toc-backref" href="#id36">4.2.5&nbsp;&nbsp;&nbsp;mget</a></h4>
+<p>逐一访问:</p>
+<pre class="literal-block">
+func (oper *MultiOperator) mgetResults(mop *MulOp) ([]byte, error) {
+    results := make([]interface{}, len(mop.keys))
+    conn := oper.pool.Get()
+    defer conn.Close()
+    for i, key := range mop.keys {
+        replys, err := redis.Values(conn.Do(&quot;mget&quot;, key))
+
+        for _, reply := range replys {
+            if reply != nil {
+                results[i] = reply
+            } else {
+                results[i] = nil
+            }
+        }
+    }
+
+    b, err := respcoding.Marshal(results)
+    return b, errors.Trace(err)
+}
+</pre>
+<p>这是为了保证迁移过程中的一致性, 必须一个一个处理.</p>
+<p>性能较差.</p>
+</div>
+</div>
+</div>
+<div class="section" id="id11">
+<h2><a class="toc-backref" href="#id37">5&nbsp;&nbsp;&nbsp;几个问题</a></h2>
+<div class="section" id="slot">
+<h3><a class="toc-backref" href="#id38">5.1&nbsp;&nbsp;&nbsp;slot内存</a></h3>
+<p>对于简单value(value大小1字节) slots内存占用:</p>
+<pre class="literal-block">
+keys         0          1000      10000     100000      1000000
+---------------------------------------------------------------
+codis-server 2519112    2678920   4073224   17449032    176095304
+redis-server 908688     1019856   2078736   12356240    120496272
+</pre>
+<ul class="simple">
+<li>可以看出codis 内存占用大约是 原生redis 的 <strong>1.5倍</strong> .</li>
+<li>越长的key, 浪费的内存越多.</li>
+<li>对于大value(复杂的hash, set结构), 浪费的内存会较少.</li>
+</ul>
+<p>测试代码: <a class="reference external" href="https://gist.github.com/idning/b23c4d4fe76da5b00ae3">https://gist.github.com/idning/b23c4d4fe76da5b00ae3</a></p>
+</div>
+<div class="section" id="value">
+<h3><a class="toc-backref" href="#id39">5.2&nbsp;&nbsp;&nbsp;阻塞迁移大value</a></h3>
+<p>为了保证迁移的一致性, codis选择牺牲可用性, 迁移单个key是通过阻塞当前实例来实现的.</p>
+<p>一个100w 字段的hset(内存中大约占70M), 迁移耗时:</p>
+<pre class="literal-block">
+本机:           1.85 s
+同机房不同机器: 2.06s
+</pre>
+<p>1-2s的不响应对大多数业务来说, 还是可以接受的, 所以这个问题不是很严重.</p>
+<p>但是一定要注意:</p>
+<ol class="arabic simple">
+<li>业务中不要出现1000w字段的hset, len=1000w的list之类.</li>
+<li>如果一个集群跨机房部署, 数据传输时间会更长, 迁移时间也会更长.</li>
+</ol>
+<p>测试代码: <a class="reference external" href="https://gist.github.com/idning/03f43b6789f14e1fe878">https://gist.github.com/idning/03f43b6789f14e1fe878</a></p>
+<p>在proxy代码中, 给迁移一个key设置的超时是30s:</p>
+<pre class="literal-block">
+func (s *Server) handleMigrateState(slotIndex int, key []byte) error {
+    ...
+    err = WriteMigrateKeyCmd(redisConn.(*redispool.PooledConn), shd.dst.Master(), 30*1000, key)
+    ...
+}
+</pre>
+</div>
+<div class="section" id="id12">
+<h3><a class="toc-backref" href="#id40">5.3&nbsp;&nbsp;&nbsp;pipeline 性能</a></h3>
+<p>codis proxy对每个请求都是解析 =&gt; 找个连接发到后端 =&gt; 等待响应 =&gt; 发给客户端</p>
+<p>这样就相当于不能使用pipeline, 而pipeline对要求高性能的case是非常重要的,</p>
+<p>开pipeline的情况下, 单redis, 单线程client做简单set可以达到 <strong>100w qps</strong>.</p>
+<div class="section" id="id13">
+<h4><a class="toc-backref" href="#id41">5.3.1&nbsp;&nbsp;&nbsp;性能问题</a></h4>
+<p>spinlock同学的测试:</p>
+<p><a class="reference external" href="https://github.com/wandoulabs/codis/issues/63">https://github.com/wandoulabs/codis/issues/63</a></p>
+<pre class="literal-block">
+CONC        PIPELINE        CODIS-LATENCY   REDIS-LATENCY
+50      10          3.17            0.60
+50      20          5.88            0.89
+50      75          21.78           2.40p
+</pre>
+<p>&#64;ngaut 同学在15年2月实现了pipeline的支持: <a class="reference external" href="https://github.com/wandoulabs/codis/pull/110">https://github.com/wandoulabs/codis/pull/110</a></p>
+<ul>
+<li><dl class="first docutils">
+<dt>用go来实现pipeline的问题是:</dt>
+<dd><ul class="first last simple">
+<li>pipeline并不是一个命令, pipeline实际上是异步处理所带来的一个好处, 只是一种使用方法.</li>
+<li>理论上, proxy/redis都不需要做任何事情来支持pipeline.</li>
+<li>但是codis采用了逐一转发的方法来处理请求, 就需要对pipeline专门处理.</li>
+<li>需要把go写成异步处理的形式, go 带来的编程模型简单的好处就没有了.</li>
+<li>优化后, 对所有的请求统一使用同样的方法(proxy并不知道自己处在一个pipeline中)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>pipeline 遇到slot迁移状态性能又是一个严重的问题.</p>
+</div>
+</div>
+<div class="section" id="id14">
+<h3><a class="toc-backref" href="#id42">5.4&nbsp;&nbsp;&nbsp;使用时遇到的其它小问题</a></h3>
+<ol class="arabic">
+<li><p class="first">命令行支持:</p>
+<pre class="literal-block">
+只支持 ./bin/codis-config  -c sample/config.ini dashboard
+不支持 ./bin/codis-config  dashboard -c sample/config.ini, 这个命令报一个非常奇怪的错误.
+</pre>
+</li>
+<li><p class="first">努棒性:</p>
+</li>
+</ol>
+<p>配置写错, 比如:</p>
+<pre class="literal-block">
+dashboard_addr=:8087
+</pre>
+<p>zk节点也能建成功, 而且不删, 需要等一段时间.</p>
+<ol class="arabic simple" start="3">
+<li>很多地方没有检查, 如果 add group 时写错参数.</li>
+<li>proxy 启动后为啥不直接是online呢?</li>
+<li>代码上有些同名的函数, 比如NewServer一个Server是backendServer, 一个是proxy自己, 读的时候要小心.</li>
+</ol>
+</div>
+</div>
+<div class="section" id="redis-port">
+<h2><a class="toc-backref" href="#id43">6&nbsp;&nbsp;&nbsp;redis-port</a></h2>
+<p>这是整个系统一个极大的亮点, 用于数据迁移, 比我们的redis-replay-aof好的是, 不需要到目标机器读aof文件.</p>
+<p>实现原理: 作为一个假的 slave，挂在一个redis后面，然后将master的数据同步回来，sync 到 codis 集群上，</p>
+</div>
+<div class="section" id="id15">
+<h2><a class="toc-backref" href="#id44">7&nbsp;&nbsp;&nbsp;参考</a></h2>
+<ul>
+<li><p class="first">设计文章: <a class="reference external" href="http://0xffff.me/blog/2014/11/11/codis-de-she-ji-yu-shi-xian-part-2/">http://0xffff.me/blog/2014/11/11/codis-de-she-ji-yu-shi-xian-part-2/</a></p>
+</li>
+<li><p class="first">代码: <a class="reference external" href="https://github.com/wandoulabs/codis">https://github.com/wandoulabs/codis</a></p>
+</li>
+<li><p class="first">codis design pdf</p>
+</li>
+<li><dl class="first docutils">
+<dt>豌豆荚分布式REDIS设计与实现－刘奇</dt>
+<dd><ul class="first last simple">
+<li><a class="reference external" href="http://blog.qiniu.com/?p=871">http://blog.qiniu.com/?p=871</a></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</div>
+<div class="section" id="id16">
+<h2><a class="toc-backref" href="#id45">8&nbsp;&nbsp;&nbsp;总结</a></h2>
+<ul>
+<li><p class="first">非常赞的人&amp;非常赞的项目</p>
+</li>
+<li><dl class="first docutils">
+<dt>几个比较重要的问题:</dt>
+<dd><ul class="first last simple">
+<li>slot内存占用 <tt class="docutils literal">1.5倍</tt></li>
+<li>redis阻塞迁移, 为了一致性降低可用性.</li>
+<li>不是自动failover</li>
+<li>pipeline/mget性能</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>迁移状态是瞬态(在一个集群运行过程中, 迁移时间只占1/1000不到)</dt>
+<dd><ul class="first last simple">
+<li>但是为了保持迁移状态, mget 性能做了牺牲, redis内存占用做了牺牲, 这不划算.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">redis-port很赞.</p>
+</li>
+</ul>
+<p>每种方案都是适用的地方.</p>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>
