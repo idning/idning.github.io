@@ -142,7 +142,8 @@
 &lt;dt&gt;一次迁移一个key, 原子, 阻塞(有的文档说: 我们每次只原子的迁走一个 key，不会把主线程 block 住, 这是不对的)&lt;/dt&gt;
 &lt;dd&gt;&lt;ul class="first last simple"&gt;
 &lt;li&gt;这里为了实现一致性, 降低了可用性(根据CAP, 在分布式系统中, 选择了C, A就会降低)&lt;/li&gt;
-&lt;li&gt;为什么说放弃了可用性呢? 假设我们在迁移, 迁移1个key需要1ms, 那么这个分片的qps就会降到1000qps以下了.&lt;/li&gt;
+&lt;li&gt;为什么说放弃了可用性呢? 假设我们在迁移, 迁移1个key需要0.1ms(同机柜), 那么这个分片的qps就会降到10000qps以下了.&lt;/li&gt;
+&lt;li&gt;如果是不同机房, rtt在1ms 左右, 迁移1个key需要1ms, 那么这个qps就降到1000qps以下了.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/dd&gt;
 &lt;/dl&gt;
@@ -181,7 +182,7 @@
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;主从切换不是自动, 需要手动操作(建议自动操作, 操作后人工后验检查)&lt;/p&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;p class="first"&gt;不能并发迁移，影响集群规模.&lt;/p&gt;
+&lt;li&gt;&lt;p class="first"&gt;不能并发迁移，扩容会很慢, 影响集群规模.&lt;/p&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;直接把redis代码包进来了, 对redis的后续升级, bugfix等难以merge.&lt;/p&gt;
 &lt;/li&gt;
@@ -884,6 +885,457 @@ Compaction操作就是读取小的HFile到内存merge-sorting成大的HFile然�
 其实我们只需要保证key有序, compaction只需对key做就行了，key和value分开来存放也许一个不错的优化思路.&lt;/li&gt;
 &lt;li&gt;在程序里面, 可以把leveldb/rocksdb当做一个 自动扩容, 持久化 的hash表来用.&lt;/li&gt;
 &lt;/ol&gt;
+&lt;/div&gt;
+</summary></entry><entry><title>zookeeper</title><link href="/zookeeper.html" rel="alternate"></link><updated>2014-12-26T17:17:23+08:00</updated><author><name>ning</name></author><id>tag:,2014-12-26:zookeeper.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
+&lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;
+&lt;ul class="auto-toc simple"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id1" id="id18"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;概况&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id2" id="id19"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;数据模型&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#znode" id="id20"&gt;1.1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;ZNode&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#api" id="id21"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;API&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#session" id="id22"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Session&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#watch" id="id23"&gt;1.4&amp;nbsp;&amp;nbsp;&amp;nbsp;Watch&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#acl" id="id24"&gt;1.5&amp;nbsp;&amp;nbsp;&amp;nbsp;ACL&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id3" id="id25"&gt;1.6&amp;nbsp;&amp;nbsp;&amp;nbsp;性能&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id4" id="id26"&gt;1.7&amp;nbsp;&amp;nbsp;&amp;nbsp;典型应用场景&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id5" id="id27"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;原理&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#observer" id="id28"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;关于Observer&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id6" id="id29"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;应用&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id7" id="id30"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;选主&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id8" id="id31"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;选主2&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id9" id="id32"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;分布式锁&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id10" id="id33"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;全局时序&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id11" id="id34"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;使用&amp;amp;配置&lt;/a&gt;&lt;ul class="auto-toc"&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id12" id="id35"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;配置&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id13" id="id36"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;试用&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id14" id="id37"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;监控命令&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id15" id="id38"&gt;4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;相关工具&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id16" id="id39"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&amp;amp;注意&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a class="reference internal" href="#id17" id="id40"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;参考&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id1"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id18"&gt;1&amp;nbsp;&amp;nbsp;&amp;nbsp;概况&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;定位为: Distributed Coordination Service&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;相当于一个replset, 在每个机器上都保存全量数据&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;client 只需要连上任何一个节点就可以读写&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;单机对数据的处理方式像redis(数据在内存, 持久化在磁盘)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;data in mem =&amp;gt; 性能 不错.&lt;/li&gt;
+&lt;li&gt;transaction logs and snapshots in a persistent store. =&amp;gt; 数据持久化&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;CAP中, zk是为C和A设计的.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;可用性高: 只要集群中大多数server 存活, 则zk集群是ok的&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;一致性保证(具有事务的特点):&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;A: Atomicity - Updates either succeed or fail. No partial results.&lt;/li&gt;
+&lt;li&gt;C: Timeliness(最终一致性) - The clients view of the system is guaranteed to be up-to-date within a certain time bound.&lt;/li&gt;
+&lt;li&gt;I: Sequential Consistency - Updates from a client will be applied in the order that they were sent.&lt;/li&gt;
+&lt;li&gt;D: Reliability - Once an update has been applied, it will persist from that time forward until a client overwrites the update.&lt;/li&gt;
+&lt;li&gt;Single System Image - A client will see the same view of the service regardless of the server that it connects to.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;应用广泛: Hbase, Kafka, Spark, Storm&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;从 2012年11月发布3.4.5之后, 就很少更新了.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="id2"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id19"&gt;1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;数据模型&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;zk的名字空间是一棵树, 类似文件系统的file/dir:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+/
+├── apps
+│&amp;nbsp;&amp;nbsp; ├── message
+│&amp;nbsp;&amp;nbsp; │&amp;nbsp;&amp;nbsp; ├── server0
+│&amp;nbsp;&amp;nbsp; │&amp;nbsp;&amp;nbsp; ├── server1
+│&amp;nbsp;&amp;nbsp; │&amp;nbsp;&amp;nbsp; └── server2
+│&amp;nbsp;&amp;nbsp; └── userinfo
+└── conf
+&lt;/pre&gt;
+&lt;div class="section" id="znode"&gt;
+&lt;h4&gt;&lt;a class="toc-backref" href="#id20"&gt;1.1.1&amp;nbsp;&amp;nbsp;&amp;nbsp;ZNode&lt;/a&gt;&lt;/h4&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;ZNode 属性包含:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;data &amp;lt; 1M  (相当于value)&lt;/li&gt;
+&lt;li&gt;acl&lt;/li&gt;
+&lt;li&gt;timestamp&lt;/li&gt;
+&lt;li&gt;version&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;znode 有三种&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;p class="first"&gt;Persistent Node: 永久有效存储, 除非显示删除&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Ephemeral Nodes: 临时节点, 只有client Session有效期间, 节点才存在&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;不能有Children&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Sequence Nodes: 创建节点时, zk会在节点路劲末尾添加递增序号.&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;可以用来实现分布式锁, 分布式queue.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;create node时, CreateMode可以指定类型:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+PERSISTENT
+PERSISTENT_SEQUENTIAL
+EPHEMERAL
+EPHEMERAL_SEQUENTIAL
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="api"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id21"&gt;1.2&amp;nbsp;&amp;nbsp;&amp;nbsp;API&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+create
+delete
+exists
+getChildren
+getData
+setData
+getACL
+setACL
+sync: waits for data to be propagated
+&lt;/pre&gt;
+&lt;p&gt;支持 CAS, 基于ZNode的版本号.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="session"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id22"&gt;1.3&amp;nbsp;&amp;nbsp;&amp;nbsp;Session&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;ZK集群会为每一个client连接记录一个Session, 类似WebServer的session, 有过期机制,&lt;/li&gt;
+&lt;li&gt;如果clinet连接断掉, 过期前重新连上的话, Session会继续有效.&lt;/li&gt;
+&lt;li&gt;如果zk-server在Lease时间内未收到Client的任何消息, server认为session过期 (SESSION_EXPIRE)&lt;/li&gt;
+&lt;li&gt;此时集群Leader发起SESSION_EXPIRE, 此时这个Session相关的信息都会被清除(Session本身, 它创建的临时节点, 添加的Watch)&lt;/li&gt;
+&lt;li&gt;Session expiration 是由ZooKeeper集群负责的, 而不是由client.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="watch"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id23"&gt;1.4&amp;nbsp;&amp;nbsp;&amp;nbsp;Watch&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;可以watch一个znode, 关注如下事件:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;Node Children Changed&lt;/li&gt;
+&lt;li&gt;Node Create&lt;/li&gt;
+&lt;li&gt;Node Data Changed&lt;/li&gt;
+&lt;li&gt;Node Deleted&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;watch 的几个特点:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Watch 是一次性的(One Time Trigger)&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;可能miss.&lt;/li&gt;
+&lt;li&gt;Client 需要解决得到一个event和发起下一个watch之间的时间差问题 TODO: how&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;Watch 保证有序.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;watch 保存在Server端Session 中, 一个连接断掉重连后, 相关watch还在&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;最好不要太多个client watch同一个znode, 容易产生惊群&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;A client will see a watch event for a znode it is watching before seeing the new data that corresponds to that znode.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;A successful create() will trigger a data watch for the znode being created and a child watch for the parent znode. A successful delete() will trigger both a data watch and a child watch (since there can be no more children) for a znode being deleted as well as a child watch for the parent znode.&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="acl"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id24"&gt;1.5&amp;nbsp;&amp;nbsp;&amp;nbsp;ACL&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;支持4种身份:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+world:      anyone
+auth:       anyone(登陆)
+digest:     username:password
+ip:         client host IP
+&lt;/pre&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;格式:  (ip:19.22.0.0/16, READ)&lt;/li&gt;
+&lt;li&gt;ACL是设置在ZNode上，不包含Children&lt;/li&gt;
+&lt;li&gt;ACL不常用.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id3"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id25"&gt;1.6&amp;nbsp;&amp;nbsp;&amp;nbsp;性能&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;1k data, 3server, 写大约3w/s, 读大约5w/s*3 (每台5w)&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;节点越多, 读性能越好, 写性能越差(要同步)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id4"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id26"&gt;1.7&amp;nbsp;&amp;nbsp;&amp;nbsp;典型应用场景&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;常见:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;全局配置服务&lt;/li&gt;
+&lt;li&gt;分布式锁&lt;/li&gt;
+&lt;li&gt;用于选主&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;少见:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;队列&lt;/li&gt;
+&lt;li&gt;Barriers&lt;/li&gt;
+&lt;li&gt;两段提交&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id5"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id27"&gt;2&amp;nbsp;&amp;nbsp;&amp;nbsp;原理&lt;/a&gt;&lt;/h2&gt;
+&lt;p&gt;Paxos: 每个写请求, Leader节点会要求所有Follower投票, 投票超过n/2+1通过时 才成功, 保证一致性, 但是不是强一致.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;三种角色:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last"&gt;
+&lt;li&gt;&lt;p class="first"&gt;Leader:   接受读+写请求.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;Follower  接受读, 写请求转发到Leader&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;Observer: 接受读, 写请求转发到Leader,&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;和Follower的区别是: 写操作会要求Follower投票, 但是不要求Observers投票, Observers只同步其他节点投票的结果.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;read: 连上哪个server就在哪个server操作&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;write: 转发到Leader, 由Leader 发起投票&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="section" id="observer"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id28"&gt;2.1&amp;nbsp;&amp;nbsp;&amp;nbsp;关于Observer&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;为了提高读性能, 需要增加节点, 但是增加节点后写性能又降低, 悲剧&lt;/li&gt;
+&lt;li&gt;这是因为 写需要一半节点投票同意,&lt;/li&gt;
+&lt;li&gt;所以增加了一种节点类型: Observer, 不投票, 只接受最后的结果,&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Observer表现和常规Follower一样:&lt;/p&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;接受读写.&lt;/li&gt;
+&lt;li&gt;读本地, 写转发到Leader&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;常见用法: 在单个机房内组成一个投票集群，外围的机房都会是一个observer集群和投票集群进行数据交互。&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id6"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id29"&gt;3&amp;nbsp;&amp;nbsp;&amp;nbsp;应用&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id7"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id30"&gt;3.1&amp;nbsp;&amp;nbsp;&amp;nbsp;选主&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+1. getdata(“/servers/leader”, true)
+2. if successful follow the leader described in the data and exit
+3. create(“/servers/leader”, hostname, EPHEMERAL)
+4. if success, I'm lead and exit
+5. goto step 1
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id8"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id31"&gt;3.2&amp;nbsp;&amp;nbsp;&amp;nbsp;选主2&lt;/a&gt;&lt;/h3&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id9"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id32"&gt;3.3&amp;nbsp;&amp;nbsp;&amp;nbsp;分布式锁&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;所有客户端都去创建 /distribute_lock 节点，最终成功创建的那个客户端也即拥有了这把锁。&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id10"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id33"&gt;3.4&amp;nbsp;&amp;nbsp;&amp;nbsp;全局时序&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;/distribute_lock 已经预先存在，客户端在它下面创建临时有序节点（这个可以通过节点的属性控制：CreateMode.EPHEMERAL_SEQUENTIAL来指定）。Zk的父节点（/distribute_lock）维持一份sequence,保证子节点创建的时序性，从而也形成了每个客户端的全局时序。&lt;/p&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id11"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id34"&gt;4&amp;nbsp;&amp;nbsp;&amp;nbsp;使用&amp;amp;配置&lt;/a&gt;&lt;/h2&gt;
+&lt;div class="section" id="id12"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id35"&gt;4.1&amp;nbsp;&amp;nbsp;&amp;nbsp;配置&lt;/a&gt;&lt;/h3&gt;
+&lt;p&gt;单机模式:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+tickTime=2000
+dataDir=/tmp/zk
+clientPort=2181
+&lt;/pre&gt;
+&lt;p&gt;tickTime：这个时间是作为 Zookeeper 服务器之间或客户端与服务器之间维持心跳的时间间隔，也就是每个 tickTime 时间就会发送一个心跳。
+dataDir：顾名思义就是 Zookeeper 保存数据的目录，默认情况下，Zookeeper 将写数据的日志文件也保存在这个目录里。
+clientPort：这个端口就是客户端连接 Zookeeper 服务器的端口，Zookeeper 会监听这个端口，接受客户端的访问请求。&lt;/p&gt;
+&lt;p&gt;集群模式增加如下配置:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+initLimit=5     # 连接到Leader的超时(单位为tickTime)
+syncLimit=2     # Leader 与 Follower 之间发消息 的超时 (单位为tickTime)
+server.1=192.168.211.1:2888:3888    #
+server.2=192.168.211.2:2888:3888    #
+&lt;/pre&gt;
+&lt;p&gt;dataDir/myid文件: 对应server.1 的 &lt;tt class="docutils literal"&gt;1&lt;/tt&gt;&lt;/p&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id13"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id36"&gt;4.2&amp;nbsp;&amp;nbsp;&amp;nbsp;试用&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+1. download
+
+ning&amp;#64;ning-mac ~/Downloads/zookeeper-3.4.6$ cp conf/zoo_sample.cfg conf/zoo.cfg
+
+ning&amp;#64;ning-mac ~/Downloads/zookeeper-3.4.6$ ./bin/zkServer.sh start
+JMX enabled by default
+Using config: /Users/ning/Downloads/zookeeper-3.4.6/bin/../conf/zoo.cfg
+Starting zookeeper ... STARTED
+
+[zk: 127.0.0.1:2181(CONNECTED) 0] ning&amp;#64;ning-mac ~/Downloads/zookeeper-3.4.6$ bin/zkCli.sh
+Connecting to localhost:2181
+[zk: localhost:2181(CONNECTED) 1] help
+ZooKeeper -server host:port cmd args
+    connect host:port
+    get path [watch]
+    ls path [watch]
+    set path data [version]
+    rmr path
+    delquota [-n|-b] path
+    quit
+    printwatches on|off
+    create [-s] [-e] path data acl
+    stat path [watch]
+    close
+    ls2 path [watch]
+    history
+    listquota path
+    setAcl path acl
+    getAcl path
+    sync path
+    redo cmdno
+    addauth scheme auth
+    delete path [version]
+    setquota -n|-b val path
+
+[zk: localhost:2181(CONNECTED) 2] ls /
+[zookeeper]
+[zk: localhost:2181(CONNECTED) 3] create /zk_test my_data
+Created /zk_test
+[zk: localhost:2181(CONNECTED) 4] ls /
+[zookeeper, zk_test]
+[zk: localhost:2181(CONNECTED) 5] ls /z
+
+zookeeper   zk_test
+[zk: localhost:2181(CONNECTED) 5] ls /zk_test
+[]
+[zk: localhost:2181(CONNECTED) 6] get /zk_test
+my_data
+cZxid = 0x6
+ctime = Wed Apr 01 16:05:47 CST 2015
+mZxid = 0x6
+mtime = Wed Apr 01 16:05:47 CST 2015
+pZxid = 0x6
+cversion = 0
+dataVersion = 0
+aclVersion = 0
+ephemeralOwner = 0x0
+dataLength = 7
+numChildren = 0
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id14"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id37"&gt;4.3&amp;nbsp;&amp;nbsp;&amp;nbsp;监控命令&lt;/a&gt;&lt;/h3&gt;
+&lt;pre class="literal-block"&gt;
+dump
+envi
+kill
+reqs
+ruok        are you ok
+stat
+srst        重置stat.
+&lt;/pre&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id15"&gt;
+&lt;h3&gt;&lt;a class="toc-backref" href="#id38"&gt;4.4&amp;nbsp;&amp;nbsp;&amp;nbsp;相关工具&lt;/a&gt;&lt;/h3&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;pip install zk_shell&lt;/li&gt;
+&lt;li&gt;可以加一层proxy解决连接数问题(对读有效).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id16"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id39"&gt;5&amp;nbsp;&amp;nbsp;&amp;nbsp;小结&amp;amp;注意&lt;/a&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;适合读多写少的业务&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;读可以通过增加实例水平扩展&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;节点越多, 读能力越高, 但是写能力越差.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;zk 是比redis复杂的系统, server处理的对象除了存储, 还有session, 连接, 投票.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;注意:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;p class="first"&gt;zk并不是强一致, 而是最终一致 =&amp;gt; 有主从延迟.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;dl class="first docutils"&gt;
+&lt;dt&gt;可用性并不是100%:&lt;/dt&gt;
+&lt;dd&gt;&lt;ul class="first last simple"&gt;
+&lt;li&gt;当集群发生重新选举期间, 服务不可用, (重新选举需要同步数据, 所以时间比较长)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/dd&gt;
+&lt;/dl&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;p class="first"&gt;正确使用watch需要一定经验.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/div&gt;
+&lt;div class="section" id="id17"&gt;
+&lt;h2&gt;&lt;a class="toc-backref" href="#id40"&gt;6&amp;nbsp;&amp;nbsp;&amp;nbsp;参考&lt;/a&gt;&lt;/h2&gt;
+&lt;ul class="simple"&gt;
+&lt;li&gt;官方文档首页: &lt;a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.2/"&gt;http://zookeeper.apache.org/doc/r3.3.2/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;官方: overview &lt;a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.2/zookeeperOver.html"&gt;http://zookeeper.apache.org/doc/r3.3.2/zookeeperOver.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;官方: 各种应用场景 &lt;a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.2/recipes.html"&gt;http://zookeeper.apache.org/doc/r3.3.2/recipes.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[非常赞]官方: Get Started &lt;a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.3/zookeeperStarted.html"&gt;http://zookeeper.apache.org/doc/r3.3.3/zookeeperStarted.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;非常赞的一个ppt: &lt;a class="reference external" href="http://www.slideshare.net/sauravhaloi/introduction-to-apache-zookeeper"&gt;http://www.slideshare.net/sauravhaloi/introduction-to-apache-zookeeper&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Observers: &lt;a class="reference external" href="http://zookeeper.apache.org/doc/trunk/zookeeperObservers.html"&gt;http://zookeeper.apache.org/doc/trunk/zookeeperObservers.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;agapple 同学几篇使用经验: &lt;a class="reference external" href="http://agapple.iteye.com/blog/1292473"&gt;http://agapple.iteye.com/blog/1292473&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
 &lt;/div&gt;
 </summary></entry><entry><title>redis-data-migrate</title><link href="/redis-data-migrate.html" rel="alternate"></link><updated>2014-11-02T11:41:38+08:00</updated><author><name>ning</name></author><id>tag:,2014-11-02:redis-data-migrate.html</id><summary type="html">&lt;div class="contents topic" id="table-of-contents"&gt;
 &lt;p class="topic-title first"&gt;Table of Contents&lt;/p&gt;

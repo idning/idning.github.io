@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>ning</title>
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+	<!--[if lt IE 9]>
+		<script src="/theme/html5.js"></script>
+	<![endif]-->
+
+	<!-- Le styles -->
+	<link href="/theme/bootstrap.min.css" rel="stylesheet">
+	<link href="/theme/local.css" rel="stylesheet">
+	<link href="/theme/pygments.css" rel="stylesheet">
+</head>
+<body>
+	<div class="topbar">
+	  <div class="topbar-inner">
+		<div class="container-fluid">
+		  <a class="brand" href="/index.html">ning</a>
+			<ul class="nav">
+						<li><a href="/pages/about.html">about</a></li>
+					<li class="active"><a href="/category/misc.html">misc</a></li>
+					<li ><a href="/category/mongo.html">mongo</a></li>
+					<li ><a href="/category/redis.html">redis</a></li>
+			</ul>
+			<p class="pull-right">
+                <a onClick="document.getElementsByClassName('topbar')[0].style['display'] = 'none'; return false;">hide</a> 
+                <a href="/archives.html">[archives]</a> 
+                <a href="/tags.html">[tags]</a>
+                <a href="/feeds/all.atom.xml">[rss]</a>
+            </p>
+		</div>
+	  </div>
+	</div>
+
+	<div class="container">	
+        <!--
+        -->
+	<div class='article'>
+		<div class="page-header"><h1>zookeeper</h1></div>
+		<div class="well small">Permalink: <a class="more" href="/zookeeper.html">2014-12-26 17:17:23</a>
+ by <a class="url fn" href="/author/ning.html">ning</a> in <a href="/category/misc.html">misc</a>
+</div>
+		<div><div class="contents topic" id="table-of-contents">
+<p class="topic-title first">Table of Contents</p>
+<ul class="auto-toc simple">
+<li><a class="reference internal" href="#id1" id="id18">1&nbsp;&nbsp;&nbsp;概况</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id2" id="id19">1.1&nbsp;&nbsp;&nbsp;数据模型</a><ul class="auto-toc">
+<li><a class="reference internal" href="#znode" id="id20">1.1.1&nbsp;&nbsp;&nbsp;ZNode</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#api" id="id21">1.2&nbsp;&nbsp;&nbsp;API</a></li>
+<li><a class="reference internal" href="#session" id="id22">1.3&nbsp;&nbsp;&nbsp;Session</a></li>
+<li><a class="reference internal" href="#watch" id="id23">1.4&nbsp;&nbsp;&nbsp;Watch</a></li>
+<li><a class="reference internal" href="#acl" id="id24">1.5&nbsp;&nbsp;&nbsp;ACL</a></li>
+<li><a class="reference internal" href="#id3" id="id25">1.6&nbsp;&nbsp;&nbsp;性能</a></li>
+<li><a class="reference internal" href="#id4" id="id26">1.7&nbsp;&nbsp;&nbsp;典型应用场景</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id5" id="id27">2&nbsp;&nbsp;&nbsp;原理</a><ul class="auto-toc">
+<li><a class="reference internal" href="#observer" id="id28">2.1&nbsp;&nbsp;&nbsp;关于Observer</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id6" id="id29">3&nbsp;&nbsp;&nbsp;应用</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id7" id="id30">3.1&nbsp;&nbsp;&nbsp;选主</a></li>
+<li><a class="reference internal" href="#id8" id="id31">3.2&nbsp;&nbsp;&nbsp;选主2</a></li>
+<li><a class="reference internal" href="#id9" id="id32">3.3&nbsp;&nbsp;&nbsp;分布式锁</a></li>
+<li><a class="reference internal" href="#id10" id="id33">3.4&nbsp;&nbsp;&nbsp;全局时序</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id11" id="id34">4&nbsp;&nbsp;&nbsp;使用&amp;配置</a><ul class="auto-toc">
+<li><a class="reference internal" href="#id12" id="id35">4.1&nbsp;&nbsp;&nbsp;配置</a></li>
+<li><a class="reference internal" href="#id13" id="id36">4.2&nbsp;&nbsp;&nbsp;试用</a></li>
+<li><a class="reference internal" href="#id14" id="id37">4.3&nbsp;&nbsp;&nbsp;监控命令</a></li>
+<li><a class="reference internal" href="#id15" id="id38">4.4&nbsp;&nbsp;&nbsp;相关工具</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id16" id="id39">5&nbsp;&nbsp;&nbsp;小结&amp;注意</a></li>
+<li><a class="reference internal" href="#id17" id="id40">6&nbsp;&nbsp;&nbsp;参考</a></li>
+</ul>
+</div>
+<div class="section" id="id1">
+<h2><a class="toc-backref" href="#id18">1&nbsp;&nbsp;&nbsp;概况</a></h2>
+<ul>
+<li><p class="first">定位为: Distributed Coordination Service</p>
+</li>
+<li><p class="first">相当于一个replset, 在每个机器上都保存全量数据</p>
+</li>
+<li><p class="first">client 只需要连上任何一个节点就可以读写</p>
+</li>
+<li><dl class="first docutils">
+<dt>单机对数据的处理方式像redis(数据在内存, 持久化在磁盘)</dt>
+<dd><ul class="first last simple">
+<li>data in mem =&gt; 性能 不错.</li>
+<li>transaction logs and snapshots in a persistent store. =&gt; 数据持久化</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>CAP中, zk是为C和A设计的.</p>
+<ul>
+<li><p class="first">可用性高: 只要集群中大多数server 存活, 则zk集群是ok的</p>
+</li>
+<li><dl class="first docutils">
+<dt>一致性保证(具有事务的特点):</dt>
+<dd><ul class="first last simple">
+<li>A: Atomicity - Updates either succeed or fail. No partial results.</li>
+<li>C: Timeliness(最终一致性) - The clients view of the system is guaranteed to be up-to-date within a certain time bound.</li>
+<li>I: Sequential Consistency - Updates from a client will be applied in the order that they were sent.</li>
+<li>D: Reliability - Once an update has been applied, it will persist from that time forward until a client overwrites the update.</li>
+<li>Single System Image - A client will see the same view of the service regardless of the server that it connects to.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">应用广泛: Hbase, Kafka, Spark, Storm</p>
+</li>
+<li><p class="first">从 2012年11月发布3.4.5之后, 就很少更新了.</p>
+</li>
+</ul>
+<div class="section" id="id2">
+<h3><a class="toc-backref" href="#id19">1.1&nbsp;&nbsp;&nbsp;数据模型</a></h3>
+<p>zk的名字空间是一棵树, 类似文件系统的file/dir:</p>
+<pre class="literal-block">
+/
+├── apps
+│&nbsp;&nbsp; ├── message
+│&nbsp;&nbsp; │&nbsp;&nbsp; ├── server0
+│&nbsp;&nbsp; │&nbsp;&nbsp; ├── server1
+│&nbsp;&nbsp; │&nbsp;&nbsp; └── server2
+│&nbsp;&nbsp; └── userinfo
+└── conf
+</pre>
+<div class="section" id="znode">
+<h4><a class="toc-backref" href="#id20">1.1.1&nbsp;&nbsp;&nbsp;ZNode</a></h4>
+<ul>
+<li><dl class="first docutils">
+<dt>ZNode 属性包含:</dt>
+<dd><ul class="first last simple">
+<li>data &lt; 1M  (相当于value)</li>
+<li>acl</li>
+<li>timestamp</li>
+<li>version</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>znode 有三种</dt>
+<dd><ul class="first last">
+<li><p class="first">Persistent Node: 永久有效存储, 除非显示删除</p>
+</li>
+<li><dl class="first docutils">
+<dt>Ephemeral Nodes: 临时节点, 只有client Session有效期间, 节点才存在</dt>
+<dd><ul class="first last simple">
+<li>不能有Children</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Sequence Nodes: 创建节点时, zk会在节点路劲末尾添加递增序号.</dt>
+<dd><ul class="first last simple">
+<li>可以用来实现分布式锁, 分布式queue.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<p>create node时, CreateMode可以指定类型:</p>
+<pre class="literal-block">
+PERSISTENT
+PERSISTENT_SEQUENTIAL
+EPHEMERAL
+EPHEMERAL_SEQUENTIAL
+</pre>
+</div>
+</div>
+<div class="section" id="api">
+<h3><a class="toc-backref" href="#id21">1.2&nbsp;&nbsp;&nbsp;API</a></h3>
+<pre class="literal-block">
+create
+delete
+exists
+getChildren
+getData
+setData
+getACL
+setACL
+sync: waits for data to be propagated
+</pre>
+<p>支持 CAS, 基于ZNode的版本号.</p>
+</div>
+<div class="section" id="session">
+<h3><a class="toc-backref" href="#id22">1.3&nbsp;&nbsp;&nbsp;Session</a></h3>
+<ul class="simple">
+<li>ZK集群会为每一个client连接记录一个Session, 类似WebServer的session, 有过期机制,</li>
+<li>如果clinet连接断掉, 过期前重新连上的话, Session会继续有效.</li>
+<li>如果zk-server在Lease时间内未收到Client的任何消息, server认为session过期 (SESSION_EXPIRE)</li>
+<li>此时集群Leader发起SESSION_EXPIRE, 此时这个Session相关的信息都会被清除(Session本身, 它创建的临时节点, 添加的Watch)</li>
+<li>Session expiration 是由ZooKeeper集群负责的, 而不是由client.</li>
+</ul>
+</div>
+<div class="section" id="watch">
+<h3><a class="toc-backref" href="#id23">1.4&nbsp;&nbsp;&nbsp;Watch</a></h3>
+<p>可以watch一个znode, 关注如下事件:</p>
+<ul class="simple">
+<li>Node Children Changed</li>
+<li>Node Create</li>
+<li>Node Data Changed</li>
+<li>Node Deleted</li>
+</ul>
+<p>watch 的几个特点:</p>
+<ul>
+<li><dl class="first docutils">
+<dt>Watch 是一次性的(One Time Trigger)</dt>
+<dd><ul class="first last simple">
+<li>可能miss.</li>
+<li>Client 需要解决得到一个event和发起下一个watch之间的时间差问题 TODO: how</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">Watch 保证有序.</p>
+</li>
+<li><p class="first">watch 保存在Server端Session 中, 一个连接断掉重连后, 相关watch还在</p>
+</li>
+<li><p class="first">最好不要太多个client watch同一个znode, 容易产生惊群</p>
+</li>
+<li><p class="first">A client will see a watch event for a znode it is watching before seeing the new data that corresponds to that znode.</p>
+</li>
+</ul>
+<p>A successful create() will trigger a data watch for the znode being created and a child watch for the parent znode. A successful delete() will trigger both a data watch and a child watch (since there can be no more children) for a znode being deleted as well as a child watch for the parent znode.</p>
+</div>
+<div class="section" id="acl">
+<h3><a class="toc-backref" href="#id24">1.5&nbsp;&nbsp;&nbsp;ACL</a></h3>
+<p>支持4种身份:</p>
+<pre class="literal-block">
+world:      anyone
+auth:       anyone(登陆)
+digest:     username:password
+ip:         client host IP
+</pre>
+<ul class="simple">
+<li>格式:  (ip:19.22.0.0/16, READ)</li>
+<li>ACL是设置在ZNode上，不包含Children</li>
+<li>ACL不常用.</li>
+</ul>
+</div>
+<div class="section" id="id3">
+<h3><a class="toc-backref" href="#id25">1.6&nbsp;&nbsp;&nbsp;性能</a></h3>
+<p>1k data, 3server, 写大约3w/s, 读大约5w/s*3 (每台5w)</p>
+<ul class="simple">
+<li>节点越多, 读性能越好, 写性能越差(要同步)</li>
+</ul>
+</div>
+<div class="section" id="id4">
+<h3><a class="toc-backref" href="#id26">1.7&nbsp;&nbsp;&nbsp;典型应用场景</a></h3>
+<p>常见:</p>
+<ul class="simple">
+<li>全局配置服务</li>
+<li>分布式锁</li>
+<li>用于选主</li>
+</ul>
+<p>少见:</p>
+<ul class="simple">
+<li>队列</li>
+<li>Barriers</li>
+<li>两段提交</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id5">
+<h2><a class="toc-backref" href="#id27">2&nbsp;&nbsp;&nbsp;原理</a></h2>
+<p>Paxos: 每个写请求, Leader节点会要求所有Follower投票, 投票超过n/2+1通过时 才成功, 保证一致性, 但是不是强一致.</p>
+<ul>
+<li><dl class="first docutils">
+<dt>三种角色:</dt>
+<dd><ul class="first last">
+<li><p class="first">Leader:   接受读+写请求.</p>
+</li>
+<li><p class="first">Follower  接受读, 写请求转发到Leader</p>
+</li>
+<li><dl class="first docutils">
+<dt>Observer: 接受读, 写请求转发到Leader,</dt>
+<dd><ul class="first last simple">
+<li>和Follower的区别是: 写操作会要求Follower投票, 但是不要求Observers投票, Observers只同步其他节点投票的结果.</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">read: 连上哪个server就在哪个server操作</p>
+</li>
+<li><p class="first">write: 转发到Leader, 由Leader 发起投票</p>
+</li>
+</ul>
+<div class="section" id="observer">
+<h3><a class="toc-backref" href="#id28">2.1&nbsp;&nbsp;&nbsp;关于Observer</a></h3>
+<ul class="simple">
+<li>为了提高读性能, 需要增加节点, 但是增加节点后写性能又降低, 悲剧</li>
+<li>这是因为 写需要一半节点投票同意,</li>
+<li>所以增加了一种节点类型: Observer, 不投票, 只接受最后的结果,</li>
+</ul>
+<p>Observer表现和常规Follower一样:</p>
+<ul class="simple">
+<li>接受读写.</li>
+<li>读本地, 写转发到Leader</li>
+</ul>
+<p>常见用法: 在单个机房内组成一个投票集群，外围的机房都会是一个observer集群和投票集群进行数据交互。</p>
+</div>
+</div>
+<div class="section" id="id6">
+<h2><a class="toc-backref" href="#id29">3&nbsp;&nbsp;&nbsp;应用</a></h2>
+<div class="section" id="id7">
+<h3><a class="toc-backref" href="#id30">3.1&nbsp;&nbsp;&nbsp;选主</a></h3>
+<pre class="literal-block">
+1. getdata(“/servers/leader”, true)
+2. if successful follow the leader described in the data and exit
+3. create(“/servers/leader”, hostname, EPHEMERAL)
+4. if success, I'm lead and exit
+5. goto step 1
+</pre>
+</div>
+<div class="section" id="id8">
+<h3><a class="toc-backref" href="#id31">3.2&nbsp;&nbsp;&nbsp;选主2</a></h3>
+</div>
+<div class="section" id="id9">
+<h3><a class="toc-backref" href="#id32">3.3&nbsp;&nbsp;&nbsp;分布式锁</a></h3>
+<p>所有客户端都去创建 /distribute_lock 节点，最终成功创建的那个客户端也即拥有了这把锁。</p>
+</div>
+<div class="section" id="id10">
+<h3><a class="toc-backref" href="#id33">3.4&nbsp;&nbsp;&nbsp;全局时序</a></h3>
+<p>/distribute_lock 已经预先存在，客户端在它下面创建临时有序节点（这个可以通过节点的属性控制：CreateMode.EPHEMERAL_SEQUENTIAL来指定）。Zk的父节点（/distribute_lock）维持一份sequence,保证子节点创建的时序性，从而也形成了每个客户端的全局时序。</p>
+</div>
+</div>
+<div class="section" id="id11">
+<h2><a class="toc-backref" href="#id34">4&nbsp;&nbsp;&nbsp;使用&amp;配置</a></h2>
+<div class="section" id="id12">
+<h3><a class="toc-backref" href="#id35">4.1&nbsp;&nbsp;&nbsp;配置</a></h3>
+<p>单机模式:</p>
+<pre class="literal-block">
+tickTime=2000
+dataDir=/tmp/zk
+clientPort=2181
+</pre>
+<p>tickTime：这个时间是作为 Zookeeper 服务器之间或客户端与服务器之间维持心跳的时间间隔，也就是每个 tickTime 时间就会发送一个心跳。
+dataDir：顾名思义就是 Zookeeper 保存数据的目录，默认情况下，Zookeeper 将写数据的日志文件也保存在这个目录里。
+clientPort：这个端口就是客户端连接 Zookeeper 服务器的端口，Zookeeper 会监听这个端口，接受客户端的访问请求。</p>
+<p>集群模式增加如下配置:</p>
+<pre class="literal-block">
+initLimit=5     # 连接到Leader的超时(单位为tickTime)
+syncLimit=2     # Leader 与 Follower 之间发消息 的超时 (单位为tickTime)
+server.1=192.168.211.1:2888:3888    #
+server.2=192.168.211.2:2888:3888    #
+</pre>
+<p>dataDir/myid文件: 对应server.1 的 <tt class="docutils literal">1</tt></p>
+</div>
+<div class="section" id="id13">
+<h3><a class="toc-backref" href="#id36">4.2&nbsp;&nbsp;&nbsp;试用</a></h3>
+<pre class="literal-block">
+1. download
+
+ning&#64;ning-mac ~/Downloads/zookeeper-3.4.6$ cp conf/zoo_sample.cfg conf/zoo.cfg
+
+ning&#64;ning-mac ~/Downloads/zookeeper-3.4.6$ ./bin/zkServer.sh start
+JMX enabled by default
+Using config: /Users/ning/Downloads/zookeeper-3.4.6/bin/../conf/zoo.cfg
+Starting zookeeper ... STARTED
+
+[zk: 127.0.0.1:2181(CONNECTED) 0] ning&#64;ning-mac ~/Downloads/zookeeper-3.4.6$ bin/zkCli.sh
+Connecting to localhost:2181
+[zk: localhost:2181(CONNECTED) 1] help
+ZooKeeper -server host:port cmd args
+    connect host:port
+    get path [watch]
+    ls path [watch]
+    set path data [version]
+    rmr path
+    delquota [-n|-b] path
+    quit
+    printwatches on|off
+    create [-s] [-e] path data acl
+    stat path [watch]
+    close
+    ls2 path [watch]
+    history
+    listquota path
+    setAcl path acl
+    getAcl path
+    sync path
+    redo cmdno
+    addauth scheme auth
+    delete path [version]
+    setquota -n|-b val path
+
+[zk: localhost:2181(CONNECTED) 2] ls /
+[zookeeper]
+[zk: localhost:2181(CONNECTED) 3] create /zk_test my_data
+Created /zk_test
+[zk: localhost:2181(CONNECTED) 4] ls /
+[zookeeper, zk_test]
+[zk: localhost:2181(CONNECTED) 5] ls /z
+
+zookeeper   zk_test
+[zk: localhost:2181(CONNECTED) 5] ls /zk_test
+[]
+[zk: localhost:2181(CONNECTED) 6] get /zk_test
+my_data
+cZxid = 0x6
+ctime = Wed Apr 01 16:05:47 CST 2015
+mZxid = 0x6
+mtime = Wed Apr 01 16:05:47 CST 2015
+pZxid = 0x6
+cversion = 0
+dataVersion = 0
+aclVersion = 0
+ephemeralOwner = 0x0
+dataLength = 7
+numChildren = 0
+</pre>
+</div>
+<div class="section" id="id14">
+<h3><a class="toc-backref" href="#id37">4.3&nbsp;&nbsp;&nbsp;监控命令</a></h3>
+<pre class="literal-block">
+dump
+envi
+kill
+reqs
+ruok        are you ok
+stat
+srst        重置stat.
+</pre>
+</div>
+<div class="section" id="id15">
+<h3><a class="toc-backref" href="#id38">4.4&nbsp;&nbsp;&nbsp;相关工具</a></h3>
+<ul class="simple">
+<li>pip install zk_shell</li>
+<li>可以加一层proxy解决连接数问题(对读有效).</li>
+</ul>
+</div>
+</div>
+<div class="section" id="id16">
+<h2><a class="toc-backref" href="#id39">5&nbsp;&nbsp;&nbsp;小结&amp;注意</a></h2>
+<ul>
+<li><p class="first">适合读多写少的业务</p>
+</li>
+<li><dl class="first docutils">
+<dt>读可以通过增加实例水平扩展</dt>
+<dd><ul class="first last simple">
+<li>节点越多, 读能力越高, 但是写能力越差.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">zk 是比redis复杂的系统, server处理的对象除了存储, 还有session, 连接, 投票.</p>
+</li>
+</ul>
+<p>注意:</p>
+<ul>
+<li><p class="first">zk并不是强一致, 而是最终一致 =&gt; 有主从延迟.</p>
+</li>
+<li><dl class="first docutils">
+<dt>可用性并不是100%:</dt>
+<dd><ul class="first last simple">
+<li>当集群发生重新选举期间, 服务不可用, (重新选举需要同步数据, 所以时间比较长)</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p class="first">正确使用watch需要一定经验.</p>
+</li>
+</ul>
+</div>
+<div class="section" id="id17">
+<h2><a class="toc-backref" href="#id40">6&nbsp;&nbsp;&nbsp;参考</a></h2>
+<ul class="simple">
+<li>官方文档首页: <a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.2/">http://zookeeper.apache.org/doc/r3.3.2/</a></li>
+<li>官方: overview <a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.2/zookeeperOver.html">http://zookeeper.apache.org/doc/r3.3.2/zookeeperOver.html</a></li>
+<li>官方: 各种应用场景 <a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.2/recipes.html">http://zookeeper.apache.org/doc/r3.3.2/recipes.html</a></li>
+<li>[非常赞]官方: Get Started <a class="reference external" href="http://zookeeper.apache.org/doc/r3.3.3/zookeeperStarted.html">http://zookeeper.apache.org/doc/r3.3.3/zookeeperStarted.html</a></li>
+<li>非常赞的一个ppt: <a class="reference external" href="http://www.slideshare.net/sauravhaloi/introduction-to-apache-zookeeper">http://www.slideshare.net/sauravhaloi/introduction-to-apache-zookeeper</a></li>
+<li>Observers: <a class="reference external" href="http://zookeeper.apache.org/doc/trunk/zookeeperObservers.html">http://zookeeper.apache.org/doc/trunk/zookeeperObservers.html</a></li>
+<li>agapple 同学几篇使用经验: <a class="reference external" href="http://agapple.iteye.com/blog/1292473">http://agapple.iteye.com/blog/1292473</a></li>
+</ul>
+</div>
+</div>
+		<div>
+			<h2>Comments</h2>
+
+            <script type="text/javascript">
+            (function(){
+            var url = "http://widget.weibo.com/distribution/comments.php?width=0&url=auto&fontsize=14&ralateuid=1872013465&language=zh_cn&dpc=1";
+            url = url.replace("url=auto", "url=" + document.URL);
+            document.write('<iframe id="WBCommentFrame" src="' + url + '" scrolling="no" frameborder="0" style="width:100%"></iframe>');
+            })();
+            </script>
+            <script src="http://tjs.sjs.sinajs.cn/open/widget/js/widget/comment.js" type="text/javascript" charset="utf-8"></script>
+            <script type="text/javascript">
+            window.WBComment.init({
+                "id": "WBCommentFrame"
+            });
+            </script> 
+
+		<div>
+	</div>	
+	</div>
+
+    <script type="text/javascript">
+        var _bdhmProtocol = (("https:" == document.location.protocol) ? " https://" : " http://");
+        document.write(unescape("%3Cscript src='" + _bdhmProtocol + "hm.baidu.com/h.js%3Ff3e480c73d4cc8dc8a45c54abf06440e' type='text/javascript'%3E%3C/script%3E"));
+    </script>
+
+</body>
+</html>

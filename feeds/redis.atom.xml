@@ -142,7 +142,8 @@
 &lt;dt&gt;一次迁移一个key, 原子, 阻塞(有的文档说: 我们每次只原子的迁走一个 key，不会把主线程 block 住, 这是不对的)&lt;/dt&gt;
 &lt;dd&gt;&lt;ul class="first last simple"&gt;
 &lt;li&gt;这里为了实现一致性, 降低了可用性(根据CAP, 在分布式系统中, 选择了C, A就会降低)&lt;/li&gt;
-&lt;li&gt;为什么说放弃了可用性呢? 假设我们在迁移, 迁移1个key需要1ms, 那么这个分片的qps就会降到1000qps以下了.&lt;/li&gt;
+&lt;li&gt;为什么说放弃了可用性呢? 假设我们在迁移, 迁移1个key需要0.1ms(同机柜), 那么这个分片的qps就会降到10000qps以下了.&lt;/li&gt;
+&lt;li&gt;如果是不同机房, rtt在1ms 左右, 迁移1个key需要1ms, 那么这个qps就降到1000qps以下了.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/dd&gt;
 &lt;/dl&gt;
@@ -181,7 +182,7 @@
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;主从切换不是自动, 需要手动操作(建议自动操作, 操作后人工后验检查)&lt;/p&gt;
 &lt;/li&gt;
-&lt;li&gt;&lt;p class="first"&gt;不能并发迁移，影响集群规模.&lt;/p&gt;
+&lt;li&gt;&lt;p class="first"&gt;不能并发迁移，扩容会很慢, 影响集群规模.&lt;/p&gt;
 &lt;/li&gt;
 &lt;li&gt;&lt;p class="first"&gt;直接把redis代码包进来了, 对redis的后续升级, bugfix等难以merge.&lt;/p&gt;
 &lt;/li&gt;
