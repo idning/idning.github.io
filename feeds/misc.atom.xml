@@ -7322,6 +7322,10 @@ $ pprof --text bin/nutcracker /tmp/profile
 &lt;div class="section" id="perf"&gt;
 &lt;h3&gt;&lt;a class="toc-backref" href="#id81"&gt;perf&lt;/a&gt;&lt;/h3&gt;
 &lt;p&gt;速度快. 2.6内核提供的. ubuntu, centos都默认安装, 不需要root&lt;/p&gt;
+&lt;p&gt;perf top:&lt;/p&gt;
+&lt;pre class="literal-block"&gt;
+直接看到热点
+&lt;/pre&gt;
 &lt;p&gt;perf list:&lt;/p&gt;
 &lt;pre class="literal-block"&gt;
 List of pre-defined events (to be used in -e):
